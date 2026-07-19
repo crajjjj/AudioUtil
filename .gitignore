@@ -1,0 +1,7 @@
+build/
+.xmake/
+.cache/
+.vs/
+compile_commands.json
+dist/SKSE/Plugins/*.dll
+dist/SKSE/Plugins/*.pdb

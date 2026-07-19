@@ -1,0 +1,3 @@
+LIBRARY	"HentairimAudio"
+EXPORTS
+SKSEPlugin_Load

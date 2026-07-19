@@ -1,0 +1,229 @@
+# HentairimAudio — native folder-based audio for Hentairim.
+# All name/key matching is case- and space-insensitive ("About To Cum" == "AboutToCum").
+# Adding a voice slot: create Sound\fx\IVDT\<Id>\<Category>\*.wav folders and add a [[slot]] entry.
+
+[general]
+log_level = "info"            # trace | debug | info | warn | error
+sound_flags = 0x1A            # BuildSoundDataFromFile flags (experiment via DebugPlayFile)
+sound_priority = 128
+voice_root = 'Sound\fx\IVDT'
+sfx_root = 'Sound\fx\HentairimSFX'
+default_female_slot = "F1"
+default_male_slot = "M1"
+
+[ppa]
+enable = true
+event_rate_ms = 500           # min interval per receiver for HentairimPPA_Update mod events
+
+# ---------- voice slots ----------
+
+[[slot]]
+id = "F1"
+sex = "female"
+path = 'Sound\fx\IVDT\F1'
+
+[[slot]]
+id = "M1"
+sex = "male"
+path = 'Sound\fx\IVDT\M1'
+
+[[slot]]
+id = "M2"
+sex = "male"
+path = 'Sound\fx\IVDT\M2'
+
+[[slot]]
+id = "M3"
+sex = "male"
+path = 'Sound\fx\IVDT\M3'
+
+[[slot]]
+id = "M4"
+sex = "male"
+path = 'Sound\fx\IVDT\M4'
+
+[[slot]]
+id = "M5"
+sex = "male"
+path = 'Sound\fx\IVDT\M5'
+
+[[slot]]
+id = "M6"
+sex = "male"
+path = 'Sound\fx\IVDT\M6'
+
+[[slot]]
+id = "M7"
+sex = "male"
+path = 'Sound\fx\IVDT\M7'
+
+[[slot]]
+id = "M8"
+sex = "male"
+path = 'Sound\fx\IVDT\M8'
+
+# ---------- VoiceType -> slot (was GetVoiceForActor's if-ladder) ----------
+
+[voicetype_map]
+MaleEvenToned = "M1"
+MaleArgonian = "M2"
+MaleBrute = "M3"
+MaleNord = "M4"
+MaleCondescending = "M5"
+MaleDarkElf = "M6"
+MaleKhajitt = "M7"
+MaleOrc = "M8"
+
+# pre-pass for uncovered voicetypes (was EnableReassigningMaleVoice)
+[voicetype_remap]
+enable = true
+MaleCommander = "MaleBrute"
+MaleSoldier = "MaleBrute"
+MaleBandit = "MaleBrute"
+MaleCommoner = "MaleEvenToned"
+MaleCommonerAccented = "MaleEvenToned"
+MaleEvenTonedAccented = "MaleEvenToned"
+MaleYoungEager = "MaleEvenToned"
+MaleDrunk = "MaleEvenToned"
+MaleElfHaughty = "MaleCondescending"
+MaleGuard = "MaleNord"
+MaleNordCommander = "MaleNord"
+MaleWarlock = "MaleCondescending"
+MaleOldGrumpy = "MaleBrute"
+MaleOldKindly = "MaleEvenToned"
+MaleSlyCynical = "MaleCondescending"
+MaleDarkElfCynical = "MaleDarkElf"
+MaleKhajiitAccented = "MaleKhajitt"
+
+# per-NPC slot pin, checked before voicetype resolution: 'Plugin.esp|FormID' = "SlotId"
+[npc_overrides]
+# 'MyFollower.esp|000D62' = "F2"
+
+# ---------- category aliases: script/property name -> on-disk folder ----------
+
+[category_aliases.female]
+TeaseMaleCloseToOrgasmIntense = "Male Close Tease Intense"
+TeaseMaleCloseToOrgasmSoft = "Male Close Tease Soft"
+MCMSampleSounds = "Orgasm"
+
+[category_aliases.male]
+# the 5 male script properties whose descriptors reuse other folders' audio
+StrugglingOvert = "Struggling Early"
+JokeAroused = "Joke After Orgasm"
+TeaseFemaleOrgasm = "Tease Aggressive Partner"
+AfterFemaleOrgasm = "Post Nut Remark"
+MCMSampleSounds = "Orgasm"
+
+# ---------- male-only scenes: female-engine category -> male category ----------
+# safety net used when a female-named category is requested on an M slot
+
+[male_only_remap]
+PenetrativeCommentsIntense = "Aggressive"
+PenetrativeCommentsSoft = "Tease Aggressive Partner"
+PenetrativeGrunts = "Aroused"
+SensitivePleasure = "Struggling Subtle"
+ForeplayIntense = "Aroused"
+ForeplaySoft = "Aroused"
+InsertionGeneric = "Struggling Subtle"
+InsertionAnalExcited = "Struggling Subtle"
+InsertionAnalSlow = "Struggling Subtle"
+NearOrgasmNoises = "Struggling Subtle"
+NearOrgasmExclamations = "Struggling Early"
+BreathyIntense = "Aroused"
+BreathySoft = "Aroused"
+LoveyDovey = "Lovey Dovey"
+AfterOrgasmRemarks = "Post Nut Remark"
+AfterOrgasmExclamations = "Post Nut Remark"
+AfterOrgasmArouse = "Joke After Orgasm"
+MaleOrgasmOral = "Orgasm"
+MaleOrgasmNonOral = "Orgasm"
+
+# ---------- fallbacks for script categories with no on-disk folder (one hop) ----------
+
+[category_fallbacks.female]
+GreetLover = "Greet Familiar"
+GreetLoadedFamiliar = "Greet Familiar"
+MissMaleLover = "Greet Familiar"
+WantToBeLover = "Greet Familiar"
+RomanceMaleThane = "Greet Familiar"
+AppreciatePartner = "Satisfied"
+LoveyDovey = "Satisfied"
+ReadyToResume = "Ready To Get Going"
+AssToMouth = "Blowjob Remarks"
+InsertionAnalExcited = "Insertion Anal Slow"
+AskForPacingBreak = "Penetrative Comments Soft"
+BeforeGape = "Intense Anal"
+AssFlattering = "On The Attack"
+MadeMeCumSoMuch = "After Orgasm Remarks"
+AskForAnal = "Tease Aggressive Partner"
+TeaseAnal = "Tease Aggressive Partner"
+BreathySoft = "Breathy Intense"
+MaleOrgasmReactionLover = "Male Orgasm Reaction Soft"
+RefractoryPeriod = "Want More"
+MaleHalfwayIntense = "Male Close Notice"
+
+# ---------- initial group volumes (0.0 - 1.0) ----------
+
+[groups]
+pc_high = 1.0
+pc_low = 1.0
+partner_high = 1.0
+partner_low = 1.0
+sfx = 1.0
+oneshot = 1.0
+
+# ---------- SFX name -> folder (relative to sfx_root; 'Sound\...' = full Data path) ----------
+
+[sfx]
+SmallWetSlush = 'WetSlush\small'
+SmallWetSlush2 = 'WetSlush\Small2'
+SmallFastSlush = 'WetSlush\SmallFast'
+SmallFastSlush2 = 'WetSlush\SmallFast2'
+MediumSlush = 'WetSlush\medium'
+FastSlush = 'WetSlush\Fast'
+BigSlush = 'WetSlush\Big'
+SmallImpact = 'Impact\small'
+MediumImpact1 = 'Impact\medium\type1'
+MediumImpact2 = 'Impact\medium\type2'
+MediumImpact3 = 'Impact\medium\type3'
+MediumImpact4 = 'Impact\medium\type4'
+MediumImpact5Wet = 'Impact\medium\type5wet'
+FastImpact1 = 'Impact\Fast\type1'
+FastImpact2 = 'Impact\Fast\type2'
+FastImpact3 = 'Impact\Fast\type3'
+FastClap = 'FastClap'
+HeavySlushing = 'HeavySlushing'
+LightSlushing = 'LightSlushing'
+MediumClap = 'MediumClap'
+MediumSlushing = 'MediumSlushing'
+RapidSlushing = 'RapidSlushing'
+SlowClap = 'SlowClap'
+Kiss1 = 'KIssing\Kiss1'
+Kiss2 = 'KIssing\Kiss2'
+Kiss3 = 'KIssing\KIss3'
+Kiss4 = 'KIssing\kiss4'
+Kiss5 = 'KIssing\kiss5'
+Kiss6 = 'KIssing\Kiss6'
+Blowjob1 = 'blowjob\blowjob1'
+Blowjob2 = 'blowjob\blowjob2'
+Blowjob3 = 'blowjob\blowjob3'
+Blowjob4 = 'blowjob\blowjob4'
+Blowjob5 = 'blowjob\blowjob5'
+Blowjob6 = 'blowjob\blowjob6'
+FastBlowjob1 = 'blowjob\FastBlowjob1'
+FastBlowjob2 = 'blowjob\FastBlowjob2'
+FastBlowjob3 = 'blowjob\FastBlowjob3'
+FastBlowjob4 = 'blowjob\FastBlowjob4'
+FastBlowjob5 = 'blowjob\Fastblowjob5'
+EjacHeavy = 'Ejaculation\Heavy'
+EjacHeavySharp = 'Ejaculation\Heavy Sharp'
+EjacHeavyWet = 'Ejaculation\Heavy Wet'
+EjacNormal = 'Ejaculation\Normal'
+EjacNormalDeep = 'Ejaculation\Normal Deep'
+EjacSharp = 'Ejaculation\Sharp'
+EjacSmall = 'Ejaculation\Small'
+EjacSmallDeep = 'Ejaculation\Small Deep'
+GapeAverage = 'Gape\Average'
+GapeHuge = 'Gape\Huge'
+Smack = 'Sound\fx\IVDT\Sounds\Smack'
+PullOutGape = 'Sound\fx\IVDT\Sounds\Pull Out Gape'
