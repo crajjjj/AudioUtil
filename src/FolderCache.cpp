@@ -25,7 +25,12 @@ namespace FolderCache
 
 		std::string DataRelative(const std::filesystem::path& a_abs, const std::filesystem::path& a_dataRoot)
 		{
-			auto rel = std::filesystem::relative(a_abs, a_dataRoot).string();
+			// lexical only: std::filesystem::relative() canonicalizes through the
+			// filesystem, and under MO2's USVFS that resolves Data\Sound\... to the
+			// real mod folder (E:\...\mods\<mod>\Sound\...), yielding "..\..\mods\..."
+			// which the game's resource loader cannot open. Entry paths are composed
+			// lexically from a_dataRoot, so a lexical relative is exact.
+			auto rel = a_abs.lexically_relative(a_dataRoot).string();
 			std::replace(rel.begin(), rel.end(), '/', '\\');
 			return rel;
 		}
