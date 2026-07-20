@@ -18,11 +18,21 @@ namespace Config
 		std::string defaultFemaleSlot{ "F1" };
 		std::string defaultMaleSlot{ "M1" };
 
+		// slots reserved for the player: the PC resolves to these first, and other
+		// actors never resolve to them. Empty = no reservation for that sex.
+		std::string pcFemaleSlot;
+		std::string pcMaleSlot;
+
 		// voicetype resolution (keys normalized)
 		bool      voicetypeRemapEnabled{ true };
 		StringMap voicetypeRemap;  // "maleguard" -> "malenord" (values are voicetype names)
 		StringMap voicetypeMap;    // "malenord"  -> "M4"       (values are slot ids)
 		StringMap npcOverrides;    // "plugin.esp|formid-lowercase-hex" -> slot id
+
+		// race fallback when no voicetype maps: normalized race hints matched as
+		// substrings of the actor's race editor id ("nord" matches NordRaceVampire).
+		// Sorted longest-hint-first at load so the most specific entry wins.
+		std::vector<std::pair<std::string, std::string>> raceMap;  // hint -> slot id
 
 		// category layer (keys normalized; values are raw folder/category names)
 		StringMap femaleAliases;

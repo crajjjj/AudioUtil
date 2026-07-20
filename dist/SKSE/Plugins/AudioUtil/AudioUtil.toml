@@ -1,11 +1,11 @@
 # AudioUtil — neutral default config.
 # Native folder-based audio player: plays loose WAV files by folder path,
 # no sound-descriptor forms or ESP. All name/key matching is case- and
-# space-insensitive ("About To Cum" == "AboutToCum" == "abouttocum").
+# space-insensitive ("Battle Cry" == "BattleCry" == "battlecry").
 #
 # This default ships with no voice slots or SFX defined — point AudioUtil at
-# your own folders below. Mods that use AudioUtil (e.g. Hentairim p+) ship their
-# own AudioUtil.toml that overwrites this one via load order.
+# your own folders below. Mods that use AudioUtil ship their own AudioUtil.toml
+# that overwrites this one via load order.
 
 [general]
 log_level = "info"            # trace | debug | info | warn | error
@@ -15,24 +15,37 @@ voice_root = 'Sound\fx\AudioUtil'
 sfx_root = 'Sound\fx\AudioUtil\SFX'
 default_female_slot = "F1"
 default_male_slot = "M1"
+# Reserved player slots (optional): the PC always resolves to this slot and no
+# other actor ever does. Empty = no reservation.
+pc_female_slot = ""
+pc_male_slot = ""
 
 [ppa]
-enable = false                # PPA (Accurate Penetration) bridge off by default
+enable = false                # optional third-party PPA plugin bridge, off by default
 event_rate_ms = 500           # min interval per receiver for AudioUtilPPA_Update mod events
 
 # ---------- voice slots ----------
 # Each slot maps an id ("F1", "M1", ...) to a data-relative folder of
 # <Category>\*.wav subfolders. PlayVoice(actor, category) resolves the actor's
-# slot via [npc_overrides] -> [voicetype_remap] -> [voicetype_map] -> default.
+# slot via: pc_*_slot (player only) -> [npc_overrides] -> [voicetype_remap] ->
+# [voicetype_map] -> [race_map] -> default by sex. Non-player actors never
+# resolve to a pc-reserved slot.
 #
 # [[slot]]
-# id = "F1"
-# sex = "female"
-# path = 'Sound\fx\AudioUtil\F1'
+# id = "M4"
+# sex = "male"
+# path = 'Sound\fx\AudioUtil\M4'
 
 # ---------- VoiceType -> slot ----------
 # [voicetype_map]
 # MaleEvenToned = "M1"
+
+# ---------- race -> slot fallback (when no voicetype maps) ----------
+# Hints are substring-matched against the race editor id ("Nord" matches
+# NordRace and NordRaceVampire); the most specific (longest) hint wins.
+# [race_map]
+# Nord = "M4"
+# DarkElf = "M6"
 
 # ---------- per-NPC slot pin: 'Plugin.esp|FormID' = "SlotId" ----------
 # [npc_overrides]

@@ -104,6 +104,8 @@ namespace Config
 			settings->soundPriority = (*general)["sound_priority"].value_or(settings->soundPriority);
 			settings->defaultFemaleSlot = (*general)["default_female_slot"].value_or(settings->defaultFemaleSlot);
 			settings->defaultMaleSlot = (*general)["default_male_slot"].value_or(settings->defaultMaleSlot);
+			settings->pcFemaleSlot = (*general)["pc_female_slot"].value_or(settings->pcFemaleSlot);
+			settings->pcMaleSlot = (*general)["pc_male_slot"].value_or(settings->pcMaleSlot);
 
 			if (const auto level = (*general)["log_level"].value<std::string>()) {
 				const auto lvl = spdlog::level::from_str(*level);
@@ -149,6 +151,21 @@ namespace Config
 		}
 
 		ReadStringMap(root["voicetype_map"].as_table(), settings->voicetypeMap, false);
+
+		// [race_map] hints are substring-matched, so precedence must not depend on
+		// toml table iteration (alphabetical): longest hint first makes the most
+		// specific entry win ("darkelf" and "highelf" both beat "elf")
+		if (const auto* raceMap = root["race_map"].as_table()) {
+			for (auto&& [key, value] : *raceMap) {
+				if (const auto str = value.value<std::string>()) {
+					settings->raceMap.emplace_back(Normalize(key.str()), *str);
+				}
+			}
+			std::stable_sort(settings->raceMap.begin(), settings->raceMap.end(),
+				[](const auto& a_lhs, const auto& a_rhs) {
+					return a_lhs.first.size() > a_rhs.first.size();
+				});
+		}
 
 		if (const auto* overrides = root["npc_overrides"].as_table()) {
 			for (auto&& [key, value] : *overrides) {

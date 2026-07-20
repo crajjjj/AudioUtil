@@ -17,6 +17,24 @@ namespace PapyrusAPI
 
 		// ---------- slot resolution ----------
 
+		bool SameSlotID(const std::string& a_id, const std::string& a_other)
+		{
+			return a_id.size() == a_other.size() &&
+			       std::equal(a_id.begin(), a_id.end(), a_other.begin(),
+					   [](char a, char b) { return std::tolower(a) == std::tolower(b); });
+		}
+
+		// slots named by pc_female_slot / pc_male_slot belong to the player alone
+		bool IsPCReserved(const Config::Settings& a_settings, const Config::Slot& a_slot)
+		{
+			return (!a_settings.pcFemaleSlot.empty() && SameSlotID(a_slot.id, a_settings.pcFemaleSlot)) ||
+			       (!a_settings.pcMaleSlot.empty() && SameSlotID(a_slot.id, a_settings.pcMaleSlot));
+		}
+
+		// resolution order: PC reservation (player only) -> npc_overrides ->
+		// voicetype remap/map -> race match -> default by sex. Non-player actors
+		// never resolve to a PC-reserved slot; if the default is reserved they get
+		// the first free slot of their sex instead.
 		const Config::Slot* ResolveSlotForActor(const Config::Settings& a_settings, RE::Actor* a_actor)
 		{
 			if (!a_actor) {
@@ -27,7 +45,24 @@ namespace PapyrusAPI
 				return nullptr;
 			}
 
-			// 1. per-NPC override
+			const bool isPC = a_actor->IsPlayerRef();
+			const bool female = base->GetSex() == RE::SEX::kFemale;
+
+			// 0. the player speaks with their reserved slot when one is configured
+			if (isPC) {
+				const auto& pcID = female ? a_settings.pcFemaleSlot : a_settings.pcMaleSlot;
+				if (!pcID.empty()) {
+					if (const auto* slot = Config::FindSlot(a_settings, pcID)) {
+						return slot;
+					}
+				}
+			}
+
+			const auto usable = [&](const Config::Slot* a_slot) {
+				return a_slot && (isPC || !IsPCReserved(a_settings, *a_slot));
+			};
+
+			// 1. per-NPC override (an explicit pin wins, even to a reserved slot)
 			if (!a_settings.npcOverrides.empty()) {
 				if (const auto* file = base->GetFile(0)) {
 					const auto formID = base->GetFormID();
@@ -43,7 +78,7 @@ namespace PapyrusAPI
 				}
 			}
 
-			// 2-4. voicetype remap -> map -> default by sex
+			// 2. voicetype remap -> map
 			std::string voicetype;
 			if (const auto* vt = base->GetVoiceType()) {
 				voicetype = Config::Normalize(vt->GetFormEditorID());
@@ -57,15 +92,45 @@ namespace PapyrusAPI
 				}
 				if (const auto it = a_settings.voicetypeMap.find(voicetype);
 					it != a_settings.voicetypeMap.end()) {
-					if (const auto* slot = Config::FindSlot(a_settings, it->second)) {
+					if (const auto* slot = Config::FindSlot(a_settings, it->second); usable(slot)) {
 						return slot;
 					}
 				}
 			}
 
-			const bool female = base->GetSex() == RE::SEX::kFemale;
-			return Config::FindSlot(a_settings,
+			// 3. race match: first [race_map] hint (most specific first) found in
+			// the actor's race editor id ("nord" matches NordRace / NordRaceVampire);
+			// only same-sex slots qualify
+			if (!a_settings.raceMap.empty()) {
+				std::string raceID;
+				if (const auto* race = a_actor->GetRace()) {
+					raceID = Config::Normalize(race->GetFormEditorID());
+				}
+				if (!raceID.empty()) {
+					for (const auto& [hint, slotID] : a_settings.raceMap) {
+						if (raceID.find(hint) == std::string::npos) {
+							continue;
+						}
+						const auto* slot = Config::FindSlot(a_settings, slotID);
+						if (slot && slot->sex == (female ? 'F' : 'M') && usable(slot)) {
+							return slot;
+						}
+					}
+				}
+			}
+
+			// 4. default by sex; if reserved (or missing), first free slot of the sex
+			const auto* fallback = Config::FindSlot(a_settings,
 				female ? a_settings.defaultFemaleSlot : a_settings.defaultMaleSlot);
+			if (usable(fallback)) {
+				return fallback;
+			}
+			for (const auto& slot : a_settings.slots) {
+				if (slot.sex == (female ? 'F' : 'M') && usable(&slot)) {
+					return &slot;
+				}
+			}
+			return nullptr;
 		}
 
 		// ---------- shared play helper ----------
