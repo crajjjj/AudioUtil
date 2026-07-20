@@ -1,0 +1,53 @@
+# AudioUtil — neutral default config.
+# Native folder-based audio player: plays loose WAV files by folder path,
+# no sound-descriptor forms or ESP. All name/key matching is case- and
+# space-insensitive ("About To Cum" == "AboutToCum" == "abouttocum").
+#
+# This default ships with no voice slots or SFX defined — point AudioUtil at
+# your own folders below. Mods that use AudioUtil (e.g. Hentairim p+) ship their
+# own AudioUtil.toml that overwrites this one via load order.
+
+[general]
+log_level = "info"            # trace | debug | info | warn | error
+sound_flags = 0x1A            # BuildSoundDataFromFile flags (experiment via DebugPlayFile)
+sound_priority = 128
+voice_root = 'Sound\fx\AudioUtil'
+sfx_root = 'Sound\fx\AudioUtil\SFX'
+default_female_slot = "F1"
+default_male_slot = "M1"
+
+[ppa]
+enable = false                # PPA (Accurate Penetration) bridge off by default
+event_rate_ms = 500           # min interval per receiver for AudioUtilPPA_Update mod events
+
+# ---------- voice slots ----------
+# Each slot maps an id ("F1", "M1", ...) to a data-relative folder of
+# <Category>\*.wav subfolders. PlayVoice(actor, category) resolves the actor's
+# slot via [npc_overrides] -> [voicetype_remap] -> [voicetype_map] -> default.
+#
+# [[slot]]
+# id = "F1"
+# sex = "female"
+# path = 'Sound\fx\AudioUtil\F1'
+
+# ---------- VoiceType -> slot ----------
+# [voicetype_map]
+# MaleEvenToned = "M1"
+
+# ---------- per-NPC slot pin: 'Plugin.esp|FormID' = "SlotId" ----------
+# [npc_overrides]
+# 'MyFollower.esp|000D62' = "F2"
+
+# ---------- initial group volumes (0.0 - 1.0) ----------
+
+[groups]
+pc_high = 1.0
+pc_low = 1.0
+partner_high = 1.0
+partner_low = 1.0
+sfx = 1.0
+oneshot = 1.0
+
+# ---------- SFX name -> folder (relative to sfx_root; 'Sound\...' = full Data path) ----------
+# [sfx]
+# Clap = 'Clap'

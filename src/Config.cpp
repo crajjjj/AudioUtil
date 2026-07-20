@@ -9,7 +9,7 @@ namespace Config
 {
 	namespace
 	{
-		constexpr auto CONFIG_PATH = "Data\\SKSE\\Plugins\\HentairimAudio\\HentairimAudio.toml"sv;
+		constexpr auto CONFIG_PATH = "Data\\SKSE\\Plugins\\AudioUtil\\AudioUtil.toml"sv;
 
 		std::shared_ptr<const Settings> g_settings = std::make_shared<Settings>();
 		std::mutex                      g_settingsLock;

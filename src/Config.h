@@ -35,8 +35,8 @@ namespace Config
 
 		std::unordered_map<std::string, float> groupVolumes;
 
-		std::string voiceRoot{ "Sound\\fx\\IVDT" };
-		std::string sfxRoot{ "Sound\\fx\\HentairimSFX" };
+		std::string voiceRoot{ "Sound\\fx\\AudioUtil" };
+		std::string sfxRoot{ "Sound\\fx\\AudioUtil\\SFX" };
 
 		std::uint32_t soundFlags{ 0x1A };
 		std::uint32_t soundPriority{ 128 };
@@ -51,7 +51,7 @@ namespace Config
 	// canonical npc-override lookup key (same form as [npc_overrides] keys after parsing)
 	std::string MakeNpcKey(std::string_view a_plugin, std::uint32_t a_localID);
 
-	// parse Data\SKSE\Plugins\HentairimAudio\HentairimAudio.toml.
+	// parse Data\SKSE\Plugins\AudioUtil\AudioUtil.toml.
 	// On error the previous (or default) settings are kept and the error is logged.
 	bool Load();
 

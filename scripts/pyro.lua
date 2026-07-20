@@ -1,4 +1,4 @@
--- Runs Pyro on HentairimAudio.ppj: compiles papyrus\Source -> dist\Scripts, mirrors
+-- Runs Pyro on AudioUtil.ppj: compiles papyrus\Source -> dist\Scripts, mirrors
 -- the .psc sources into dist, and (Zip="true" in the ppj) writes the <ZipFiles>
 -- archive to Release\ — BFNG-style: pyro owns the release packaging.
 -- Overrides: PYRO_EXE (pyro.exe path), SKYRIM_GAME_PATH (game root).
@@ -25,7 +25,7 @@ function main()
     os.cp(path.join(os.projectdir(), "papyrus", "Source", "*.psc"), src_out)
 
     os.execv(pyro, {
-        "-i", path.join(os.projectdir(), "HentairimAudio.ppj"),
+        "-i", path.join(os.projectdir(), "AudioUtil.ppj"),
         "--game-path", game
     })
 end

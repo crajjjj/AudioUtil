@@ -1,6 +1,6 @@
-Scriptname HentairimAudio Hidden
-{Native folder-based audio player for Hentairim. Plays loose WAV files by
- slot/category folder with no sound descriptor forms. See HentairimAudio.toml.}
+Scriptname AudioUtil Hidden
+{Native folder-based audio player (voice + SFX). Plays loose WAV files by
+ slot/category folder with no sound descriptor forms. See AudioUtil.toml.}
 
 ; ===================== NATIVE — core =====================
 
@@ -16,7 +16,7 @@ int Function PlayVoice(Actor akActor, string category, float volume = 1.0, strin
 ; Play from an explicit slot ("F1".."M8"), following akFollow's position.
 int Function PlayVoiceFromSlot(string slot, string category, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
 
-; Play a named SFX from the [sfx] table in HentairimAudio.toml.
+; Play a named SFX from the [sfx] table in AudioUtil.toml.
 int Function PlaySFX(string sfxName, Actor akFollow, float volume = 1.0, string group = "sfx", string channel = "") global native
 
 ; Play a specific file / random file from a folder (paths relative to Data\).
@@ -47,7 +47,7 @@ int Function GetCategoryFileCount(string slot, string category) global native
 bool Function CategoryExists(string slot, string category) global native
 
 ; ===================== NATIVE — PPA bridge =====================
-; Mod events: "HentairimPPA_Update" / "HentairimPPA_End"
+; Mod events: "AudioUtilPPA_Update" / "AudioUtilPPA_End"
 ;   sender = receiver Actor, numArg = penetration depth, strArg = context bitmask (decimal)
 ; Context bits: 1=Vaginal 2=Anal 4=Oral 8=Aggressive 16=FemDom 32=Loving
 ;               64=Dirty 128=Boobjob 256=Handjob 512=Footjob 1024=Masturbation
@@ -64,7 +64,10 @@ float Function GetPPAAnalOpening(Actor akReceiver) global native
 int Function DebugPlayFile(string dataRelativePath, Actor akFollow, int flags, int priority) global native
 
 ; ===================== WRAPPERS =====================
-; SKSE natives cannot be latent, so PlayAndWait semantics live here.
+; Latent SKSE natives are possible (CommonLib RegisterLatentFunction), but
+; playback already runs on the DLL's own thread, so PlayAndWait is done here
+; by polling IsHandlePlaying + Utility.Wait — no suspended VM stack, no
+; task-interface marshalling.
 
 Function WaitForHandle(int handle) global
     if handle <= 0

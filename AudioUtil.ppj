@@ -10,7 +10,7 @@
     Final="false">
     <Variables>
         <!-- Set the name of your mod: -->
-        <Variable Name="ModName" Value="HentairimAudio" />
+        <Variable Name="ModName" Value="AudioUtil" />
         <!-- The folder where you store all of your mods -->
         <Variable Name="ModsFolder" Value="C:\Playground\Skyrim\mods" />
     </Variables>
@@ -23,7 +23,10 @@
         <Folder>.\papyrus\Source</Folder>
     </Folders>
     <!-- Every pyro run refreshes the installable archive (BFNG convention);
-         `xmake build release` additionally rebuilds the DLL first. -->
+         `xmake build release` additionally rebuilds the DLL first. A plain,
+         directly-installable mod: DLL + scripts + the SFW-neutral default config.
+         Game-specific presets (e.g. Hentairim / IVDT) are shipped by those mods
+         and overwrite Data\SKSE\Plugins\AudioUtil\AudioUtil.toml via load order. -->
     <ZipFiles Output=".\Release">
         <ZipFile Name="@ModName" RootDir=".\dist" Compression="deflate">
             <!-- Compiled scripts + sources -->

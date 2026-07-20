@@ -10,7 +10,7 @@ namespace PapyrusAPI
 {
 	namespace
 	{
-		constexpr auto SCRIPT_NAME = "HentairimAudio";
+		constexpr auto SCRIPT_NAME = "AudioUtil";
 		constexpr std::int32_t API_VERSION = 1;
 
 		using VM = RE::BSScript::IVirtualMachine;

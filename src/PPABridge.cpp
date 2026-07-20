@@ -107,9 +107,9 @@ namespace PPABridge
 			}
 
 			if (sendEnd) {
-				QueueModEvent(receiver, "HentairimPPA_End", snapshot.depth, snapshot.context);
+				QueueModEvent(receiver, "AudioUtilPPA_End", snapshot.depth, snapshot.context);
 			} else if (sendUpdate) {
-				QueueModEvent(receiver, "HentairimPPA_Update", snapshot.depth, snapshot.context);
+				QueueModEvent(receiver, "AudioUtilPPA_Update", snapshot.depth, snapshot.context);
 			}
 		}
 	}

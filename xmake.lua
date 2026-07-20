@@ -1,7 +1,7 @@
 set_xmakever("2.9.5")
 
 -- Globals
-PROJECT_NAME = "HentairimAudio"
+PROJECT_NAME = "AudioUtil"
 PROJECT_VERSION = "1.0.0"
 
 -- Project
@@ -50,7 +50,7 @@ target(PROJECT_NAME)
     add_rules("commonlibsse-ng.plugin", {
         name = PROJECT_NAME,
         author = "crajjjj",
-        description = "Native folder-based audio player for Hentairim (voice + SFX) with PPA bridge."
+        description = "Native folder-based audio player (voice + SFX) with an optional PPA bridge."
     })
 
     -- Packages
@@ -94,13 +94,13 @@ target(PROJECT_NAME)
 
         local mod_folder = os.getenv("XSE_TES5_MODS_PATH")
         if mod_folder and has_config("copy_to_mod") then
-            os.cp("dist/*", path.join(mod_folder, "HentairimAudio"))
+            os.cp("dist/*", path.join(mod_folder, "AudioUtil"))
         end
     end)
 target_end()
 
 -- Papyrus compile: xmake build papyrus
--- Runs Pyro on HentairimAudio.ppj; also refreshes Release\HentairimAudio.zip
+-- Runs Pyro on AudioUtil.ppj; also refreshes Release\AudioUtil.zip
 -- (see scripts\pyro.lua; overrides: PYRO_EXE, SKYRIM_GAME_PATH)
 target("papyrus")
     set_kind("phony")
@@ -113,7 +113,7 @@ target_end()
 
 -- Release package: xmake build release
 -- Same as `papyrus` but rebuilds the DLL first so the ppj's <ZipFiles> archive
--- (Release\HentairimAudio.zip) always carries a fresh DLL.
+-- (Release\AudioUtil.zip) always carries a fresh DLL.
 target("release")
     set_kind("phony")
     set_default(false)
