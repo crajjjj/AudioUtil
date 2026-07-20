@@ -100,63 +100,26 @@ target(PROJECT_NAME)
 target_end()
 
 -- Papyrus compile: xmake build papyrus
--- Compiles papyrus\Source\*.psc into dist\Scripts via Pyro (HentairimAudio.ppj)
--- and mirrors the sources into dist\Scripts\Source.
--- Overrides: PYRO_EXE (pyro.exe path), SKYRIM_GAME_PATH (game root).
+-- Runs Pyro on HentairimAudio.ppj; also refreshes Release\HentairimAudio.zip
+-- (see scripts\pyro.lua; overrides: PYRO_EXE, SKYRIM_GAME_PATH)
 target("papyrus")
     set_kind("phony")
     set_default(false)
     on_build(function (target)
-        local pyro = os.getenv("PYRO_EXE")
-        if not pyro or not os.isfile(pyro) then
-            local home = os.getenv("USERPROFILE") or ""
-            local candidates = os.files(path.join(home,
-                ".vscode", "extensions", "joelday.papyrus-lang-vscode-*", "pyro", "pyro.exe"))
-            pyro = candidates and candidates[1] or nil
-        end
-        assert(pyro and os.isfile(pyro),
-            "pyro.exe not found - set the PYRO_EXE environment variable")
-
-        local game = os.getenv("SKYRIM_GAME_PATH")
-            or "C:\\SteamLibrary\\steamapps\\common\\Skyrim Special Edition"
-        os.execv(pyro, {
-            "-i", path.join(os.projectdir(), "HentairimAudio.ppj"),
-            "--game-path", game
-        })
-
-        local src_out = path.join(os.projectdir(), "dist", "Scripts", "Source")
-        if not os.isdir(src_out) then
-            os.mkdir(src_out)
-        end
-        os.cp(path.join(os.projectdir(), "papyrus", "Source", "*.psc"), src_out)
+        import("scripts.pyro")
+        pyro()
     end)
 target_end()
 
 -- Release package: xmake build release
--- Builds the DLL and the Papyrus scripts, then zips dist\* into
--- Build\HentairimAudio-<version>.zip (a ready-to-install mod archive).
+-- Same as `papyrus` but rebuilds the DLL first so the ppj's <ZipFiles> archive
+-- (Release\HentairimAudio.zip) always carries a fresh DLL.
 target("release")
     set_kind("phony")
     set_default(false)
-    add_deps(PROJECT_NAME, "papyrus")
+    add_deps(PROJECT_NAME)
     on_build(function (target)
-        import("core.project.project")
-        -- NOT "Build": on Windows that is the same directory as xmake's own "build"
-        local out_dir = path.join(os.projectdir(), "Release")
-        if not os.isdir(out_dir) then
-            os.mkdir(out_dir)
-        end
-        -- project.name() would report the included commonlibsse-ng subproject here
-        local zip = path.join(out_dir,
-            "HentairimAudio-" .. tostring(project.version()) .. ".zip")
-        if os.isfile(zip) then
-            os.rm(zip)
-        end
-        os.execv("powershell", {
-            "-NoProfile", "-Command",
-            string.format("Compress-Archive -Path '%s' -DestinationPath '%s' -Force",
-                path.join(os.projectdir(), "dist", "*"), zip)
-        })
-        print("release written: " .. zip)
+        import("scripts.pyro")
+        pyro()
     end)
 target_end()

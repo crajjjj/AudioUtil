@@ -40,18 +40,20 @@ this replaces the old 5-place CK/MCM/script edit.
 ```
 xmake f -m release
 xmake                     # DLL only -> dist\SKSE\Plugins\
-xmake build papyrus       # compile papyrus\Source\*.psc -> dist\Scripts (via Pyro)
-xmake build release       # DLL + papyrus + zip dist\* -> Release\HentairimAudio-<version>.zip
+xmake build papyrus       # Pyro: papyrus\Source\*.psc -> dist\Scripts + Release\HentairimAudio.zip
+xmake build release       # same, but rebuilds the DLL first (fresh DLL in the zip)
 ```
 
-Requires VS 2022 (v143, C++23) and xmake ≥ 2.9.5. The `papyrus` target uses Pyro
-(`HentairimAudio.ppj`) — it auto-locates `pyro.exe` from the VSCode papyrus-lang extension;
-override with the `PYRO_EXE` env var, and the game root with `SKYRIM_GAME_PATH`
+Requires VS 2022 (v143, C++23) and xmake ≥ 2.9.5. Papyrus compilation and release packaging
+are owned by Pyro via `HentairimAudio.ppj` (`Zip="true"` + `<ZipFiles>`, same pattern as
+Beeing Female NG): every Pyro run compiles the scripts and refreshes
+`Release\HentairimAudio.zip`, a ready-to-install mod archive. The VSCode default build task
+(`Ctrl+Shift+B`) runs the same ppj. The xmake targets auto-locate `pyro.exe` from the VSCode
+papyrus-lang extension; override with `PYRO_EXE`, and the game root with `SKYRIM_GAME_PATH`
 (default `C:\SteamLibrary\steamapps\common\Skyrim Special Edition`).
 
-The `Release\...zip` is a ready-to-install mod archive. With `xmake f --copy_to_mod=y` and
-`XSE_TES5_MODS_PATH` set (e.g. `E:\nefaram\mods`), `dist\*` is also copied into
-`<mods>\HentairimAudio` after each build.
+With `xmake f --copy_to_mod=y` and `XSE_TES5_MODS_PATH` set (e.g. `E:\nefaram\mods`),
+`dist\*` is also copied into `<mods>\HentairimAudio` after each DLL build.
 
 ## Config
 
