@@ -11,7 +11,18 @@ namespace InstanceManager
 			RE::BSSoundHandle handle;
 			float             baseVolume;
 			std::string       group;
+			// stream startup is asynchronous: for a short window after Play() the
+			// engine still reports "not playing", which made IsPlaying()/Sweep()
+			// treat brand-new instances as finished (PlayAndWait returned instantly)
+			std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
 		};
+
+		constexpr auto STARTUP_GRACE = std::chrono::milliseconds(400);
+
+		bool InStartupGrace(const Instance& a_instance)
+		{
+			return std::chrono::steady_clock::now() - a_instance.started < STARTUP_GRACE;
+		}
 
 		struct Group
 		{
@@ -46,7 +57,11 @@ namespace InstanceManager
 		void Sweep()
 		{
 			std::erase_if(g_instances, [](auto& a_pair) {
-				auto& handle = a_pair.second.handle;
+				auto& instance = a_pair.second;
+				if (InStartupGrace(instance)) {
+					return false;
+				}
+				auto& handle = instance.handle;
 				return !handle.IsValid() || !handle.IsPlaying();
 			});
 		}
@@ -73,7 +88,10 @@ namespace InstanceManager
 	{
 		std::scoped_lock lock{ g_lock };
 		auto* instance = Find(a_id);
-		return instance && instance->handle.IsValid() && instance->handle.IsPlaying();
+		if (!instance || !instance->handle.IsValid()) {
+			return false;
+		}
+		return instance->handle.IsPlaying() || InStartupGrace(*instance);
 	}
 
 	bool Stop(std::int32_t a_id)
