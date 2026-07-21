@@ -30,20 +30,20 @@ int Function GetAPIVersion() global native
 
 ; Typed getters. An integer TOML value satisfies GetFloat; nothing else
 ; converts across types (a string "5" does NOT satisfy GetInt).
-int    Function GetInt(string file, string key, int default = 0) global native
-float  Function GetFloat(string file, string key, float default = 0.0) global native
-string Function GetString(string file, string key, string default = "") global native
-bool   Function GetBool(string file, string key, bool default = false) global native
+int    Function GetInt(string asFile, string asKey, int aiDefault = 0) global native
+float  Function GetFloat(string asFile, string asKey, float afDefault = 0.0) global native
+string Function GetString(string asFile, string asKey, string asDefault = "") global native
+bool   Function GetBool(string asFile, string asKey, bool abDefault = false) global native
 
 ; TOML array of strings -> Papyrus array. Non-string elements are skipped;
 ; missing key/file -> empty array.
-string[] Function GetStringArray(string file, string key) global native
+string[] Function GetStringArray(string asFile, string asKey) global native
 
 ; True if the key exists at all (any type) - use to distinguish "absent"
 ; from "present with the default's value".
-bool Function HasKey(string file, string key) global native
+bool Function HasKey(string asFile, string asKey) global native
 
 ; Re-parse one file (live tuning: edit the toml, call this in-game).
 ; Returns false AND KEEPS the previously cached contents on parse failure.
 ; Console: cgf "TomlUtil.Reload" "SKSE\Plugins\MyMod\MyMod.toml"
-bool Function Reload(string file) global native
+bool Function Reload(string asFile) global native
