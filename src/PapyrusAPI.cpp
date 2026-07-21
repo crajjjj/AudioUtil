@@ -6,6 +6,7 @@
 #include "InstanceManager.h"
 #include "LipSync.h"
 #include "PPABridge.h"
+#include "TomlStore.h"
 
 namespace PapyrusAPI
 {
@@ -13,6 +14,7 @@ namespace PapyrusAPI
 	{
 		constexpr auto SCRIPT_NAME = "AudioUtil";
 		constexpr auto PPA_SCRIPT_NAME = "AudioUtilPPA";
+		constexpr auto TOML_SCRIPT_NAME = "TomlUtil";
 		constexpr std::int32_t API_VERSION = 1;
 
 		using VM = RE::BSScript::IVirtualMachine;
@@ -447,6 +449,68 @@ namespace PapyrusAPI
 			}
 			return InstanceManager::Register(handle, 1.0f, "");
 		}
+
+		// ---------- natives: TomlUtil (generic consumer-config surface) ----------
+		// Registered under its own script class so any mod can read TOML files
+		// through AudioUtil's DLL without touching the audio API.
+
+		namespace Toml
+		{
+			constexpr std::int32_t TOML_API_VERSION = 1;
+
+			std::int32_t GetAPIVersion(RE::StaticFunctionTag*)
+			{
+				return TOML_API_VERSION;
+			}
+
+			std::int32_t GetInt(RE::StaticFunctionTag*, RE::BSFixedString a_file,
+				RE::BSFixedString a_key, std::int32_t a_default)
+			{
+				const auto value = TomlStore::GetInt(a_file.c_str(), a_key.c_str());
+				return value ? static_cast<std::int32_t>(*value) : a_default;
+			}
+
+			float GetFloat(RE::StaticFunctionTag*, RE::BSFixedString a_file,
+				RE::BSFixedString a_key, float a_default)
+			{
+				const auto value = TomlStore::GetFloat(a_file.c_str(), a_key.c_str());
+				return value ? static_cast<float>(*value) : a_default;
+			}
+
+			RE::BSFixedString GetString(RE::StaticFunctionTag*, RE::BSFixedString a_file,
+				RE::BSFixedString a_key, RE::BSFixedString a_default)
+			{
+				const auto value = TomlStore::GetString(a_file.c_str(), a_key.c_str());
+				return value ? RE::BSFixedString(*value) : a_default;
+			}
+
+			bool GetBool(RE::StaticFunctionTag*, RE::BSFixedString a_file,
+				RE::BSFixedString a_key, bool a_default)
+			{
+				const auto value = TomlStore::GetBool(a_file.c_str(), a_key.c_str());
+				return value ? *value : a_default;
+			}
+
+			std::vector<RE::BSFixedString> GetStringArray(RE::StaticFunctionTag*,
+				RE::BSFixedString a_file, RE::BSFixedString a_key)
+			{
+				std::vector<RE::BSFixedString> out;
+				for (const auto& item : TomlStore::GetStringArray(a_file.c_str(), a_key.c_str())) {
+					out.emplace_back(item);
+				}
+				return out;
+			}
+
+			bool HasKey(RE::StaticFunctionTag*, RE::BSFixedString a_file, RE::BSFixedString a_key)
+			{
+				return TomlStore::HasKey(a_file.c_str(), a_key.c_str());
+			}
+
+			bool Reload(RE::StaticFunctionTag*, RE::BSFixedString a_file)
+			{
+				return TomlStore::Reload(a_file.c_str());
+			}
+		}
 	}
 
 	bool RegisterFuncs(VM* a_vm)
@@ -483,6 +547,14 @@ namespace PapyrusAPI
 		REGISTERFUNC(GetDepth, PPA_SCRIPT_NAME);
 		REGISTERFUNC(GetVaginalOpening, PPA_SCRIPT_NAME);
 		REGISTERFUNC(GetAnalOpening, PPA_SCRIPT_NAME);
+		a_vm->RegisterFunction("GetAPIVersion"sv, TOML_SCRIPT_NAME, Toml::GetAPIVersion, true);
+		a_vm->RegisterFunction("GetInt"sv, TOML_SCRIPT_NAME, Toml::GetInt, true);
+		a_vm->RegisterFunction("GetFloat"sv, TOML_SCRIPT_NAME, Toml::GetFloat, true);
+		a_vm->RegisterFunction("GetString"sv, TOML_SCRIPT_NAME, Toml::GetString, true);
+		a_vm->RegisterFunction("GetBool"sv, TOML_SCRIPT_NAME, Toml::GetBool, true);
+		a_vm->RegisterFunction("GetStringArray"sv, TOML_SCRIPT_NAME, Toml::GetStringArray, true);
+		a_vm->RegisterFunction("HasKey"sv, TOML_SCRIPT_NAME, Toml::HasKey, true);
+		a_vm->RegisterFunction("Reload"sv, TOML_SCRIPT_NAME, Toml::Reload, true);
 		return true;
 	}
 }
