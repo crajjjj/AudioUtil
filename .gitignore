@@ -4,5 +4,10 @@ Release/
 .cache/
 .vs/
 compile_commands.json
-dist/SKSE/Plugins/*.dll
-dist/SKSE/Plugins/*.pdb
+# dist/ is generated (DLL by xmake, Scripts by Pyro) — only the hand-written
+# neutral config is tracked
+dist/**
+!dist/SKSE/
+!dist/SKSE/Plugins/
+!dist/SKSE/Plugins/AudioUtil/
+!dist/SKSE/Plugins/AudioUtil/AudioUtil.toml
