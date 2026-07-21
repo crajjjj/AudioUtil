@@ -4,7 +4,6 @@ set_xmakever("2.9.5")
 PROJECT_NAME = "AudioUtil"
 PROJECT_VERSION = "1.0.0"
 PROJECT_AUTHOR = "crajjjj"
-PROJECT_EMAIL = "90986627+crajjjj@users.noreply.github.com"
 
 -- Project
 set_project(PROJECT_NAME)
@@ -52,7 +51,6 @@ target(PROJECT_NAME)
     add_rules("commonlibsse-ng.plugin", {
         name = PROJECT_NAME,
         author = PROJECT_AUTHOR,
-        email = PROJECT_EMAIL,
         description = "Native folder-based audio player (voice + SFX) with an optional PPA bridge."
     })
 
