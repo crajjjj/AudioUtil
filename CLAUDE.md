@@ -83,7 +83,7 @@ Every `Play*` returns an `int` instance handle: `>0` success, `0` = nothing play
 - Play: `PlayVoice(Actor, category, volume, group, channel)`, `PlayVoiceFromSlot(slot, category, akFollow, volume, group, channel)`, `PlaySFX(sfxName, Actor, volume, group="sfx", channel)`, `PlayFile(dataRelPath, Actor, volume, group, channel)`, `PlayFolder(dataRelFolder, Actor, volume, group, channel)`.
 - Handles: `IsHandlePlaying`, `StopHandle`, `GetHandleDuration`, `SetHandleVolume`.
 - Groups/channels: `SetGroupVolume`, `DuckGroup(group, factor=0.0)`, `UnduckGroup`, `StopGroup`, `StopAllAudio`, `StopChannel`.
-- Lipsync: `IsLipSyncActive(Actor)`, `StopLipSync(Actor)`, `SetLipSyncEnabled(bool)`, `IsLipSyncEnabled()`, `SetLipSyncGain(float)`.
+- Lipsync: `IsLipSyncActive(Actor)`, `StopLipSync(Actor)`, `SetLipSyncEnabled(bool)`, `IsLipSyncEnabled()`, `SetLipSyncGain(float)`, `SetLipSyncBlocked(Actor, bool)` / `IsLipSyncBlocked(Actor)` (per-actor block for mods that own the face, e.g. an ahegao overlay; drops the active entry without zeroing the mouth; cleared on game load).
 - Introspection: `GetSlotForActor(Actor)`, `GetCategoryFileCount(slot, category)`, `CategoryExists(slot, category)`.
 - Config/debug: `GetAPIVersion()`, `ReloadConfig()`, `DebugPlayFile(path, Actor, flags, priority)`.
 - Papyrus (non-native) wrappers: `WaitForHandle`, `PlayVoiceAndWait`, `PlaySFXAndWait`, `Play(category, Actor, waitForCompletion, ...)`.

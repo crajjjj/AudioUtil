@@ -155,6 +155,14 @@ bool Function IsLipSyncEnabled() global native
 ; Mouth-open strength, 0.0-2.0 (1.0 = envelope as-is). For MCM sliders.
 Function SetLipSyncGain(float gain) global native
 
+; Per-actor block for mods that take over an actor's face (e.g. an ahegao
+; overlay): while blocked, voice lines still play but never drive this actor's
+; mouth. An active lipsync is dropped immediately WITHOUT closing the mouth -
+; from that moment the blocker owns the face. Cleared on game load, so re-apply
+; it from your own saved state when you load in.
+Function SetLipSyncBlocked(Actor akActor, bool abBlocked) global native
+bool Function IsLipSyncBlocked(Actor akActor) global native
+
 ; ===================== NATIVE — introspection =====================
 
 ; Which slot id PlayVoice would resolve for this actor right now ("M4",

@@ -6,6 +6,7 @@
 #include <condition_variable>
 #include <fstream>
 #include <thread>
+#include <unordered_set>
 
 namespace LipSync
 {
@@ -212,6 +213,7 @@ namespace LipSync
 		};
 
 		std::vector<Entry> g_entries;
+		std::unordered_set<RE::FormID> g_blocked;  // guarded by g_entriesLock
 		std::mutex g_entriesLock;
 
 		std::atomic<bool>  g_enabled{ true };
@@ -353,6 +355,9 @@ namespace LipSync
 		EnsureTicker();
 		{
 			std::scoped_lock lock{ g_entriesLock };
+			if (g_blocked.contains(entry.actorID)) {
+				return;  // another mod owns this actor's face right now
+			}
 			// one lipsync per actor: a new line replaces the old, keeping the
 			// current mouth level so the transition doesn't snap shut
 			for (auto it = g_entries.begin(); it != g_entries.end(); ++it) {
@@ -390,6 +395,34 @@ namespace LipSync
 				entry.stopping = true;
 			}
 		}
+	}
+
+	void SetBlockedFor(RE::Actor* a_actor, bool a_blocked)
+	{
+		if (!a_actor) {
+			return;
+		}
+		const auto actorID = a_actor->GetFormID();
+		std::scoped_lock lock{ g_entriesLock };
+		if (a_blocked) {
+			g_blocked.insert(actorID);
+			// drop, don't fade: a fade would end in ZeroMouth and stomp the face
+			// the blocker is about to (or just did) apply
+			std::erase_if(g_entries, [&](const Entry& a_entry) {
+				return a_entry.actorID == actorID;
+			});
+		} else {
+			g_blocked.erase(actorID);
+		}
+	}
+
+	bool IsBlockedFor(RE::Actor* a_actor)
+	{
+		if (!a_actor) {
+			return false;
+		}
+		std::scoped_lock lock{ g_entriesLock };
+		return g_blocked.contains(a_actor->GetFormID());
 	}
 
 	bool IsActiveFor(RE::Actor* a_actor)
@@ -442,5 +475,6 @@ namespace LipSync
 	{
 		std::scoped_lock lock{ g_entriesLock };
 		g_entries.clear();  // faces are rebuilt on load; nothing to restore
+		g_blocked.clear();  // blockers re-seed from their own saved state on load
 	}
 }

@@ -14,6 +14,13 @@ namespace LipSync
 	void StopFor(RE::Actor* a_actor);
 	bool IsActiveFor(RE::Actor* a_actor);
 
+	// per-actor block for callers that take over the actor's face (e.g. an
+	// ahegao overlay): while blocked, Start() is a no-op for the actor and any
+	// active entry is dropped WITHOUT zeroing the mouth — from that moment the
+	// blocker owns the face. Cleared on Reset() (preload / new game).
+	void SetBlockedFor(RE::Actor* a_actor, bool a_blocked);
+	bool IsBlockedFor(RE::Actor* a_actor);
+
 	// runtime master switch; ApplyConfig re-reads the toml value
 	void SetEnabled(bool a_enabled);
 	bool Enabled();

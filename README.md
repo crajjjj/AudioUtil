@@ -26,8 +26,10 @@ Target runtime: Skyrim SE 1.6.1170 (CommonLibSSE-NG, all-runtime build).
   `Aah`/`BigAah` phonemes per frame on the game thread, easing with configurable attack/release.
   No dialogue records, no `.lip` baking, works for any loose PCM wav. See `[lipsync]` in the
   TOML and the lipsync natives in `AudioUtil.psc` (`IsLipSyncActive`, `SetLipSyncEnabled`,
-  `SetLipSyncGain`, `StopLipSync`). Expression mods that write phonemes themselves should skip
-  their own mouth writes while `IsLipSyncActive(actor)` is true.
+  `SetLipSyncGain`, `StopLipSync`, `SetLipSyncBlocked`). Expression mods that write phonemes
+  themselves should skip their own mouth writes while `IsLipSyncActive(actor)` is true; mods
+  that take over an actor's face entirely can call `SetLipSyncBlocked(actor, true)` to keep
+  voice lines from driving the mouth at all while they own it.
 
 **Adding a voice slot** = create the folder tree + one `[[slot]]` entry in the TOML. That's it.
 
