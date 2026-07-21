@@ -220,7 +220,7 @@ namespace PapyrusAPI
 
 		std::int32_t PlayVoice(RE::StaticFunctionTag*, RE::Actor* a_actor,
 			RE::BSFixedString a_category, float a_volume, RE::BSFixedString a_group,
-			RE::BSFixedString a_channel)
+			RE::BSFixedString a_channel, bool a_blockLipSync)
 		{
 			const auto settings = Config::Get();
 			const auto* slot = ResolveSlotForActor(*settings, a_actor);
@@ -236,12 +236,13 @@ namespace PapyrusAPI
 					key = sfxKey;
 				}
 			}
-			return PlayFromKey(key, a_actor, a_volume, a_group.c_str(), a_channel.c_str(), a_actor);
+			return PlayFromKey(key, a_actor, a_volume, a_group.c_str(), a_channel.c_str(),
+				a_blockLipSync ? nullptr : a_actor);
 		}
 
 		std::int32_t PlayVoiceFromSlot(RE::StaticFunctionTag*, RE::BSFixedString a_slot,
 			RE::BSFixedString a_category, RE::Actor* a_follow, float a_volume,
-			RE::BSFixedString a_group, RE::BSFixedString a_channel)
+			RE::BSFixedString a_group, RE::BSFixedString a_channel, bool a_blockLipSync)
 		{
 			const auto settings = Config::Get();
 			const auto* slot = Config::FindSlot(*settings, a_slot.c_str());
@@ -250,7 +251,8 @@ namespace PapyrusAPI
 				return 0;
 			}
 			const auto key = FolderCache::ResolveVoiceKey(*settings, *slot, a_category.c_str());
-			return PlayFromKey(key, a_follow, a_volume, a_group.c_str(), a_channel.c_str(), a_follow);
+			return PlayFromKey(key, a_follow, a_volume, a_group.c_str(), a_channel.c_str(),
+				a_blockLipSync ? nullptr : a_follow);
 		}
 
 		std::int32_t PlaySFX(RE::StaticFunctionTag*, RE::BSFixedString a_name,
@@ -398,9 +400,13 @@ namespace PapyrusAPI
 			LipSync::SetGain(a_gain);
 		}
 
-		void SetLipSyncBlocked(RE::StaticFunctionTag*, RE::Actor* a_actor, bool a_blocked)
+		void SetLipSyncBlocked(RE::StaticFunctionTag*, RE::Actor* a_actor, bool a_blocked,
+			RE::BSFixedString a_callerMod)
 		{
 			if (a_actor) {
+				logger::info("SetLipSyncBlocked: {} '{}' ({:08X}) by '{}'",
+					a_blocked ? "block" : "unblock", a_actor->GetDisplayFullName(),
+					a_actor->GetFormID(), a_callerMod.c_str());
 				LipSync::SetBlockedFor(a_actor, a_blocked);
 			}
 		}

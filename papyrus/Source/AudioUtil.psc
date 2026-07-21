@@ -61,13 +61,16 @@ bool Function ReloadConfig() global native
 ;   [category_fallbacks] (one hop) -> [sfx] table as a last resort.
 ;
 ; category is case- and space-insensitive ("Battle Cry" == "BattleCry").
+; blockLipSync=true plays this one line without moving the speaker's mouth
+; (per-call opt-out; for a standing "another mod owns this face" state use
+; SetLipSyncBlocked instead).
 ; Returns a handle (see CONCEPTS); 0 if no slot or no audio resolved.
-int Function PlayVoice(Actor akActor, string category, float volume = 1.0, string group = "", string channel = "") global native
+int Function PlayVoice(Actor akActor, string category, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false) global native
 
 ; Same as PlayVoice but the slot is named explicitly ("F1", "M4", "C2"...)
 ; instead of resolved from an actor - for samples, tests, or when the caller
 ; already decided the voice. akFollow only provides the 3D position.
-int Function PlayVoiceFromSlot(string slot, string category, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
+int Function PlayVoiceFromSlot(string slot, string category, Actor akFollow, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false) global native
 
 ; Play a named SFX from the [sfx] table (name -> folder of files). Defaults
 ; into the "sfx" group so SFX volume/ducking applies unless overridden.
@@ -160,7 +163,9 @@ Function SetLipSyncGain(float gain) global native
 ; mouth. An active lipsync is dropped immediately WITHOUT closing the mouth -
 ; from that moment the blocker owns the face. Cleared on game load, so re-apply
 ; it from your own saved state when you load in.
-Function SetLipSyncBlocked(Actor akActor, bool abBlocked) global native
+; callerMod: pass your mod's name - it is logged with every block/unblock so a
+; stuck block can be traced to its owner in AudioUtil.log.
+Function SetLipSyncBlocked(Actor akActor, bool abBlocked, string callerMod = "") global native
 bool Function IsLipSyncBlocked(Actor akActor) global native
 
 ; ===================== NATIVE — introspection =====================

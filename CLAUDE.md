@@ -80,10 +80,10 @@ xmake build release       # rebuilds the DLL first (add_deps AudioUtil), then ru
 Every `Play*` returns an `int` instance handle: `>0` success, `0` = nothing played. Effective volume = `volume × group_volume × duck_factor`. A **channel** is an exclusivity lane (playing on an occupied channel stops the previous instance).
 
 **`AudioUtil.psc`** (`Hidden`) — core API. Natives:
-- Play: `PlayVoice(Actor, category, volume, group, channel)`, `PlayVoiceFromSlot(slot, category, akFollow, volume, group, channel)`, `PlaySFX(sfxName, Actor, volume, group="sfx", channel)`, `PlayFile(dataRelPath, Actor, volume, group, channel)`, `PlayFolder(dataRelFolder, Actor, volume, group, channel)`.
+- Play: `PlayVoice(Actor, category, volume, group, channel, blockLipSync=false)`, `PlayVoiceFromSlot(slot, category, akFollow, volume, group, channel, blockLipSync=false)`, `PlaySFX(sfxName, Actor, volume, group="sfx", channel)`, `PlayFile(dataRelPath, Actor, volume, group, channel)`, `PlayFolder(dataRelFolder, Actor, volume, group, channel)`. `blockLipSync=true` = play this one line without moving the mouth (per-call opt-out; the standing per-actor state is `SetLipSyncBlocked`).
 - Handles: `IsHandlePlaying`, `StopHandle`, `GetHandleDuration`, `SetHandleVolume`.
 - Groups/channels: `SetGroupVolume`, `DuckGroup(group, factor=0.0)`, `UnduckGroup`, `StopGroup`, `StopAllAudio`, `StopChannel`.
-- Lipsync: `IsLipSyncActive(Actor)`, `StopLipSync(Actor)`, `SetLipSyncEnabled(bool)`, `IsLipSyncEnabled()`, `SetLipSyncGain(float)`, `SetLipSyncBlocked(Actor, bool)` / `IsLipSyncBlocked(Actor)` (per-actor block for mods that own the face, e.g. an ahegao overlay; drops the active entry without zeroing the mouth; cleared on game load).
+- Lipsync: `IsLipSyncActive(Actor)`, `StopLipSync(Actor)`, `SetLipSyncEnabled(bool)`, `IsLipSyncEnabled()`, `SetLipSyncGain(float)`, `SetLipSyncBlocked(Actor, bool, callerMod="")` / `IsLipSyncBlocked(Actor)` (per-actor block for mods that own the face, e.g. an ahegao overlay; drops the active entry without zeroing the mouth; cleared on game load; callerMod is logged with each toggle).
 - Introspection: `GetSlotForActor(Actor)`, `GetCategoryFileCount(slot, category)`, `CategoryExists(slot, category)`.
 - Config/debug: `GetAPIVersion()`, `ReloadConfig()`, `DebugPlayFile(path, Actor, flags, priority)`.
 - Papyrus (non-native) wrappers: `WaitForHandle`, `PlayVoiceAndWait`, `PlaySFXAndWait`, `Play(category, Actor, waitForCompletion, ...)`.
