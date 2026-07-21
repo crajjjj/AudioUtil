@@ -55,7 +55,9 @@ and enables the PPA bridge.
 - `papyrus\Source\AudioUtilTest.psc` — console test harness (`cgf "AudioUtilTest.T1"`)
 - `dist\` — mod-shaped output: DLL, compiled scripts + sources, and the SFW-neutral default
   `SKSE\Plugins\AudioUtil\AudioUtil.toml`
-- `lib\commonlibsse-ng` — vendored CommonLibSSE-NG (copied from Beeing Female NG, known-good)
+- `lib\commonlibsse-ng` — CommonLibSSE-NG as a git submodule (pinned to the same commit
+  Beeing Female NG builds against; clone with `git clone --recurse-submodules`, or run
+  `git submodule update --init --recursive` in an existing checkout)
 
 ## Build
 
