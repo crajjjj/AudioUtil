@@ -1,6 +1,7 @@
 #include "InstanceManager.h"
 
 #include "Config.h"
+#include "LipSync.h"
 
 namespace InstanceManager
 {
@@ -96,13 +97,19 @@ namespace InstanceManager
 
 	bool Stop(std::int32_t a_id)
 	{
-		std::scoped_lock lock{ g_lock };
-		auto* instance = Find(a_id);
-		if (!instance) {
-			return false;
+		bool ok = false;
+		bool found = false;
+		{
+			std::scoped_lock lock{ g_lock };
+			if (auto* instance = Find(a_id)) {
+				found = true;
+				ok = instance->handle.IsValid() && instance->handle.Stop();
+				g_instances.erase(a_id);
+			}
 		}
-		const bool ok = instance->handle.IsValid() && instance->handle.Stop();
-		g_instances.erase(a_id);
+		if (found) {
+			LipSync::OnInstanceStopped(a_id);
+		}
 		return ok;
 	}
 
@@ -154,29 +161,43 @@ namespace InstanceManager
 
 	void StopGroup(const std::string& a_group)
 	{
-		std::scoped_lock lock{ g_lock };
-		std::erase_if(g_instances, [&](auto& a_pair) {
-			auto& instance = a_pair.second;
-			if (instance.group != a_group) {
-				return false;
-			}
-			if (instance.handle.IsValid()) {
-				instance.handle.Stop();
-			}
-			return true;
-		});
+		std::vector<std::int32_t> stopped;
+		{
+			std::scoped_lock lock{ g_lock };
+			std::erase_if(g_instances, [&](auto& a_pair) {
+				auto& instance = a_pair.second;
+				if (instance.group != a_group) {
+					return false;
+				}
+				if (instance.handle.IsValid()) {
+					instance.handle.Stop();
+				}
+				stopped.push_back(a_pair.first);
+				return true;
+			});
+		}
+		for (const auto id : stopped) {
+			LipSync::OnInstanceStopped(id);
+		}
 	}
 
 	void StopAll()
 	{
-		std::scoped_lock lock{ g_lock };
-		for (auto& [id, instance] : g_instances) {
-			if (instance.handle.IsValid()) {
-				instance.handle.Stop();
+		std::vector<std::int32_t> stopped;
+		{
+			std::scoped_lock lock{ g_lock };
+			for (auto& [id, instance] : g_instances) {
+				if (instance.handle.IsValid()) {
+					instance.handle.Stop();
+				}
+				stopped.push_back(id);
 			}
+			g_instances.clear();
+			g_channels.clear();
 		}
-		g_instances.clear();
-		g_channels.clear();
+		for (const auto id : stopped) {
+			LipSync::OnInstanceStopped(id);
+		}
 	}
 
 	void PlayOnChannel(const std::string& a_channel, std::int32_t a_id)

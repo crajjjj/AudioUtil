@@ -135,6 +135,14 @@ namespace Config
 			settings->ppaEventRateMs = (*ppa)["event_rate_ms"].value_or(settings->ppaEventRateMs);
 		}
 
+		if (const auto* lipsync = root["lipsync"].as_table()) {
+			settings->lipsyncEnabled = (*lipsync)["enable"].value_or(settings->lipsyncEnabled);
+			settings->lipsyncGain = (*lipsync)["gain"].value_or(settings->lipsyncGain);
+			settings->lipsyncAttackMs = (*lipsync)["attack_ms"].value_or(settings->lipsyncAttackMs);
+			settings->lipsyncReleaseMs = (*lipsync)["release_ms"].value_or(settings->lipsyncReleaseMs);
+			settings->lipsyncMinLevel = (*lipsync)["min_level"].value_or(settings->lipsyncMinLevel);
+		}
+
 		if (const auto* slots = root["slot"].as_array()) {
 			for (const auto& entry : *slots) {
 				const auto* table = entry.as_table();

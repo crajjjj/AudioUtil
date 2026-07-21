@@ -62,6 +62,13 @@ namespace Config
 
 		bool          ppaEnabled{ true };
 		std::uint32_t ppaEventRateMs{ 2000 };
+
+		// amplitude-envelope lipsync for PlayVoice/PlayVoiceFromSlot
+		bool          lipsyncEnabled{ true };
+		float         lipsyncGain{ 1.0f };
+		std::uint32_t lipsyncAttackMs{ 30 };
+		std::uint32_t lipsyncReleaseMs{ 90 };
+		float         lipsyncMinLevel{ 0.04f };
 	};
 
 	// lowercase + strip non-alphanumerics: "About To Cum" == "AboutToCum" == "abouttocum"

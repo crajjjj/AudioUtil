@@ -21,6 +21,13 @@ Target runtime: Skyrim SE 1.6.1170 (CommonLibSSE-NG, all-runtime build).
 - Groups (`pc_low`, `pc_high`, `partner_low`, `partner_high`, `sfx`, `oneshot`) provide
   volume/duck/stop semantics.
 - Channels (named latest-instance slots) natively provide stop-previous-on-channel behaviour.
+- **Lipsync**: `PlayVoice` / `PlayVoiceFromSlot` also move the speaking actor's mouth in sync
+  with the clip — the DLL reads the wav's amplitude envelope (100 Hz RMS) and drives the MFG
+  `Aah`/`BigAah` phonemes per frame on the game thread, easing with configurable attack/release.
+  No dialogue records, no `.lip` baking, works for any loose PCM wav. See `[lipsync]` in the
+  TOML and the lipsync natives in `AudioUtil.psc` (`IsLipSyncActive`, `SetLipSyncEnabled`,
+  `SetLipSyncGain`, `StopLipSync`). Expression mods that write phonemes themselves should skip
+  their own mouth writes while `IsLipSyncActive(actor)` is true.
 
 **Adding a voice slot** = create the folder tree + one `[[slot]]` entry in the TOML. That's it.
 
@@ -99,4 +106,6 @@ Context bits: 1=Vaginal 2=Anal 4=Oral 8=Aggressive 16=FemDom 32=Loving 64=Dirty 
 
 - **Loose files only** for the folder scan — audio packed into a BSA is invisible to it.
 - WAVs should be PCM; mono attenuates in 3D, stereo may play 2D.
+- Lipsync needs a loose PCM wav to read the envelope from — `.xwm` and BSA-packed audio play
+  normally but skip the mouth. Creatures without facegen data are silently skipped.
 - `Sound.PlayAndWait` semantics are emulated in Papyrus (`WaitForHandle` polls `IsHandlePlaying`).

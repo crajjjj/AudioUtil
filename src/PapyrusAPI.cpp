@@ -4,6 +4,7 @@
 #include "Config.h"
 #include "FolderCache.h"
 #include "InstanceManager.h"
+#include "LipSync.h"
 #include "PPABridge.h"
 
 namespace PapyrusAPI
@@ -171,8 +172,11 @@ namespace PapyrusAPI
 
 		// ---------- shared play helper ----------
 
+		// a_mouth: actor whose lips follow the clip's amplitude (voice calls pass
+		// the speaker; sfx/folder/file playback passes nullptr)
 		std::int32_t PlayFromKey(const std::string& a_folderKey, RE::Actor* a_follow,
-			float a_volume, const std::string& a_group, const std::string& a_channel)
+			float a_volume, const std::string& a_group, const std::string& a_channel,
+			RE::Actor* a_mouth = nullptr)
 		{
 			if (a_folderKey.empty()) {
 				return 0;
@@ -189,6 +193,9 @@ namespace PapyrusAPI
 			if (!a_channel.empty()) {
 				InstanceManager::PlayOnChannel(a_channel, id);
 			}
+			if (a_mouth) {
+				LipSync::Start(a_mouth, file, handle, id);
+			}
 			return id;
 		}
 
@@ -204,6 +211,7 @@ namespace PapyrusAPI
 			const bool ok = Config::Load();
 			FolderCache::Rebuild();
 			InstanceManager::ApplyConfigGroupVolumes();
+			LipSync::ApplyConfig();
 			PPABridge::SetEventRateMs(Config::Get()->ppaEventRateMs);
 			return ok;
 		}
@@ -226,7 +234,7 @@ namespace PapyrusAPI
 					key = sfxKey;
 				}
 			}
-			return PlayFromKey(key, a_actor, a_volume, a_group.c_str(), a_channel.c_str());
+			return PlayFromKey(key, a_actor, a_volume, a_group.c_str(), a_channel.c_str(), a_actor);
 		}
 
 		std::int32_t PlayVoiceFromSlot(RE::StaticFunctionTag*, RE::BSFixedString a_slot,
@@ -240,7 +248,7 @@ namespace PapyrusAPI
 				return 0;
 			}
 			const auto key = FolderCache::ResolveVoiceKey(*settings, *slot, a_category.c_str());
-			return PlayFromKey(key, a_follow, a_volume, a_group.c_str(), a_channel.c_str());
+			return PlayFromKey(key, a_follow, a_volume, a_group.c_str(), a_channel.c_str(), a_follow);
 		}
 
 		std::int32_t PlaySFX(RE::StaticFunctionTag*, RE::BSFixedString a_name,
@@ -359,6 +367,35 @@ namespace PapyrusAPI
 			return GetCategoryFileCount(nullptr, a_slot, a_category) > 0;
 		}
 
+		// ---------- natives: lipsync ----------
+
+		bool IsLipSyncActive(RE::StaticFunctionTag*, RE::Actor* a_actor)
+		{
+			return a_actor && LipSync::IsActiveFor(a_actor);
+		}
+
+		void StopLipSync(RE::StaticFunctionTag*, RE::Actor* a_actor)
+		{
+			if (a_actor) {
+				LipSync::StopFor(a_actor);
+			}
+		}
+
+		void SetLipSyncEnabled(RE::StaticFunctionTag*, bool a_enabled)
+		{
+			LipSync::SetEnabled(a_enabled);
+		}
+
+		bool IsLipSyncEnabled(RE::StaticFunctionTag*)
+		{
+			return LipSync::Enabled();
+		}
+
+		void SetLipSyncGain(RE::StaticFunctionTag*, float a_gain)
+		{
+			LipSync::SetGain(a_gain);
+		}
+
 		// ---------- natives: PPA ----------
 
 		// bound under the separate AudioUtilPPA script: the bridge is an optional
@@ -431,6 +468,11 @@ namespace PapyrusAPI
 		REGISTERFUNC(StopGroup, SCRIPT_NAME);
 		REGISTERFUNC(StopAllAudio, SCRIPT_NAME);
 		REGISTERFUNC(StopChannel, SCRIPT_NAME);
+		REGISTERFUNC(IsLipSyncActive, SCRIPT_NAME);
+		REGISTERFUNC(StopLipSync, SCRIPT_NAME);
+		REGISTERFUNC(SetLipSyncEnabled, SCRIPT_NAME);
+		REGISTERFUNC(IsLipSyncEnabled, SCRIPT_NAME);
+		REGISTERFUNC(SetLipSyncGain, SCRIPT_NAME);
 		REGISTERFUNC(GetSlotForActor, SCRIPT_NAME);
 		REGISTERFUNC(GetCategoryFileCount, SCRIPT_NAME);
 		REGISTERFUNC(CategoryExists, SCRIPT_NAME);

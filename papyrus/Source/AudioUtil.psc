@@ -128,6 +128,33 @@ Function StopAllAudio() global native
 ; Stop whatever currently occupies the channel (if anything) and free it.
 Function StopChannel(string channel) global native
 
+; ===================== NATIVE — lipsync =====================
+; PlayVoice / PlayVoiceFromSlot automatically move the speaking actor's mouth
+; in sync with the clip's loudness (the DLL reads the wav's amplitude envelope
+; and drives the MFG Aah/BigAah phonemes per frame). Works for loose PCM wav
+; files; xwm or BSA-packed audio plays normally but skips the mouth. Configure
+; in AudioUtil.toml [lipsync] (enable/gain/attack_ms/release_ms/min_level).
+;
+; Plays nice with expression mods: only the two phonemes above are touched,
+; and they are zeroed when the clip ends. If your mod sets phonemes itself
+; (e.g. an expression cycler), skip your own mouth writes for an actor while
+; IsLipSyncActive(actor) is true to avoid fighting over the jaw.
+
+; True while AudioUtil is driving this actor's mouth (a voice line with a
+; readable envelope is playing and lipsync is enabled).
+bool Function IsLipSyncActive(Actor akActor) global native
+
+; Fade this actor's mouth closed now; the audio itself keeps playing.
+Function StopLipSync(Actor akActor) global native
+
+; Master switch (runtime; the toml value is restored on ReloadConfig).
+; Turning it off fades all active mouths closed.
+Function SetLipSyncEnabled(bool enable) global native
+bool Function IsLipSyncEnabled() global native
+
+; Mouth-open strength, 0.0-2.0 (1.0 = envelope as-is). For MCM sliders.
+Function SetLipSyncGain(float gain) global native
+
 ; ===================== NATIVE — introspection =====================
 
 ; Which slot id PlayVoice would resolve for this actor right now ("M4",

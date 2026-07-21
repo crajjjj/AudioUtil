@@ -4,6 +4,7 @@
 #include "Config.h"
 #include "FolderCache.h"
 #include "InstanceManager.h"
+#include "LipSync.h"
 #include "PPABridge.h"
 #include "PapyrusAPI.h"
 
@@ -52,11 +53,13 @@ namespace
 			Config::Load();
 			FolderCache::Rebuild();
 			InstanceManager::ApplyConfigGroupVolumes();
+			LipSync::ApplyConfig();
 			PPABridge::TryConnect();
 			break;
 		case MessagingInterface::kPreLoadGame:
 		case MessagingInterface::kNewGame:
 			InstanceManager::StopAll();
+			LipSync::Reset();
 			break;
 		default:
 			break;
