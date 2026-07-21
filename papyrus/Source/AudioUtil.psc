@@ -1,66 +1,152 @@
 Scriptname AudioUtil Hidden
 {Native folder-based audio player (voice + SFX). Plays loose WAV files by
- slot/category folder with no sound descriptor forms. See AudioUtil.toml.}
+ slot/category folder with no sound descriptor forms. See AudioUtil.toml.
+ The optional PPA plugin bridge lives in AudioUtilPPA.psc.}
+
+; =============================================================================
+; CONCEPTS shared by every Play* call
+;
+;   handle   Every Play* returns an int instance handle: > 0 on success, 0 if
+;            nothing played (unknown category, empty folder, actor invalid...).
+;            Failures are logged to AudioUtil.log, never thrown. Handles stay
+;            valid until the sound ends, is stopped, or is replaced on its
+;            channel; calls on a dead handle are safe no-ops.
+;
+;   volume   0.0-1.0 base volume of this instance. The EFFECTIVE volume is
+;            volume * group_volume * group_duck_factor, re-applied live when
+;            the group changes.
+;
+;   group    Volume/duck bucket this instance joins. Any string; "" = none.
+;            [groups] in AudioUtil.toml sets startup volumes; SetGroupVolume /
+;            DuckGroup change them at runtime and affect ALL current and
+;            future members of the group.
+;
+;   channel  Exclusivity lane. Any string; "" = none. Starting a sound on a
+;            channel first STOPS whatever previously played on that channel.
+;            Use one channel per logical stream (e.g. one per actor's body
+;            SFX) so a new line replaces the old instead of stacking.
+;
+;   file selection  A category/folder with N files acts as a shuffle bag:
+;            random order, no repeats until the bag empties, then reshuffle.
+;
+;   3D       Sounds follow the given actor's position while playing. Pass a
+;            None actor to play unattached (2D-ish, at the listener).
+; =============================================================================
 
 ; ===================== NATIVE — core =====================
 
+; API version of the loaded DLL, for compatibility checks from scripts.
+; Increases only when signatures/behavior change incompatibly.
 int Function GetAPIVersion() global native
+
+; Re-read AudioUtil.toml and rescan all slot folders in-game (no restart
+; needed). Returns false if the file failed to parse - the previous config
+; stays active in that case. Console: cgf "AudioUtil.ReloadConfig"
 bool Function ReloadConfig() global native
 
-; Play a voice line for an actor. Slot resolved from npc_overrides ->
-; voicetype_remap -> voicetype_map -> default slot for the actor's sex.
-; Returns instance handle (> 0) or 0 on failure (logged, never throws).
-; channel != "" stops the channel's previous line first.
+; Play a voice line for an actor, resolving WHICH voice pack (slot) to use
+; from the actor, then WHICH folder inside it from the category.
+;
+; Slot resolution (first hit wins):
+;   1. pc_female_slot / pc_male_slot  - player only; reserved from NPCs
+;   2. [npc_overrides]                - explicit per-NPC pin
+;   3. [voicetype_remap] -> [voicetype_map]  - by the actor's VoiceType
+;   4. [race_map]                     - substring match on race editor id
+;   5. default_female_slot / default_male_slot
+; Map values may be slot lists; then the actor picks one deterministically
+; (same NPC = same slot every scene, load order independent).
+;
+; Category resolution inside the slot:
+;   exact folder -> [category_aliases] -> [male_only_remap] (male slots) ->
+;   [category_fallbacks] (one hop) -> [sfx] table as a last resort.
+;
+; category is case- and space-insensitive ("Battle Cry" == "BattleCry").
+; Returns a handle (see CONCEPTS); 0 if no slot or no audio resolved.
 int Function PlayVoice(Actor akActor, string category, float volume = 1.0, string group = "", string channel = "") global native
 
-; Play from an explicit slot ("F1".."M8"), following akFollow's position.
+; Same as PlayVoice but the slot is named explicitly ("F1", "M4", "C2"...)
+; instead of resolved from an actor - for samples, tests, or when the caller
+; already decided the voice. akFollow only provides the 3D position.
 int Function PlayVoiceFromSlot(string slot, string category, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
 
-; Play a named SFX from the [sfx] table in AudioUtil.toml.
+; Play a named SFX from the [sfx] table (name -> folder of files). Defaults
+; into the "sfx" group so SFX volume/ducking applies unless overridden.
 int Function PlaySFX(string sfxName, Actor akFollow, float volume = 1.0, string group = "sfx", string channel = "") global native
 
-; Play a specific file / random file from a folder (paths relative to Data\).
+; Play one specific file. Path is relative to Data\ ('Sound\fx\MyMod\a.wav')
+; and may resolve to a loose file OR to audio packed inside a BSA - the
+; engine's resource loader handles both (loose wins over archive).
 int Function PlayFile(string dataRelativePath, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
+
+; Play a random file from a loose folder (scanned on first use, then cached
+; as a shuffle bag). Folder scanning cannot see into BSAs - for archived
+; audio use PlayFile or a [slot.categories] file list in the toml.
 int Function PlayFolder(string dataRelativeFolder, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
 
 ; ===================== NATIVE — handles =====================
 
+; True while the instance is audible. Also true during a short startup grace
+; (~0.4s) right after Play* returns: the engine starts streams asynchronously
+; and briefly reports "not playing" for sounds that are about to start.
 bool Function IsHandlePlaying(int handle) global native
+
+; Stop the instance now. Returns true if it was alive and stopped.
 bool Function StopHandle(int handle) global native
+
+; Clip length in seconds. May return 0.0 while the stream is still being
+; prepared (see WaitForHandle for how to cope with that).
 float Function GetHandleDuration(int handle) global native
+
+; Change one instance's base volume mid-play (group multipliers still apply).
 Function SetHandleVolume(int handle, float volume) global native
 
 ; ===================== NATIVE — groups & channels =====================
-; Groups: pc_high / pc_low / partner_high / partner_low / sfx / oneshot / custom
+; Conventional group names: pc_high / pc_low (player voice), partner_high /
+; partner_low (NPC voice), sfx (effects), oneshot (ambient one-shots). Any
+; other name works - groups are created on first use.
 
+; Set a group's volume (0.0-1.0). Applies immediately to playing members and
+; to everything started later. MCM sliders typically call this - toml
+; [groups] values are only the startup state.
 Function SetGroupVolume(string group, float volume) global native
+
+; Temporarily scale a group by factor (0.0 = silent, 1.0 = no duck) without
+; touching its stored volume - e.g. duck background voice while an important
+; line plays. Ducks do not stack; the last factor wins. Undo with UnduckGroup.
 Function DuckGroup(string group, float factor = 0.0) global native
+
+; Restore a ducked group to its normal volume (equivalent to factor 1.0).
 Function UnduckGroup(string group) global native
+
+; Stop every playing instance that belongs to the group.
 Function StopGroup(string group) global native
+
+; Stop everything AudioUtil is playing and clear all channel bindings.
+; Does not touch group volumes or the config.
 Function StopAllAudio() global native
+
+; Stop whatever currently occupies the channel (if anything) and free it.
 Function StopChannel(string channel) global native
 
 ; ===================== NATIVE — introspection =====================
 
+; Which slot id PlayVoice would resolve for this actor right now ("M4",
+; "F1", ...; "" if none). Useful for debugging voice assignment.
 string Function GetSlotForActor(Actor akActor) global native
+
+; Number of playable files behind slot/category after full category
+; resolution (aliases/fallbacks applied). 0 = a PlayVoice would fail.
 int Function GetCategoryFileCount(string slot, string category) global native
+
+; True if slot/category resolves to at least one file. Cheap way to guard
+; optional content ("play the rare line only if the pack ships it").
 bool Function CategoryExists(string slot, string category) global native
-
-; ===================== NATIVE — PPA bridge =====================
-; Mod events: "AudioUtilPPA_Update" / "AudioUtilPPA_End"
-;   sender = receiver Actor, numArg = penetration depth, strArg = context bitmask (decimal)
-; Context bits: 1=Vaginal 2=Anal 4=Oral 8=Aggressive 16=FemDom 32=Loving
-;               64=Dirty 128=Boobjob 256=Handjob 512=Footjob 1024=Masturbation
-
-bool Function IsPPAConnected() global native
-Function SetPPAEventRate(int milliseconds) global native
-int Function GetPPAContext(Actor akReceiver) global native
-float Function GetPPADepth(Actor akReceiver) global native
-float Function GetPPAVaginalOpening(Actor akReceiver) global native
-float Function GetPPAAnalOpening(Actor akReceiver) global native
 
 ; ===================== NATIVE — debug =====================
 
+; Play a file with explicit BuildSoundDataFromFile flags/priority instead of
+; the toml's sound_flags/sound_priority - for experimenting when a file is
+; silent or behaves oddly. Not for production use.
 int Function DebugPlayFile(string dataRelativePath, Actor akFollow, int flags, int priority) global native
 
 ; ===================== WRAPPERS =====================
@@ -69,6 +155,10 @@ int Function DebugPlayFile(string dataRelativePath, Actor akFollow, int flags, i
 ; by polling IsHandlePlaying + Utility.Wait — no suspended VM stack, no
 ; task-interface marshalling.
 
+; Block the calling Papyrus thread until the instance finishes (or a safety
+; timeout: clip duration + 1s, or 30s when the duration isn't known yet).
+; Returns immediately for dead/invalid handles. Polls every 0.1s, so expect
+; up to ~0.1s of overshoot past the actual clip end.
 Function WaitForHandle(int handle) global
     if handle <= 0
         return
@@ -84,17 +174,21 @@ Function WaitForHandle(int handle) global
     endwhile
 EndFunction
 
+; PlayVoice, then block until the line finishes. Same arguments and
+; resolution as PlayVoice; discards the handle.
 Function PlayVoiceAndWait(Actor akActor, string category, float volume = 1.0, string group = "", string channel = "") global
     int h = PlayVoice(akActor, category, volume, group, channel)
     WaitForHandle(h)
 EndFunction
 
+; PlaySFX, then block until it finishes. Same arguments as PlaySFX.
 Function PlaySFXAndWait(string sfxName, Actor akFollow, float volume = 1.0, string group = "sfx", string channel = "") global
     int h = PlaySFX(sfxName, akFollow, volume, group, channel)
     WaitForHandle(h)
 EndFunction
 
-; Drop-in equivalent of the old IVDTControllerScript.PlaySound(Sound, Actor, wait)
+; Drop-in equivalent of a legacy PlaySound(Sound form, Actor, wait) helper:
+; category string instead of a Sound form, optional blocking.
 Function Play(string category, Actor akActor, bool waitForCompletion = true, float volume = 1.0, string group = "", string channel = "") global
     if waitForCompletion
         PlayVoiceAndWait(akActor, category, volume, group, channel)

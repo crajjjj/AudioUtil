@@ -81,6 +81,30 @@ namespace FolderCache
 
 		std::size_t voiceFolders = 0;
 		for (const auto& slot : settings->slots) {
+			// explicit [slot.categories] first: trusted as-is (no filesystem check,
+			// so they can point at BSA-packed audio the engine resolves at play time)
+			for (const auto& [category, files] : slot.categories) {
+				if (files.empty()) {
+					continue;
+				}
+				const auto key = Config::Normalize(slot.id) + "/" + category;
+				if (HasKey(key)) {
+					logger::warn("Slot {}: duplicate explicit category '{}' ignored", slot.id, category);
+					continue;
+				}
+				Folder folder;
+				folder.files.reserve(files.size());
+				for (auto file : files) {
+					std::replace(file.begin(), file.end(), '/', '\\');
+					folder.files.push_back(std::move(file));
+				}
+				g_folders[key] = std::move(folder);
+				++voiceFolders;
+			}
+
+			if (slot.root.empty()) {
+				continue;
+			}
 			const auto slotDir = dataRoot / slot.root;
 			std::error_code ec;
 			if (!std::filesystem::is_directory(slotDir, ec)) {

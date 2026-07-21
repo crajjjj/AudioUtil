@@ -11,6 +11,7 @@ namespace PapyrusAPI
 	namespace
 	{
 		constexpr auto SCRIPT_NAME = "AudioUtil";
+		constexpr auto PPA_SCRIPT_NAME = "AudioUtilPPA";
 		constexpr std::int32_t API_VERSION = 1;
 
 		using VM = RE::BSScript::IVirtualMachine;
@@ -29,6 +30,39 @@ namespace PapyrusAPI
 		{
 			return (!a_settings.pcFemaleSlot.empty() && SameSlotID(a_slot.id, a_settings.pcFemaleSlot)) ||
 			       (!a_settings.pcMaleSlot.empty() && SameSlotID(a_slot.id, a_settings.pcMaleSlot));
+		}
+
+		// load-order-stable per-NPC id for spreading actors across candidate slots
+		std::uint32_t StableLocalID(RE::TESNPC* a_base)
+		{
+			const auto formID = a_base->GetFormID();
+			return (formID >> 24) == 0xFE ? (formID & 0xFFF) : (formID & 0xFFFFFF);
+		}
+
+		// pick one usable slot from a candidate list, deterministically by actor:
+		// the same NPC always gets the same slot; different NPCs spread across the
+		// list. Unusable candidates (missing, PC-reserved) are filtered first so
+		// the pick is always among real options.
+		const Config::Slot* PickFromSlotList(const Config::Settings& a_settings,
+			const Config::SlotList& a_candidates, RE::TESNPC* a_base,
+			const std::function<bool(const Config::Slot*)>& a_usable)
+		{
+			std::vector<const Config::Slot*> usable;
+			usable.reserve(a_candidates.size());
+			for (const auto& id : a_candidates) {
+				if (const auto* slot = Config::FindSlot(a_settings, id); a_usable(slot)) {
+					usable.push_back(slot);
+				}
+			}
+			if (usable.empty()) {
+				return nullptr;
+			}
+			if (usable.size() == 1) {
+				return usable.front();
+			}
+			// mix the local id so consecutive editor ids don't all alternate in step
+			const std::uint32_t mixed = StableLocalID(a_base) * 2654435761u;
+			return usable[mixed % usable.size()];
 		}
 
 		// resolution order: PC reservation (player only) -> npc_overrides ->
@@ -92,7 +126,7 @@ namespace PapyrusAPI
 				}
 				if (const auto it = a_settings.voicetypeMap.find(voicetype);
 					it != a_settings.voicetypeMap.end()) {
-					if (const auto* slot = Config::FindSlot(a_settings, it->second); usable(slot)) {
+					if (const auto* slot = PickFromSlotList(a_settings, it->second, base, usable)) {
 						return slot;
 					}
 				}
@@ -107,12 +141,14 @@ namespace PapyrusAPI
 					raceID = Config::Normalize(race->GetFormEditorID());
 				}
 				if (!raceID.empty()) {
-					for (const auto& [hint, slotID] : a_settings.raceMap) {
+					const auto sexUsable = [&](const Config::Slot* a_slot) {
+						return a_slot && a_slot->sex == (female ? 'F' : 'M') && usable(a_slot);
+					};
+					for (const auto& [hint, slotIDs] : a_settings.raceMap) {
 						if (raceID.find(hint) == std::string::npos) {
 							continue;
 						}
-						const auto* slot = Config::FindSlot(a_settings, slotID);
-						if (slot && slot->sex == (female ? 'F' : 'M') && usable(slot)) {
+						if (const auto* slot = PickFromSlotList(a_settings, slotIDs, base, sexUsable)) {
 							return slot;
 						}
 					}
@@ -325,35 +361,38 @@ namespace PapyrusAPI
 
 		// ---------- natives: PPA ----------
 
-		bool IsPPAConnected(RE::StaticFunctionTag*)
+		// bound under the separate AudioUtilPPA script: the bridge is an optional
+		// integration and its surface stays out of the core AudioUtil class
+
+		bool IsConnected(RE::StaticFunctionTag*)
 		{
 			return PPABridge::Connected();
 		}
 
-		void SetPPAEventRate(RE::StaticFunctionTag*, std::int32_t a_ms)
+		void SetEventRate(RE::StaticFunctionTag*, std::int32_t a_ms)
 		{
-			PPABridge::SetEventRateMs(a_ms > 0 ? static_cast<std::uint32_t>(a_ms) : 500u);
+			PPABridge::SetEventRateMs(a_ms > 0 ? static_cast<std::uint32_t>(a_ms) : 2000u);
 		}
 
-		std::int32_t GetPPAContext(RE::StaticFunctionTag*, RE::Actor* a_receiver)
+		std::int32_t GetContext(RE::StaticFunctionTag*, RE::Actor* a_receiver)
 		{
 			const auto snapshot = PPABridge::GetFor(a_receiver);
 			return snapshot ? static_cast<std::int32_t>(snapshot->context) : 0;
 		}
 
-		float GetPPADepth(RE::StaticFunctionTag*, RE::Actor* a_receiver)
+		float GetDepth(RE::StaticFunctionTag*, RE::Actor* a_receiver)
 		{
 			const auto snapshot = PPABridge::GetFor(a_receiver);
 			return snapshot ? snapshot->depth : 0.0f;
 		}
 
-		float GetPPAVaginalOpening(RE::StaticFunctionTag*, RE::Actor* a_receiver)
+		float GetVaginalOpening(RE::StaticFunctionTag*, RE::Actor* a_receiver)
 		{
 			const auto snapshot = PPABridge::GetFor(a_receiver);
 			return snapshot ? snapshot->vaginalOpening : 0.0f;
 		}
 
-		float GetPPAAnalOpening(RE::StaticFunctionTag*, RE::Actor* a_receiver)
+		float GetAnalOpening(RE::StaticFunctionTag*, RE::Actor* a_receiver)
 		{
 			const auto snapshot = PPABridge::GetFor(a_receiver);
 			return snapshot ? snapshot->anusOpening : 0.0f;
@@ -395,13 +434,13 @@ namespace PapyrusAPI
 		REGISTERFUNC(GetSlotForActor, SCRIPT_NAME);
 		REGISTERFUNC(GetCategoryFileCount, SCRIPT_NAME);
 		REGISTERFUNC(CategoryExists, SCRIPT_NAME);
-		REGISTERFUNC(IsPPAConnected, SCRIPT_NAME);
-		REGISTERFUNC(SetPPAEventRate, SCRIPT_NAME);
-		REGISTERFUNC(GetPPAContext, SCRIPT_NAME);
-		REGISTERFUNC(GetPPADepth, SCRIPT_NAME);
-		REGISTERFUNC(GetPPAVaginalOpening, SCRIPT_NAME);
-		REGISTERFUNC(GetPPAAnalOpening, SCRIPT_NAME);
 		REGISTERFUNC(DebugPlayFile, SCRIPT_NAME);
+		REGISTERFUNC(IsConnected, PPA_SCRIPT_NAME);
+		REGISTERFUNC(SetEventRate, PPA_SCRIPT_NAME);
+		REGISTERFUNC(GetContext, PPA_SCRIPT_NAME);
+		REGISTERFUNC(GetDepth, PPA_SCRIPT_NAME);
+		REGISTERFUNC(GetVaginalOpening, PPA_SCRIPT_NAME);
+		REGISTERFUNC(GetAnalOpening, PPA_SCRIPT_NAME);
 		return true;
 	}
 }

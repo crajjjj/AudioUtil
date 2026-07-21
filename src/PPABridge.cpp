@@ -19,7 +19,7 @@ namespace PPABridge
 		const PPA::InterfaceV1* g_api = nullptr;
 		PPA::ListenerHandle     g_listener = 0;
 		std::atomic<bool>       g_connected{ false };
-		std::atomic<std::uint32_t> g_eventRateMs{ 500 };
+		std::atomic<std::uint32_t> g_eventRateMs{ 2000 };
 
 		std::unordered_map<std::uint32_t, ReceiverState> g_receivers;  // native actor handle -> state
 		std::mutex g_lock;

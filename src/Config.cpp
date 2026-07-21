@@ -60,6 +60,22 @@ namespace Config
 				}
 			}
 		}
+
+		// a map value that is either a single slot id or an array of candidates
+		SlotList ReadSlotList(const toml::node& a_value)
+		{
+			SlotList out;
+			if (const auto single = a_value.value<std::string>()) {
+				out.push_back(*single);
+			} else if (const auto* arr = a_value.as_array()) {
+				for (const auto& entry : *arr) {
+					if (const auto item = entry.value<std::string>()) {
+						out.push_back(*item);
+					}
+				}
+			}
+			return out;
+		}
 	}
 
 	std::string MakeNpcKey(std::string_view a_plugin, std::uint32_t a_localID)
@@ -130,8 +146,20 @@ namespace Config
 				slot.root = (*table)["path"].value_or(""s);
 				const auto sex = (*table)["sex"].value_or(""s);
 				slot.sex = !sex.empty() && (sex[0] == 'f' || sex[0] == 'F') ? 'F' : 'M';
-				if (slot.id.empty() || slot.root.empty()) {
-					logger::warn("Skipping [[slot]] entry with missing id/path");
+				if (const auto* categories = (*table)["categories"].as_table()) {
+					for (auto&& [catName, catValue] : *categories) {
+						if (const auto* files = catValue.as_array()) {
+							auto& list = slot.categories[Normalize(catName.str())];
+							for (const auto& file : *files) {
+								if (const auto path = file.value<std::string>()) {
+									list.push_back(*path);
+								}
+							}
+						}
+					}
+				}
+				if (slot.id.empty() || (slot.root.empty() && slot.categories.empty())) {
+					logger::warn("Skipping [[slot]] entry with missing id, or neither path nor categories");
 					continue;
 				}
 				settings->slots.push_back(std::move(slot));
@@ -150,15 +178,21 @@ namespace Config
 			}
 		}
 
-		ReadStringMap(root["voicetype_map"].as_table(), settings->voicetypeMap, false);
+		if (const auto* voiceMap = root["voicetype_map"].as_table()) {
+			for (auto&& [key, value] : *voiceMap) {
+				if (auto slots = ReadSlotList(value); !slots.empty()) {
+					settings->voicetypeMap[Normalize(key.str())] = std::move(slots);
+				}
+			}
+		}
 
 		// [race_map] hints are substring-matched, so precedence must not depend on
 		// toml table iteration (alphabetical): longest hint first makes the most
 		// specific entry win ("darkelf" and "highelf" both beat "elf")
 		if (const auto* raceMap = root["race_map"].as_table()) {
 			for (auto&& [key, value] : *raceMap) {
-				if (const auto str = value.value<std::string>()) {
-					settings->raceMap.emplace_back(Normalize(key.str()), *str);
+				if (auto slots = ReadSlotList(value); !slots.empty()) {
+					settings->raceMap.emplace_back(Normalize(key.str()), std::move(slots));
 				}
 			}
 			std::stable_sort(settings->raceMap.begin(), settings->raceMap.end(),

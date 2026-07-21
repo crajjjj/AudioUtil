@@ -52,7 +52,7 @@ EndFunction
 
 ; PPA status
 Function T8() global
-    Debug.Notification("PPA connected=" + AudioUtil.IsPPAConnected())
+    Debug.Notification("PPA connected=" + AudioUtilPPA.IsConnected())
 EndFunction
 
 Function TReload() global
