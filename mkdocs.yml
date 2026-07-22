@@ -1,0 +1,81 @@
+site_name: AudioUtil
+site_description: SKSE64 plugin for native, folder-path-based WAV playback in Skyrim SE - no sound-descriptor forms, no ESP edits. Papyrus API reference and TOML config reference.
+site_url: https://crajjjj.github.io/AudioUtil/
+repo_name: crajjjj/AudioUtil
+repo_url: https://github.com/crajjjj/AudioUtil
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - navigation.indexes
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - Papyrus API:
+    - Overview & Concepts: api/index.md
+    - AudioUtil (core player): api/audioutil.md
+    - AudioUtilPPA (penetration bridge): api/ppa.md
+    - TomlUtil (config reader): api/tomlutil.md
+  - TOML Configuration:
+    - Overview: config/index.md
+    - Voice & Category Resolution: config/resolution.md
+    - Config Reference: config/reference.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+# internal design note, kept in-repo but not part of the published site
+# (its consumer-facing contract is documented in api/ppa.md)
+exclude_docs: |
+  ppa-api-assumptions.md
+
+validation:
+  links:
+    not_found: warn
+    anchors: warn
+
+plugins:
+  - search
