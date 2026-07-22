@@ -17,7 +17,11 @@ namespace InstanceManager
 	void StopAll();
 
 	// stop the channel's previous occupant and record a_id as the new one
-	void PlayOnChannel(const std::string& a_channel, std::int32_t a_id);
+	// claim a channel for an instance. With a_noInterrupt, returns false (without
+	// claiming) if the channel's current sound is still playing - the caller
+	// should drop a_id. Otherwise stops any previous occupant and returns true.
+	bool PlayOnChannel(const std::string& a_channel, std::int32_t a_id, bool a_noInterrupt = false);
+	bool IsChannelBusy(const std::string& a_channel);  // channel's current sound still playing?
 	void StopChannel(const std::string& a_channel);
 
 	// initial group volumes from config (called after Config::Load)

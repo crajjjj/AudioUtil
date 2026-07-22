@@ -122,6 +122,8 @@ namespace Config
 			settings->defaultMaleSlot = (*general)["default_male_slot"].value_or(settings->defaultMaleSlot);
 			settings->pcFemaleSlot = (*general)["pc_female_slot"].value_or(settings->pcFemaleSlot);
 			settings->pcMaleSlot = (*general)["pc_male_slot"].value_or(settings->pcMaleSlot);
+			settings->voice3D = (*general)["voice_3d"].value_or(settings->voice3D);
+			settings->voiceNoInterrupt = (*general)["voice_no_interrupt"].value_or(settings->voiceNoInterrupt);
 
 			if (const auto level = (*general)["log_level"].value<std::string>()) {
 				const auto lvl = spdlog::level::from_str(*level);
@@ -257,10 +259,13 @@ namespace Config
 
 	const Slot* FindSlot(const Settings& a_settings, std::string_view a_id)
 	{
+		// Match on the normalized id so slot lookups are case- AND space-insensitive
+		// (the documented contract). Callers pass ids from mixed sources — some raw
+		// (npc_overrides, voicetype_map, pc slots), some already normalized (a slot's
+		// fallback) — so normalize both sides here rather than trusting the caller.
+		const auto idNorm = Normalize(a_id);
 		for (const auto& slot : a_settings.slots) {
-			if (slot.id.size() == a_id.size() &&
-				std::equal(slot.id.begin(), slot.id.end(), a_id.begin(),
-					[](char a, char b) { return std::tolower(a) == std::tolower(b); })) {
+			if (Normalize(slot.id) == idNorm) {
 				return &slot;
 			}
 		}

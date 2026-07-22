@@ -45,4 +45,15 @@ namespace AudioEngine
 		const auto settings = Config::Get();
 		return PlayPath(a_dataRelPath, a_follow, a_volume, settings->soundFlags, settings->soundPriority);
 	}
+
+	bool ResourceExists(const std::string& a_dataRelPath)
+	{
+		if (a_dataRelPath.empty()) {
+			return false;
+		}
+		// opening a resource stream succeeds only if the path resolves from a
+		// loose file or a mounted archive - the engine's own lookup
+		RE::BSResourceNiBinaryStream stream{ a_dataRelPath.c_str() };
+		return stream.good();
+	}
 }

@@ -200,7 +200,7 @@ namespace InstanceManager
 		}
 	}
 
-	void PlayOnChannel(const std::string& a_channel, std::int32_t a_id)
+	bool PlayOnChannel(const std::string& a_channel, std::int32_t a_id, bool a_noInterrupt)
 	{
 		std::int32_t previous = 0;
 		{
@@ -208,12 +208,39 @@ namespace InstanceManager
 			const auto it = g_channels.find(a_channel);
 			if (it != g_channels.end()) {
 				previous = it->second;
+				// no-interrupt: if the channel's current sound is still playing,
+				// keep it and reject the newcomer. Decided under the lock so two
+				// concurrent claims can't both pass (the check+claim is atomic).
+				if (a_noInterrupt && previous > 0 && previous != a_id) {
+					const auto* inst = Find(previous);
+					const bool prevPlaying = inst && inst->handle.IsValid() &&
+						(inst->handle.IsPlaying() || InStartupGrace(*inst));
+					if (prevPlaying) {
+						return false;
+					}
+				}
 			}
 			g_channels[a_channel] = a_id;
 		}
 		if (previous > 0 && previous != a_id) {
 			Stop(previous);
 		}
+		return true;
+	}
+
+	bool IsChannelBusy(const std::string& a_channel)
+	{
+		std::int32_t current = 0;
+		{
+			std::scoped_lock lock{ g_lock };
+			const auto it = g_channels.find(a_channel);
+			if (it == g_channels.end()) {
+				return false;
+			}
+			current = it->second;
+		}
+		// IsPlaying takes g_lock itself, so query it after releasing above
+		return current > 0 && IsPlaying(current);
 	}
 
 	void StopChannel(const std::string& a_channel)
@@ -237,7 +264,13 @@ namespace InstanceManager
 		const auto settings = Config::Get();
 		std::scoped_lock lock{ g_lock };
 		for (const auto& [name, volume] : settings->groupVolumes) {
-			GetGroup(name).volume = std::clamp(volume, 0.0f, 1.0f);
+			auto& group = GetGroup(name);
+			group.volume = std::clamp(volume, 0.0f, 1.0f);
+			// clear any stuck duck: a consumer's duck/unduck (e.g. lowering a
+			// moan while a partner speaks) can be skipped if its scene ends or
+			// is interrupted mid-duck, leaving the group silent. Reload then
+			// doubles as a reliable "reset audio" - ReloadConfig calls this.
+			group.duckFactor = 1.0f;
 		}
 	}
 

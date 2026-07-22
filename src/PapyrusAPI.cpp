@@ -178,7 +178,7 @@ namespace PapyrusAPI
 		// the speaker; sfx/folder/file playback passes nullptr)
 		std::int32_t PlayFromKey(const std::string& a_folderKey, RE::Actor* a_follow,
 			float a_volume, const std::string& a_group, const std::string& a_channel,
-			RE::Actor* a_mouth = nullptr)
+			RE::Actor* a_mouth = nullptr, bool a_noInterrupt = false)
 		{
 			if (a_folderKey.empty()) {
 				return 0;
@@ -193,7 +193,12 @@ namespace PapyrusAPI
 			}
 			const auto id = InstanceManager::Register(handle, a_volume, a_group);
 			if (!a_channel.empty()) {
-				InstanceManager::PlayOnChannel(a_channel, id);
+				// claim atomically: if no-interrupt loses the race for a channel
+				// still playing, drop this one (it's within startup grace, silent)
+				if (!InstanceManager::PlayOnChannel(a_channel, id, a_noInterrupt)) {
+					InstanceManager::Stop(id);
+					return 0;
+				}
 			}
 			if (a_mouth) {
 				LipSync::Start(a_mouth, file, handle, id);
@@ -236,8 +241,16 @@ namespace PapyrusAPI
 					key = sfxKey;
 				}
 			}
-			return PlayFromKey(key, a_actor, a_volume, a_group.c_str(), a_channel.c_str(),
-				a_blockLipSync ? nullptr : a_actor);
+			// no-interrupt early-out: cheap pre-check to avoid building a sound we'd
+			// drop (the atomic claim in PlayFromKey closes the check/claim race)
+			if (settings->voiceNoInterrupt && a_channel.length() > 0 &&
+				InstanceManager::IsChannelBusy(a_channel.c_str())) {
+				return 0;
+			}
+			// 3D-follow only when voice3D is on; either way the mouth actor drives lipsync
+			RE::Actor* follow = settings->voice3D ? a_actor : nullptr;
+			return PlayFromKey(key, follow, a_volume, a_group.c_str(), a_channel.c_str(),
+				a_blockLipSync ? nullptr : a_actor, settings->voiceNoInterrupt);
 		}
 
 		std::int32_t PlayVoiceFromSlot(RE::StaticFunctionTag*, RE::BSFixedString a_slot,
@@ -251,8 +264,13 @@ namespace PapyrusAPI
 				return 0;
 			}
 			const auto key = FolderCache::ResolveVoiceKey(*settings, *slot, a_category.c_str());
-			return PlayFromKey(key, a_follow, a_volume, a_group.c_str(), a_channel.c_str(),
-				a_blockLipSync ? nullptr : a_follow);
+			if (settings->voiceNoInterrupt && a_channel.length() > 0 &&
+				InstanceManager::IsChannelBusy(a_channel.c_str())) {
+				return 0;
+			}
+			RE::Actor* follow = settings->voice3D ? a_follow : nullptr;
+			return PlayFromKey(key, follow, a_volume, a_group.c_str(), a_channel.c_str(),
+				a_blockLipSync ? nullptr : a_follow, settings->voiceNoInterrupt);
 		}
 
 		std::int32_t PlaySFX(RE::StaticFunctionTag*, RE::BSFixedString a_name,
@@ -369,6 +387,16 @@ namespace PapyrusAPI
 			RE::BSFixedString a_category)
 		{
 			return GetCategoryFileCount(nullptr, a_slot, a_category) > 0;
+		}
+
+		// does a data-relative path resolve to a real resource (loose or BSA)
+		// in the current load order? Confirms the path resolves, not that the
+		// audio is valid PCM. Path separators may be '/' or '\'.
+		bool FileExists(RE::StaticFunctionTag*, RE::BSFixedString a_path)
+		{
+			std::string path = a_path.c_str();
+			std::replace(path.begin(), path.end(), '/', '\\');
+			return AudioEngine::ResourceExists(path);
 		}
 
 		// ---------- natives: lipsync ----------
@@ -560,6 +588,7 @@ namespace PapyrusAPI
 		REGISTERFUNC(GetSlotForActor, SCRIPT_NAME);
 		REGISTERFUNC(GetCategoryFileCount, SCRIPT_NAME);
 		REGISTERFUNC(CategoryExists, SCRIPT_NAME);
+		REGISTERFUNC(FileExists, SCRIPT_NAME);
 		REGISTERFUNC(DebugPlayFile, SCRIPT_NAME);
 		REGISTERFUNC(IsConnected, PPA_SCRIPT_NAME);
 		REGISTERFUNC(SetEventRate, PPA_SCRIPT_NAME);

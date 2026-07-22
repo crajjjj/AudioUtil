@@ -182,6 +182,12 @@ int Function GetCategoryFileCount(string slot, string category) global native
 ; optional content ("play the rare line only if the pack ships it").
 bool Function CategoryExists(string slot, string category) global native
 
+; True if a data-relative path resolves to a real resource (loose file OR
+; BSA-packed) in the current load order - the same lookup PlayFile uses. Confirms
+; the path resolves, not that the audio is valid PCM. Use to audit explicit file
+; lists (e.g. creature slot paths). Separators may be '/' or '\'.
+bool Function FileExists(string path) global native
+
 ; ===================== NATIVE — debug =====================
 
 ; Play a file with explicit BuildSoundDataFromFile flags/priority instead of

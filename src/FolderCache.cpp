@@ -1,7 +1,12 @@
 #include "FolderCache.h"
 
+#include "AudioEngine.h"
+#include "Config.h"
+
 namespace FolderCache
 {
+	void AuditExplicitFiles(const Config::Settings& a_settings);  // defined after Rebuild
+
 	namespace
 	{
 		struct Folder
@@ -171,6 +176,38 @@ namespace FolderCache
 		}
 
 		logger::info("FolderCache: {} voice category folders, {} sfx folders", voiceFolders, sfxFolders);
+
+		AuditExplicitFiles(*settings);
+	}
+
+	// walk every explicit [slot.categories] file list (the hand-written, BSA-capable
+	// paths - creature slots, F1/F2 orgasm lists) and log any that do not resolve in
+	// the current load order, so a typo'd path is visible in one game load instead of
+	// only surfacing as silence when that category is requested. Folder scans and
+	// folder-string categories aren't audited: their files exist by virtue of being
+	// found on disk.
+	void AuditExplicitFiles(const Config::Settings& a_settings)
+	{
+		std::size_t checked = 0;
+		std::size_t missing = 0;
+		for (const auto& slot : a_settings.slots) {
+			for (const auto& [category, files] : slot.categories) {
+				for (const auto& file : files) {
+					++checked;
+					if (!AudioEngine::ResourceExists(file)) {
+						++missing;
+						logger::warn("Missing audio: slot {} category '{}' -> '{}' (path resolves to nothing)",
+							slot.id, category, file);
+					}
+				}
+			}
+		}
+		if (missing == 0) {
+			logger::info("Audit: all {} explicit slot files resolve", checked);
+		} else {
+			logger::warn("Audit: {} of {} explicit slot files are MISSING (see warnings above)",
+				missing, checked);
+		}
 	}
 
 	std::string ResolveVoiceKey(const Config::Settings& a_settings,

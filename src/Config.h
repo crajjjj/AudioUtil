@@ -71,6 +71,18 @@ namespace Config
 		std::uint32_t soundFlags{ 0x1A };
 		std::uint32_t soundPriority{ 128 };
 
+		// 3D-position voices at the speaker (distance attenuation) vs play them
+		// flat/2D at full volume. Off makes every speaker equally audible - the
+		// player's voice is otherwise at the listener while partners attenuate
+		// with distance. Lipsync is unaffected (it uses the mouth actor, not 3D).
+		bool voice3D{ true };
+
+		// when a PlayVoice call names a channel that is still playing a line,
+		// skip the new line instead of cutting the old one off. Makes a speaker
+		// finish their line before the next starts (per-channel, so different
+		// speakers still overlap). SFX and PlayFile/PlayFolder are unaffected.
+		bool voiceNoInterrupt{ false };
+
 		bool          ppaEnabled{ true };
 		std::uint32_t ppaEventRateMs{ 2000 };
 

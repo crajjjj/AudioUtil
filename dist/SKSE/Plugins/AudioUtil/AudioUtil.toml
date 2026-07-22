@@ -11,6 +11,16 @@
 log_level = "info"            # trace | debug | info | warn | error
 sound_flags = 0x1A            # BuildSoundDataFromFile flags (experiment via DebugPlayFile)
 sound_priority = 128
+# voice_3d = true 3D-positions each voice at its speaker (distance attenuation);
+# false plays voices flat/2D at full volume so every speaker is equally audible
+# regardless of position (the player's voice is otherwise at the listener while
+# others attenuate). Lipsync is unaffected. SFX are always positioned at the actor.
+voice_3d = true
+# voice_no_interrupt = true skips a PlayVoice call whose channel is still playing
+# a line, so a speaker finishes before the next line starts (per channel; other
+# speakers still overlap). Off = a new line cuts the current one. SFX/PlayFile/
+# PlayFolder are unaffected.
+voice_no_interrupt = false
 voice_root = 'Sound\fx\AudioUtil'
 sfx_root = 'Sound\fx\AudioUtil\SFX'
 default_female_slot = "F1"
