@@ -102,6 +102,33 @@ namespace FolderCache
 				++voiceFolders;
 			}
 
+			// folder-string categories: scanned like the [sfx] table ('Sound\...' =
+			// full Data-relative path, otherwise relative to the slot's path).
+			// Loose files only - BSA-packed audio needs the file-list form above.
+			for (const auto& [category, folder] : slot.categoryDirs) {
+				const auto key = Config::Normalize(slot.id) + "/" + category;
+				if (HasKey(key)) {
+					logger::warn("Slot {}: duplicate explicit category '{}' ignored", slot.id, category);
+					continue;
+				}
+				const bool absolute = folder.size() >= 6 && _strnicmp(folder.c_str(), "sound\\", 6) == 0;
+				std::filesystem::path dir;
+				if (absolute) {
+					dir = dataRoot / folder;
+				} else if (!slot.root.empty()) {
+					dir = dataRoot / slot.root / folder;
+				} else {
+					logger::warn("Slot {} category '{}': relative folder '{}' needs the slot to have a path",
+						slot.id, category, folder);
+					continue;
+				}
+				if (ScanDir(key, dir, dataRoot)) {
+					++voiceFolders;
+				} else {
+					logger::warn("Slot {} category '{}': no audio files in {}", slot.id, category, dir.string());
+				}
+			}
+
 			if (slot.root.empty()) {
 				continue;
 			}
@@ -159,41 +186,58 @@ namespace FolderCache
 			return it->second;
 		}
 
-		const auto& aliases = a_slot.sex == 'F' ? a_settings.femaleAliases : a_settings.maleAliases;
-		const auto& fallbacks = a_slot.sex == 'F' ? a_settings.femaleFallbacks : a_settings.maleFallbacks;
+		// alias -> male_only_remap -> category-fallback resolution within one slot
+		const auto resolveInSlot = [&](const Config::Slot& a_inSlot) -> std::string {
+			const auto inSlotNorm = Config::Normalize(a_inSlot.id);
+			const auto& aliases = a_inSlot.sex == 'F' ? a_settings.femaleAliases : a_settings.maleAliases;
+			const auto& fallbacks = a_inSlot.sex == 'F' ? a_settings.femaleFallbacks : a_settings.maleFallbacks;
 
-		const auto tryCandidates = [&](std::string_view a_cat) -> std::string {
-			std::vector<std::string> candidates;
-			candidates.emplace_back(a_cat);
-			if (const auto it = aliases.find(std::string(a_cat)); it != aliases.end()) {
-				candidates.push_back(it->second);
-			}
-			if (a_slot.sex == 'M') {
-				if (const auto it = a_settings.maleOnlyRemap.find(std::string(a_cat));
-					it != a_settings.maleOnlyRemap.end()) {
+			const auto tryCandidates = [&](std::string_view a_cat) -> std::string {
+				std::vector<std::string> candidates;
+				candidates.emplace_back(a_cat);
+				if (const auto it = aliases.find(std::string(a_cat)); it != aliases.end()) {
 					candidates.push_back(it->second);
 				}
-			}
-			for (const auto& candidate : candidates) {
-				const auto key = slotNorm + "/" + candidate;
-				if (HasKey(key)) {
-					return key;
+				if (a_inSlot.sex == 'M') {
+					if (const auto it = a_settings.maleOnlyRemap.find(std::string(a_cat));
+						it != a_settings.maleOnlyRemap.end()) {
+						candidates.push_back(it->second);
+					}
+				}
+				for (const auto& candidate : candidates) {
+					const auto key = inSlotNorm + "/" + candidate;
+					if (HasKey(key)) {
+						return key;
+					}
+				}
+				return {};
+			};
+
+			std::string result = tryCandidates(catNorm);
+			if (result.empty()) {
+				if (const auto it = fallbacks.find(catNorm); it != fallbacks.end()) {
+					result = tryCandidates(it->second);
 				}
 			}
-			return {};
+			return result;
 		};
 
-		std::string resolved = tryCandidates(catNorm);
-		if (resolved.empty()) {
-			if (const auto it = fallbacks.find(catNorm); it != fallbacks.end()) {
-				resolved = tryCandidates(it->second);
+		// walk the per-slot fallback chain: a scanned pack slot backfills any
+		// category it lacks from its fallback slot (hop cap breaks cycles)
+		std::string resolved;
+		const Config::Slot* slot = &a_slot;
+		for (int hop = 0; slot != nullptr && hop < 4; ++hop) {
+			resolved = resolveInSlot(*slot);
+			if (!resolved.empty() || slot->fallbackSlot.empty()) {
+				break;
 			}
+			slot = Config::FindSlot(a_settings, slot->fallbackSlot);
 		}
 
 		g_resolveCache[cacheKey] = resolved;
 		if (resolved.empty() && !g_missLogged[cacheKey]) {
 			g_missLogged[cacheKey] = true;
-			logger::warn("No audio for slot {} category '{}' (no folder, alias, or fallback)",
+			logger::warn("No audio for slot {} category '{}' (no folder, alias, fallback, or fallback slot)",
 				a_slot.id, a_category);
 		}
 		return resolved;

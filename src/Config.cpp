@@ -152,6 +152,7 @@ namespace Config
 				Slot slot;
 				slot.id = (*table)["id"].value_or(""s);
 				slot.root = (*table)["path"].value_or(""s);
+				slot.fallbackSlot = Normalize((*table)["fallback"].value_or(""s));
 				const auto sex = (*table)["sex"].value_or(""s);
 				slot.sex = !sex.empty() && (sex[0] == 'f' || sex[0] == 'F') ? 'F' : 'M';
 				if (const auto* categories = (*table)["categories"].as_table()) {
@@ -163,10 +164,13 @@ namespace Config
 									list.push_back(*path);
 								}
 							}
+						} else if (const auto dir = catValue.value<std::string>()) {
+							// string value = one folder to scan (vs array = file list)
+							slot.categoryDirs[Normalize(catName.str())] = *dir;
 						}
 					}
 				}
-				if (slot.id.empty() || (slot.root.empty() && slot.categories.empty())) {
+				if (slot.id.empty() || (slot.root.empty() && slot.categories.empty() && slot.categoryDirs.empty())) {
 					logger::warn("Skipping [[slot]] entry with missing id, or neither path nor categories");
 					continue;
 				}

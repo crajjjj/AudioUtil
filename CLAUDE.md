@@ -66,8 +66,8 @@ xmake build release       # rebuilds the DLL first (add_deps AudioUtil), then ru
 |---|---|
 | `main.cpp` | SKSE entry point; spdlog init; registers Papyrus funcs; runs the kDataLoaded config/scan pipeline; on kPreLoadGame/kNewGame stops all audio and resets lipsync |
 | `AudioEngine` | Thin wrapper over `BuildSoundDataFromFile`; `PlayPath(dataRelPath, follow, volume[, flags, priority])` → `BSSoundHandle` |
-| `Config` | Parses `Data\SKSE\Plugins\AudioUtil\AudioUtil.toml` into a `Settings` struct (slots, resolution maps, category aliases/fallbacks, sfx table, group volumes, flags/priority, ppa + lipsync). `Normalize` (lowercase + strip non-alphanumerics), `MakeNpcKey`, `FindSlot`. Keeps prior settings on parse error |
-| `FolderCache` | Scans slot roots + sfx folders; resolves slot+category (aliases / male_only_remap / fallbacks) to a folder; shuffle-bag `PickNext` + `FileCount`. **Loose files only — cannot see into BSAs** |
+| `Config` | Parses `Data\SKSE\Plugins\AudioUtil\AudioUtil.toml` into a `Settings` struct (slots, resolution maps, category aliases/fallbacks, sfx table, group volumes, flags/priority, ppa + lipsync). A `[slot.categories]` value may be an **array** (explicit file list, BSA-capable) or a **string** (one folder to scan; `Sound\...` = full Data path, else relative to the slot's path); a slot may name a `fallback` slot consulted per-category when it resolves nothing (chain capped at 4 hops). `Normalize` (lowercase + strip non-alphanumerics), `MakeNpcKey`, `FindSlot`. Keeps prior settings on parse error |
+| `FolderCache` | Scans slot roots + per-category folder refs + sfx folders, registers explicit file lists (which win over same-named scanned folders); resolves slot+category (aliases / male_only_remap / category fallbacks, then the slot's `fallback` slot chain) to a folder; shuffle-bag `PickNext` + `FileCount`. **Scans see loose files only — BSA audio needs explicit file lists** |
 | `InstanceManager` | Owns live sound instances behind `int32` ids; per-instance IsPlaying/Stop/Duration/volume; group volume/duck/stop; channel exclusivity (`PlayOnChannel` stops previous occupant); StopAll |
 | `LipSync` | Drives MFG `Aah`/`BigAah` phonemes from a wav's amplitude envelope in sync with a playing instance (attack/release/gain/min-level). Skips non-PCM/BSA-packed audio and creatures without facegen |
 | `PPABridge` | Dynamically connects to `AccuratePenetration.dll`; per-receiver snapshot cache under a mutex; sends throttled `AudioUtilPPA_Update`/`AudioUtilPPA_End` mod events via the SKSE task interface |
@@ -124,7 +124,7 @@ dist/
 - **Master Papyrus sources live in `papyrus\Source\`.** `dist\Scripts\Source\` is a generated mirror — never edit it (pyro.lua overwrites it).
 - **CommonLibSSE-NG is a submodule** — init it before building (see [Build](#build)).
 - All key/name matching in config and API is **case- and space-insensitive** (`Config::Normalize`).
-- **Loose-file constraint:** folder scans can't see BSA-packed audio. To play from a BSA, use `PlayFile` or an explicit `[slot.categories]` file list (the engine's resource loader resolves those from BSAs). **Lipsync needs a loose PCM wav.**
+- **Loose-file constraint:** folder scans (slot roots, folder-string categories, sfx) can't see BSA-packed audio. To play from a BSA, use `PlayFile` or an explicit `[slot.categories]` file list (the engine's resource loader resolves those from BSAs). **Lipsync needs a loose PCM wav.**
 - `sound_flags` / `sound_priority` default `0x1A` / `128`. If audio is silent or not 3D-positioned, sweep values with `DebugPlayFile`.
 - Logs go to the SKSE logs dir as `AudioUtil.log`.
 - Hardcoded game paths appear in `AudioUtil.ppj`, `.vscode/tasks.json`, `scripts/pyro.lua`, and the README — override via env for other machines.

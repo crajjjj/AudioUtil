@@ -61,6 +61,28 @@ min_level = 0.04              # envelope levels below this keep the mouth closed
 #   'Sound\FX\NPC\Giant\AttackVocal\NPC_Giant_AttackVocal_01.wav',
 #   'Sound\FX\NPC\Giant\AttackVocal\NPC_Giant_AttackVocal_02.wav',
 # ]
+#
+# A category value may also be a single FOLDER (a string instead of an
+# array): that folder is scanned like any slot folder ('Sound\...' = full
+# Data-relative path, otherwise relative to the slot's path; loose files
+# only - BSAs need the file-list form). Lets several categories share one
+# pool of files without copies. Explicit categories of either form win
+# over a same-named folder found by the path scan:
+#
+# WarCry = 'Sound\fx\SomeOtherMod\shouts'
+# Rally = 'Sound\fx\SomeOtherMod\shouts'
+#
+# A slot may also name a `fallback` slot: any category that resolves to
+# nothing here (no folder, alias, or category fallback) is retried in that
+# slot, per category. Chains are allowed (capped at 4 hops). This is how a
+# scanned pack slot backfills from a stock slot - an empty pack folder means
+# every category falls through; a partial pack only the ones it lacks:
+#
+# [[slot]]
+# id = "F1"
+# sex = "female"
+# path = 'Sound\fx\AudioUtil\F1'
+# fallback = "F0"
 
 # ---------- VoiceType -> VoiceType synonyms ----------
 # Renames voicetypes you have no pack for to one you do, BEFORE the slot

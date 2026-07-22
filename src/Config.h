@@ -13,6 +13,17 @@ namespace Config
 		// These bypass the filesystem scan, so they can reference BSA-packed audio
 		// (the engine's resource loader resolves archives; directory scans cannot).
 		std::unordered_map<std::string, std::vector<std::string>> categories;
+
+		// folder-string [slot.categories] values: normalized category -> one
+		// folder to scan ('Sound\...' = full Data-relative path, otherwise
+		// relative to the slot's path). Scanned like the [sfx] table, so loose
+		// files only - BSA-packed audio needs the file-list form above.
+		std::unordered_map<std::string, std::string> categoryDirs;
+
+		// optional slot consulted per-category when this slot resolves a
+		// category to nothing - lets a scanned pack slot backfill from a stock
+		// slot (chains allowed, capped at 4 hops)
+		std::string fallbackSlot;  // normalized id; empty = none
 	};
 
 	using StringMap = std::unordered_map<std::string, std::string>;
