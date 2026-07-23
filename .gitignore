@@ -3,6 +3,7 @@ Release/
 .xmake/
 .cache/
 .vs/
+.vscode/
 compile_commands.json
 # dist/ is generated (DLL by xmake, Scripts by Pyro) — only the hand-written
 # neutral config and the overlay example templates are tracked
