@@ -131,7 +131,7 @@ namespace PPABridge
 			logger::info("PPA bridge disabled by config");
 			return;
 		}
-		g_eventRateMs.store(settings->ppaEventRateMs);
+		SetEventRateMs(settings->ppaEventRateMs);  // apply the 1 s floor here too
 
 		const auto module = REX::W32::GetModuleHandleW(PPA::kPluginDLL);
 		if (!module) {
@@ -188,6 +188,6 @@ namespace PPABridge
 
 	void SetEventRateMs(std::uint32_t a_ms)
 	{
-		g_eventRateMs.store(std::max(50u, a_ms));
+		g_eventRateMs.store(std::max(1000u, a_ms));  // 1 s floor: never firehose the Papyrus VM
 	}
 }

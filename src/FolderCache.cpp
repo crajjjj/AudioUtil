@@ -320,9 +320,19 @@ namespace FolderCache
 				folder.deck[i] = i;
 			}
 			std::shuffle(folder.deck.begin(), folder.deck.end(), g_rng);
-			// avoid immediate repeat across refills
-			if (folder.deck.back() == folder.lastPlayed) {
-				std::swap(folder.deck.back(), folder.deck.front());
+			// avoid an immediate repeat across refills. Compare the file PATH, not
+			// the deck index, so a clip listed more than once (deliberate weighting)
+			// still never plays back-to-back. Swap in the first entry that's a
+			// genuinely different clip; if every entry is the same file there's
+			// nothing else to play and a repeat is unavoidable.
+			if (folder.lastPlayed != SIZE_MAX &&
+				folder.files[folder.deck.back()] == folder.files[folder.lastPlayed]) {
+				for (auto d = folder.deck.begin(); d + 1 != folder.deck.end(); ++d) {
+					if (folder.files[*d] != folder.files[folder.lastPlayed]) {
+						std::swap(*d, folder.deck.back());
+						break;
+					}
+				}
 			}
 		}
 

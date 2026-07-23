@@ -46,7 +46,7 @@ event_rate_ms = 2000
 | Key | Type | Default | Meaning |
 |-----|------|---------|---------|
 | `enable` | bool | `true` *(internal)* | Gate the [Accurate Penetration bridge](../api/ppa.md). The **shipped neutral TOML sets `false`**; the bridge also needs the PPA plugin present. |
-| `event_rate_ms` | int | `2000` | Min interval per receiver for `AudioUtilPPA_Update` mod events. Context-bit changes still fire immediately. |
+| `event_rate_ms` | int | `2000` | Min interval per receiver for `AudioUtilPPA_Update` mod events. **Floored at 1000 ms** (values below are clamped up). Context-bit changes still fire immediately. |
 
 ## `[lipsync]`
 
@@ -140,7 +140,7 @@ WarCry = 'Sound\fx\SomeOtherMod\shouts'
 Rally = 'Sound\fx\SomeOtherMod\shouts'
 ```
 
-- **Array (file list)** — bypasses the filesystem scan, so it can reference **BSA-packed** audio (loose files still win over archives at play time).
+- **Array (file list)** — bypasses the filesystem scan, so it can reference **BSA-packed** audio (loose files still win over archives at play time). **List a file more than once to weight it** — a clip listed twice is drawn about twice as often, and the [shuffle bag](../api/index.md#file-selection-the-shuffle-bag)'s no-back-to-back guard still keeps it from playing twice in a row.
 - **String (folder)** — scanned like a slot folder; lets several categories share one pool of files without copies. Loose files only.
 
 ## Slot resolution tables

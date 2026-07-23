@@ -33,7 +33,7 @@ int Function PlayVoice(Actor akActor, string category, float volume = 1.0, strin
 Play a voice line for an actor. Resolves **which** voice pack (slot) the actor uses, then **which** folder inside it the `category` names, then shuffle-picks a wav. Returns a handle; `0` if no slot or no audio resolved.
 
 - **Slot resolution** and **category resolution** are described in full under [Voice & Category Resolution](../config/resolution.md).
-- `blockLipSync = true` plays this one line **without moving the speaker's mouth** — a per-call opt-out. For a standing "another mod owns this face" state, use [`SetLipSyncBlocked`](#setlipsyncblocked) instead.
+- `blockLipSync = true` plays this one line **without moving the speaker's mouth** — a per-call opt-out. If your mod owns the actor's face across a whole scene, pass it `true` on every line while the face is up (see [the tip under lipsync](#setlipsyncgain)).
 
 ```papyrus
 int h = AudioUtil.PlayVoice(npc, "BattleCry")
@@ -55,7 +55,7 @@ Same as `PlayVoice`, but the slot is named **explicitly** (`"F1"`, `"M4"`, `"C2"
 int Function PlaySFX(string sfxName, Actor akFollow, float volume = 1.0, string group = "sfx", string channel = "") global native
 ```
 
-Play a named SFX from the `[sfx]` table (name → folder of files). Defaults into the **`sfx` group** so SFX volume/ducking applies unless you override it.
+Play a named SFX. `sfxName` resolves **first as a category of the sfx slot** (`SFX0` by default; set via [`[general] sfx_slot`](../config/reference.md#general)), **then the flat `[sfx]` table** — so an sfx pool can use a scanned folder, an explicit file list (BSA-capable), or a folder ref, exactly like a voice category. See [SFX resolution](../config/reference.md#sfx-the-sfx-slot-sfx-table). Defaults into the **`sfx` group** so SFX volume/ducking applies unless you override it.
 
 ### `PlayFile`
 
@@ -150,7 +150,7 @@ Function StopChannel(string channel) global native
 Lipsync is also suppressed automatically for a **gagged** actor (one wearing a device configured in the TOML [`[gag]`](../config/reference.md#gag) table) — the device owns the mouth, so the DLL won't fight it. No Papyrus call needed.
 
 !!! tip "Playing nice with expression mods"
-    Only the two phonemes above are touched, and they are zeroed when the clip ends. If your mod sets phonemes itself (e.g. an expression cycler), skip your own mouth writes for an actor while `IsLipSyncActive(actor)` is `true` to avoid fighting over the jaw. If your mod fully **owns** the face (an overlay that sets its own expression), use [`SetLipSyncBlocked`](#setlipsyncblocked) instead so AudioUtil never touches that actor's mouth at all.
+    Only the two phonemes above are touched, and they are zeroed when the clip ends. If your mod sets phonemes itself (e.g. an expression cycler), skip your own mouth writes for an actor while `IsLipSyncActive(actor)` is `true` to avoid fighting over the jaw. If your mod fully **owns** the face (an overlay that sets its own expression), pass `blockLipSync = true` on the lines you play for that actor while the face is up so AudioUtil never touches its mouth (see the tip above).
 
 ### `IsLipSyncActive`
 
@@ -185,19 +185,8 @@ Function SetLipSyncGain(float gain) global native
 
 Mouth-open strength, `0.0`–`2.0` (`1.0` = envelope as-is). For MCM sliders.
 
-### `SetLipSyncBlocked`
-
-```papyrus
-Function SetLipSyncBlocked(Actor akActor, bool abBlocked, string callerMod = "") global native
-bool Function IsLipSyncBlocked(Actor akActor) global native
-```
-
-Per-actor block for mods that **take over an actor's face** (e.g. an ahegao overlay). While blocked, voice lines still **play** but never drive this actor's mouth. An active lipsync is dropped immediately **without closing the mouth** — from that moment the blocker owns the face.
-
-- **Cleared on game load.** Re-apply it from your own saved state when you load in.
-- `callerMod` — pass your mod's name; it is logged with every block/unblock so a stuck block can be traced to its owner in `AudioUtil.log`.
-
-`SetLipSyncBlocked` is the standing per-actor state; the `blockLipSync` argument on `PlayVoice` is the per-*call* opt-out. The standing block wins: while an actor is blocked, even a `blockLipSync = false` line won't move the mouth.
+!!! tip "Owning an actor's face across many lines"
+    There is no standing per-actor lipsync block. If your mod takes over an actor's face (an ahegao / expression overlay), pass **`blockLipSync = true`** on each [`PlayVoice`](#playvoice) for that actor while the face is up — decide it per call from your own face-ownership state. Because it's decided per line rather than latched, there's no state to leak or to be cleared on load, and two systems that both play lines for the same actor can't clobber each other's block. For a whole category that should never lipsync (oral SFX, climax pools), list it in [`[lipsync] block_categories`](../config/reference.md#lipsync) instead.
 
 ## Introspection
 

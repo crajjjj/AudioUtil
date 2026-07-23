@@ -1,4 +1,4 @@
-# AudioUtil — neutral default config (SFW: no voice slots or SFX defined).
+# AudioUtil — default config.
 # Native folder-based audio player: plays loose WAV files by folder path, no
 # sound-descriptor forms or ESP. All key/name matching is case- and space-
 # insensitive ("Battle Cry" == "BattleCry" == "battlecry").
@@ -27,7 +27,7 @@ pc_male_slot = ""
 
 [ppa]
 enable = false                # optional third-party PPA plugin bridge, off by default
-event_rate_ms = 2000          # min interval per receiver for AudioUtilPPA_Update events
+event_rate_ms = 2000          # min interval per receiver for AudioUtilPPA_Update events (floored at 1000)
 
 [lipsync]
 enable = true                 # amplitude-envelope mouth movement (loose PCM wav only)
@@ -36,6 +36,29 @@ attack_ms = 30                # how fast the mouth opens toward a louder level
 release_ms = 90               # how fast it closes on quiet / clip end
 min_level = 0.04              # envelope levels below this keep the mouth closed
 # block_categories = ["Slurp", "Orgasm"]   # categories that never drive the mouth (matched on requested name)
+
+[gag]
+# Gag / deepthroat / mouth-owning devices. When a speaking actor wears any
+# keyword below, two things happen automatically:
+#   1. her voice routes through her slot's `gag_slot` so a muffled clip plays
+#      instead of the clear line, and
+#   2. lipsync is suppressed - the device owns the mouth, so the DLL won't
+#      fight it.
+# If the gag slot lacks the requested category, `default_category` plays there
+# as a muffled catch-all - never silence, never a clear line.
+# Keywords are 'Plugin.esp|FormID' (hex), same form as [npc_overrides] keys.
+# A keyword whose mod you don't run is silently skipped, so leaving all of
+# these listed is harmless. enable = false turns the whole feature off.
+# enable / default_category are globals -> base-only; the keywords list is
+# ADDITIVE, so an overlay may contribute more gag markers.
+enable = true
+default_category = "GagMoan"
+keywords = [
+  'Devious Devices - Assets.esm|7EB8',   # zad_DeviousGag
+  'ZaZAnimationPack.esm|8A4D',           # zbfWornGag
+  'ZaZAnimationPack.esm|8A35',           # zbfEffectOpenMouth
+  'Toys.esm|8C2',                        # ToysEffectMouthOpen
+]
 
 [groups]                      # startup volumes per group, 0.0-1.0 (MCM overrides at runtime)
 pc_high = 1.0
@@ -46,7 +69,7 @@ sfx = 1.0
 oneshot = 1.0
 
 # ---------------------------------------------------------------------------
-# Voice slots, SFX, [gag], and the voicetype/race/category routing tables are
-# ADDITIVE content — define them in a config\*.toml overlay. See the annotated
+# Voice slots, SFX, [gag].keywords, and the voicetype/race/category routing
+# tables are ADDITIVE content — define them in a config\*.toml overlay. See the annotated
 # template in config.example\my_mod_slots.toml and the docs for the full
 # reference and resolution rules: https://crajjjj.github.io/AudioUtil/

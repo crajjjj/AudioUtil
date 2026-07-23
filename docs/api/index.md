@@ -59,7 +59,9 @@ A channel is an **exclusivity lane**. Any string; `""` = none. Starting a sound 
 
 ### File selection — the shuffle bag
 
-A category or folder with N files acts as a **shuffle bag**: random order, no repeats until the bag empties, then it reshuffles. You don't pick individual files for voice/SFX categories — AudioUtil spreads them out for you.
+A category or folder with N files acts as a **shuffle bag**: random order, no repeats until the bag empties, then it reshuffles. You don't pick individual files for voice/SFX categories — AudioUtil spreads them out for you. The reshuffle also guards the **seam** between bags — the first clip of a fresh bag is never the same file that just played, so you never hear a back-to-back repeat.
+
+**Weighting by duplication.** In an explicit `[slot.categories]` file list you can list the same file more than once to make it more likely — a clip listed twice is drawn about twice as often. The no-back-to-back guard compares the file *path*, not the list position, so a weighted clip still never plays twice in a row (unless it's the *only* distinct file in the pool, where a repeat is unavoidable).
 
 ### 3D positioning
 

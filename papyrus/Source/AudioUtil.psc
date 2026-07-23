@@ -58,12 +58,19 @@ bool Function ReloadConfig() global native
 ;
 ; Category resolution inside the slot:
 ;   exact folder -> [category_aliases] -> [male_only_remap] (male slots) ->
-;   [category_fallbacks] (one hop) -> [sfx] table as a last resort.
+;   [category_fallbacks] (one hop) -> the slot's `fallback` slot (retried per
+;   category, up to 4 hops) -> [sfx] table as a last resort.
+; If the actor is gagged (wears a [gag] keyword) and the slot names a gag_slot,
+; resolution runs in that muffled slot instead, with [gag] default_category as
+; the catch-all.
 ;
 ; category is case- and space-insensitive ("Battle Cry" == "BattleCry").
-; blockLipSync=true plays this one line without moving the speaker's mouth
-; (per-call opt-out; for a standing "another mod owns this face" state use
-; SetLipSyncBlocked instead).
+; blockLipSync=true plays this one line without moving the speaker's mouth.
+; If your mod owns an actor's face across many lines (an ahegao / expression
+; overlay), pass blockLipSync=true on each PlayVoice for that actor while the
+; face is up - decide it per call from your own face-ownership state; there is
+; no standing per-actor block in the API. Categories listed in [lipsync]
+; block_categories never drive the mouth even when blockLipSync=false.
 ; Returns a handle (see CONCEPTS); 0 if no slot or no audio resolved.
 int Function PlayVoice(Actor akActor, string category, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false) global native
 
@@ -72,8 +79,11 @@ int Function PlayVoice(Actor akActor, string category, float volume = 1.0, strin
 ; already decided the voice. akFollow only provides the 3D position.
 int Function PlayVoiceFromSlot(string slot, string category, Actor akFollow, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false) global native
 
-; Play a named SFX from the [sfx] table (name -> folder of files). Defaults
-; into the "sfx" group so SFX volume/ducking applies unless overridden.
+; Play a named SFX. sfxName resolves first as a category of the sfx slot
+; ("SFX0" by default; set via [general] sfx_slot), then the flat [sfx] table -
+; so an sfx pool can use a scanned folder, an explicit file list (BSA-capable),
+; or a folder ref, exactly like a voice category. Defaults into the "sfx" group
+; so SFX volume/ducking applies unless overridden.
 int Function PlaySFX(string sfxName, Actor akFollow, float volume = 1.0, string group = "sfx", string channel = "") global native
 
 ; Play one specific file. Path is relative to Data\ ('Sound\fx\MyMod\a.wav')
@@ -158,16 +168,6 @@ bool Function IsLipSyncEnabled() global native
 ; Mouth-open strength, 0.0-2.0 (1.0 = envelope as-is). For MCM sliders.
 Function SetLipSyncGain(float gain) global native
 
-; Per-actor block for mods that take over an actor's face (e.g. an ahegao
-; overlay): while blocked, voice lines still play but never drive this actor's
-; mouth. An active lipsync is dropped immediately WITHOUT closing the mouth -
-; from that moment the blocker owns the face. Cleared on game load, so re-apply
-; it from your own saved state when you load in.
-; callerMod: pass your mod's name - it is logged with every block/unblock so a
-; stuck block can be traced to its owner in AudioUtil.log.
-Function SetLipSyncBlocked(Actor akActor, bool abBlocked, string callerMod = "") global native
-bool Function IsLipSyncBlocked(Actor akActor) global native
-
 ; ===================== NATIVE — introspection =====================
 
 ; Which slot id PlayVoice would resolve for this actor right now ("M4",
@@ -222,8 +222,8 @@ EndFunction
 
 ; PlayVoice, then block until the line finishes. Same arguments and
 ; resolution as PlayVoice; discards the handle.
-Function PlayVoiceAndWait(Actor akActor, string category, float volume = 1.0, string group = "", string channel = "") global
-    int h = PlayVoice(akActor, category, volume, group, channel)
+Function PlayVoiceAndWait(Actor akActor, string category, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false) global
+    int h = PlayVoice(akActor, category, volume, group, channel, blockLipSync)
     WaitForHandle(h)
 EndFunction
 
@@ -235,10 +235,10 @@ EndFunction
 
 ; Drop-in equivalent of a legacy PlaySound(Sound form, Actor, wait) helper:
 ; category string instead of a Sound form, optional blocking.
-Function Play(string category, Actor akActor, bool waitForCompletion = true, float volume = 1.0, string group = "", string channel = "") global
+Function Play(string category, Actor akActor, bool waitForCompletion = true, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false) global
     if waitForCompletion
-        PlayVoiceAndWait(akActor, category, volume, group, channel)
+        PlayVoiceAndWait(akActor, category, volume, group, channel, blockLipSync)
     else
-        PlayVoice(akActor, category, volume, group, channel)
+        PlayVoice(akActor, category, volume, group, channel, blockLipSync)
     endif
 EndFunction

@@ -480,22 +480,6 @@ namespace PapyrusAPI
 			LipSync::SetGain(a_gain);
 		}
 
-		void SetLipSyncBlocked(RE::StaticFunctionTag*, RE::Actor* a_actor, bool a_blocked,
-			RE::BSFixedString a_callerMod)
-		{
-			if (a_actor) {
-				logger::info("SetLipSyncBlocked: {} '{}' ({:08X}) by '{}'",
-					a_blocked ? "block" : "unblock", a_actor->GetDisplayFullName(),
-					a_actor->GetFormID(), a_callerMod.c_str());
-				LipSync::SetBlockedFor(a_actor, a_blocked);
-			}
-		}
-
-		bool IsLipSyncBlocked(RE::StaticFunctionTag*, RE::Actor* a_actor)
-		{
-			return a_actor && LipSync::IsBlockedFor(a_actor);
-		}
-
 		// ---------- natives: PPA ----------
 
 		// bound under the separate AudioUtilPPA script: the bridge is an optional
@@ -635,8 +619,6 @@ namespace PapyrusAPI
 		REGISTERFUNC(SetLipSyncEnabled, SCRIPT_NAME);
 		REGISTERFUNC(IsLipSyncEnabled, SCRIPT_NAME);
 		REGISTERFUNC(SetLipSyncGain, SCRIPT_NAME);
-		REGISTERFUNC(SetLipSyncBlocked, SCRIPT_NAME);
-		REGISTERFUNC(IsLipSyncBlocked, SCRIPT_NAME);
 		REGISTERFUNC(GetSlotForActor, SCRIPT_NAME);
 		REGISTERFUNC(GetCategoryFileCount, SCRIPT_NAME);
 		REGISTERFUNC(CategoryExists, SCRIPT_NAME);

@@ -48,7 +48,7 @@ bool Function IsConnected() global native
 Function SetEventRate(int milliseconds) global native
 ```
 
-Throttle for `AudioUtilPPA_Update` events per receiver (default from the TOML `event_rate_ms`). Lower = more responsive motion sync, more Papyrus load.
+Throttle for `AudioUtilPPA_Update` events per receiver (default from the TOML `event_rate_ms`). Lower = more responsive motion sync, more Papyrus load. **Floored at 1000 ms** — smaller values (and `≤ 0`) are clamped up to keep the per-frame firehose off the Papyrus VM.
 
 ### `GetContext`
 
