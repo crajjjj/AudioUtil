@@ -19,10 +19,10 @@ namespace LipSync
 
 		constexpr auto TICK = std::chrono::milliseconds(15);
 		constexpr auto AUDIBLE_TIMEOUT = std::chrono::milliseconds(2500);
-		// how often a live entry re-checks the actor for a gag device (equipping
-		// one mid-line hands the mouth to the device); too cheap to walk worn
-		// items every 15ms tick, so throttle it
-		constexpr auto GAG_RECHECK = std::chrono::milliseconds(500);
+		// how often a live entry re-checks whether something else has taken over
+		// the actor's mouth mid-line — a gag device equipped, or a dialogue
+		// started. Walking worn items every 15ms tick is too heavy, so throttle it.
+		constexpr auto HANDOVER_RECHECK = std::chrono::milliseconds(500);
 
 		// ---------- amplitude envelope ----------
 
@@ -211,7 +211,7 @@ namespace LipSync
 			RE::BSSoundHandle handle;
 			std::chrono::steady_clock::time_point createdAt;
 			std::chrono::steady_clock::time_point audibleAt;
-			std::chrono::steady_clock::time_point gagCheckAt;  // next worn-gag re-check
+			std::chrono::steady_clock::time_point handoverCheckAt;  // next gag/dialogue re-check
 			bool  audible = false;
 			bool  stopping = false;
 			bool  drove = false;  // wrote a non-zero phoneme → zero the mouth on removal
@@ -227,6 +227,7 @@ namespace LipSync
 		std::mutex&                     g_entriesLock = *new std::mutex();
 
 		std::atomic<bool>  g_enabled{ true };
+		std::atomic<bool>  g_blockInDialogue{ true };
 		std::atomic<float> g_gain{ 1.0f };
 		std::atomic<float> g_attackTau{ 0.03f };
 		std::atomic<float> g_releaseTau{ 0.09f };
@@ -252,6 +253,20 @@ namespace LipSync
 			}
 		}
 
+		// true while the player is in a dialogue with this actor: the game's own
+		// dialogue/voice system drives the speaker's mouth from the real voice
+		// file, so AudioUtil must not fight it. `speaker` self-clears when the
+		// dialogue menu closes (the still-talking tail moves to `lastSpeaker`).
+		bool IsInDialogue(RE::Actor* a_actor)
+		{
+			auto* topicManager = RE::MenuTopicManager::GetSingleton();
+			if (!topicManager) {
+				return false;
+			}
+			const auto speaker = topicManager->speaker.get();
+			return speaker && speaker->GetFormID() == a_actor->GetFormID();
+		}
+
 		// main thread (SKSE task): advance every entry and write the phonemes
 		void ApplyAll()
 		{
@@ -273,13 +288,15 @@ namespace LipSync
 					return true;  // face is gone with the 3D; nothing to restore
 				}
 
-				// gag-guard: a gag device equipped mid-line owns the mouth, so
-				// hand it over rather than fighting it (flicker). Throttled - the
-				// worn-item walk is too heavy to run every tick. Drop the entry
-				// without zeroing so the device's face stays put.
-				if (now >= a_entry.gagCheckAt) {
-					a_entry.gagCheckAt = now + GAG_RECHECK;
-					if (GagState::IsGagged(actor)) {
+				// hand-over guard: if a gag device is equipped or a dialogue starts
+				// mid-line, that system owns the mouth now, so drop the entry rather
+				// than fighting it (flicker). Throttled - the worn-item walk is too
+				// heavy to run every tick. Drop without zeroing so the new owner's
+				// face stays put.
+				if (now >= a_entry.handoverCheckAt) {
+					a_entry.handoverCheckAt = now + HANDOVER_RECHECK;
+					if (GagState::IsGagged(actor) ||
+						(g_blockInDialogue.load() && IsInDialogue(actor))) {
 						return true;
 					}
 				}
@@ -370,6 +387,11 @@ namespace LipSync
 		if (GagState::IsGagged(a_actor)) {
 			return;
 		}
+		// in a dialogue with the player the game drives the mouth from the real
+		// voice file; stay off it (toggle: [lipsync] block_in_dialogue)
+		if (g_blockInDialogue.load() && IsInDialogue(a_actor)) {
+			return;
+		}
 		const auto envelope = GetEnvelope(a_dataRelPath);
 		if (!envelope || envelope->durationSec < 0.05f) {
 			return;
@@ -383,7 +405,7 @@ namespace LipSync
 		entry.env = envelope;
 		entry.handle = a_handle;
 		entry.createdAt = now;
-		entry.gagCheckAt = now + GAG_RECHECK;  // checked just above; next re-check later
+		entry.handoverCheckAt = now + HANDOVER_RECHECK;  // checked just above; next re-check later
 
 		EnsureTicker();
 		{
@@ -470,6 +492,7 @@ namespace LipSync
 		g_attackTau.store(static_cast<float>(settings->lipsyncAttackMs) / 1000.0f);
 		g_releaseTau.store(static_cast<float>(settings->lipsyncReleaseMs) / 1000.0f);
 		g_minLevel.store(settings->lipsyncMinLevel);
+		g_blockInDialogue.store(settings->lipsyncBlockInDialogue);
 		SetEnabled(settings->lipsyncEnabled);
 	}
 

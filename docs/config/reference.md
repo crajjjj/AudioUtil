@@ -57,6 +57,7 @@ gain = 1.0                    # 0.0-2.0 mouth-open strength
 attack_ms = 30                # how fast the mouth opens toward a louder level
 release_ms = 90               # how fast it closes on quiet / clip end
 min_level = 0.04              # envelope levels below this keep the mouth closed
+block_in_dialogue = true      # never lipsync an actor while they talk to the player
 block_categories = ["BlowjobActionSoft", "Orgasm"]   # never drive the mouth
 ```
 
@@ -67,6 +68,7 @@ block_categories = ["BlowjobActionSoft", "Orgasm"]   # never drive the mouth
 | `attack_ms` | int | `30` | Opening speed toward a louder level. |
 | `release_ms` | int | `90` | Closing speed on quiet / clip end. |
 | `min_level` | float | `0.04` | Envelope levels below this keep the mouth closed. |
+| `block_in_dialogue` | bool | `true` | Suppress lipsync for an actor while they're **in a dialogue with the player** — the game's own dialogue/voice system drives that mouth from the real voice file, so AudioUtil stays off it to avoid fighting. Checked when the line starts and re-checked on a 500 ms throttle, so a conversation started mid-line hands the mouth back. |
 | `block_categories` | string list | *(none)* | Requested categories that **never** drive lipsync — the line plays mouth-still. Matched on the requested name (normalized), before aliasing, across every slot. For pools that aren't vocalization (oral SFX / slurping) or where another system owns the mouth (a climax/ahegao face). Same effect as passing `blockLipSync=true` to [`PlayVoice`](../api/audioutil.md#playvoice), but declared once in config. |
 
 Runtime overrides: [`SetLipSyncEnabled`](../api/audioutil.md#setlipsyncenabled-islipsyncenabled) / [`SetLipSyncGain`](../api/audioutil.md#setlipsyncgain). `ReloadConfig` restores these TOML values.

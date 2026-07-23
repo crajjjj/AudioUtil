@@ -165,6 +165,7 @@ namespace Config
 				settings->lipsyncAttackMs = (*lipsync)["attack_ms"].value_or(settings->lipsyncAttackMs);
 				settings->lipsyncReleaseMs = (*lipsync)["release_ms"].value_or(settings->lipsyncReleaseMs);
 				settings->lipsyncMinLevel = (*lipsync)["min_level"].value_or(settings->lipsyncMinLevel);
+				settings->lipsyncBlockInDialogue = (*lipsync)["block_in_dialogue"].value_or(settings->lipsyncBlockInDialogue);
 				if (const auto* blocked = (*lipsync)["block_categories"].as_array()) {
 					for (const auto& entry : *blocked) {
 						if (const auto cat = entry.value<std::string>()) {

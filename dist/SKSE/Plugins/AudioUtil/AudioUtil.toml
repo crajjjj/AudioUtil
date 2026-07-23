@@ -35,6 +35,7 @@ gain = 1.0                    # 0.0-2.0 mouth-open strength
 attack_ms = 30                # how fast the mouth opens toward a louder level
 release_ms = 90               # how fast it closes on quiet / clip end
 min_level = 0.04              # envelope levels below this keep the mouth closed
+block_in_dialogue = true      # don't lipsync an actor while they're in a dialogue with the player (the game drives that mouth)
 # block_categories = ["Slurp", "Orgasm"]   # categories that never drive the mouth (matched on requested name)
 
 [gag]

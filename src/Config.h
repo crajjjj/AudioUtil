@@ -114,6 +114,11 @@ namespace Config
 		std::uint32_t lipsyncAttackMs{ 30 };
 		std::uint32_t lipsyncReleaseMs{ 90 };
 		float         lipsyncMinLevel{ 0.04f };
+		// when the speaker is in a dialogue with the player, the game's own
+		// dialogue/voice system drives their mouth from the real voice file, so
+		// AudioUtil stays off it (default true). Checked at Start and re-checked
+		// mid-line, like the gag guard.
+		bool          lipsyncBlockInDialogue{ true };
 		// requested categories that never drive lipsync — the line plays mouth-still.
 		// For pools that aren't vocalization (oral sfx: slurping) or where another
 		// system owns the mouth (a climax/ahegao face). Matched on the REQUESTED
