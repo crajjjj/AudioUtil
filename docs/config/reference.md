@@ -17,6 +17,8 @@ default_female_slot = "F1"
 default_male_slot = "M1"
 pc_female_slot = ""           # reserved player slot; empty = no reservation
 pc_male_slot = ""
+voice_3d = true               # 3D-position voices at the speaker; false = flat/2D
+voice_no_interrupt = false    # skip a new line while its channel is still playing
 ```
 
 | Key | Type | Default | Meaning |
@@ -30,6 +32,8 @@ pc_male_slot = ""
 | `default_male_slot` | slot id | `"M1"` | Slot for unrouted male actors (and creatures). |
 | `pc_female_slot` | slot id | `""` | Reserved for the player; no NPC ever resolves to it. |
 | `pc_male_slot` | slot id | `""` | Same, for a male PC. |
+| `voice_3d` | bool | `true` | `true` = 3D-position each voice at the speaker (distance attenuation). `false` = play flat/2D at full volume so every speaker is equally audible. Lipsync is unaffected either way. |
+| `voice_no_interrupt` | bool | `false` | `true` = when a `PlayVoice` names a channel still playing a line, skip the new line instead of cutting the old one off (per channel — different speakers still overlap). SFX and `PlayFile`/`PlayFolder` are unaffected. |
 
 ## `[ppa]`
 
@@ -65,6 +69,33 @@ min_level = 0.04              # envelope levels below this keep the mouth closed
 
 Runtime overrides: [`SetLipSyncEnabled`](../api/audioutil.md#setlipsyncenabled-islipsyncenabled) / [`SetLipSyncGain`](../api/audioutil.md#setlipsyncgain). `ReloadConfig` restores these TOML values.
 
+Lipsync is **suppressed automatically for a gagged actor** — when the speaker wears a device configured in [`[gag]`](#gag), the device owns the mouth and the DLL won't drive it (checked when the line starts and re-checked on a 500 ms throttle, so a gag equipped mid-line hands the mouth over). No mouth-open threshold to tune.
+
+## `[gag]`
+
+Gag / deepthroat / mouth-owning devices. When a speaking actor wears any configured keyword, AudioUtil (1) routes their voice through the slot's [`gag_slot`](#slot) so a muffled clip plays instead of the clear line, and (2) suppresses lipsync (see above). Detection is **native** — the DLL reads the actor's worn items, no Papyrus wiring.
+
+Dormant unless `keywords` is set, so the SFW-neutral default is unaffected.
+
+```toml
+[gag]
+enable = true
+default_category = "GagMoan"     # muffled catch-all for categories the gag slot lacks
+keywords = [                     # 'Plugin.esp|FormID' (hex), like [npc_overrides] keys
+  'Devious Devices - Assets.esm|7EB8',
+  'ZaZAnimationPack.esm|8A4D',
+  'Toys.esm|8C2',
+]
+```
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `enable` | bool | `true` | Master switch. Feature is also inert while `keywords` is empty. |
+| `default_category` | category | `""` | Played from the gag slot when the requested category has no audio there — a muffled catch-all so a gagged actor never leaks a clear line (and never falls silent). Empty = no catch-all. |
+| `keywords` | list of `'Plugin.esp\|FormID'` | *(none)* | Worn keywords that mark an actor as gagged. Hex form id, `0x` optional; same format as `[npc_overrides]` keys. A keyword whose plugin isn't in the load order is **skipped** (one `debug` line), so listing optional mods is harmless. |
+
+See [Resolution → gag redirect](resolution.md#gag_slot-muffled-voice-when-gagged) for how the redirect interacts with the category chain.
+
 ## `[[slot]]`
 
 An array of tables — one per voice pack. See [Overview → three ways](index.md#a-slot-can-get-its-files-three-ways) and [Resolution](resolution.md#fallback-backfill-from-another-slot).
@@ -75,6 +106,7 @@ id = "M4"
 sex = "male"                  # "male" | "female"
 path = 'Sound\fx\MyMod\M4'    # scanned for <Category>\*.wav subfolders
 fallback = "M1"               # optional: backfill empty categories from this slot
+gag_slot = "M4gag"            # optional: muffled parallel slot used when gagged
 ```
 
 | Key | Type | Meaning |
@@ -83,6 +115,7 @@ fallback = "M1"               # optional: backfill empty categories from this sl
 | `sex` | string | `"male"` or `"female"`. Creatures read as male. |
 | `path` | path | Folder scanned for `<Category>\*.wav` subfolders. Optional if the slot is defined purely by explicit categories. Loose files only. |
 | `fallback` | slot id | Optional. Per-category backfill slot when a category resolves to nothing here. Chains capped at **4 hops**. |
+| `gag_slot` | slot id | Optional. A parallel slot (another `[[slot]]`, same category names, muffled audio) used **instead of this one** when the speaking actor is gagged. See [`[gag]`](#gag). |
 | `[slot.categories]` | table | Optional explicit categories (below). Win over same-named scanned folders. |
 
 ### `[slot.categories]` — explicit categories

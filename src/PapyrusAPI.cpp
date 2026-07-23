@@ -3,6 +3,7 @@
 #include "AudioEngine.h"
 #include "Config.h"
 #include "FolderCache.h"
+#include "GagState.h"
 #include "InstanceManager.h"
 #include "LipSync.h"
 #include "PPABridge.h"
@@ -172,6 +173,26 @@ namespace PapyrusAPI
 			return nullptr;
 		}
 
+		// resolve (slot, category) to a folder key, applying gag routing: when the
+		// actor is gagged and the slot has a gag_slot, the category resolves from
+		// the gag slot instead; if that category is absent there, the muffled
+		// gagDefaultCategory plays rather than leaking the clear line.
+		std::string ResolveGaggedKey(const Config::Settings& a_settings,
+			const Config::Slot& a_slot, std::string_view a_category, RE::Actor* a_actor)
+		{
+			const Config::Slot* slot = &a_slot;
+			if (a_settings.gagEnabled && !a_slot.gagSlot.empty() && GagState::IsGagged(a_actor)) {
+				if (const auto* gagSlot = Config::FindSlot(a_settings, a_slot.gagSlot)) {
+					slot = gagSlot;
+				}
+			}
+			auto key = FolderCache::ResolveVoiceKey(a_settings, *slot, a_category);
+			if (key.empty() && slot != &a_slot && !a_settings.gagDefaultCategory.empty()) {
+				key = FolderCache::ResolveVoiceKey(a_settings, *slot, a_settings.gagDefaultCategory);
+			}
+			return key;
+		}
+
 		// ---------- shared play helper ----------
 
 		// a_mouth: actor whose lips follow the clip's amplitude (voice calls pass
@@ -217,6 +238,7 @@ namespace PapyrusAPI
 		{
 			const bool ok = Config::Load();
 			FolderCache::Rebuild();
+			GagState::Resolve(*Config::Get());
 			InstanceManager::ApplyConfigGroupVolumes();
 			LipSync::ApplyConfig();
 			PPABridge::SetEventRateMs(Config::Get()->ppaEventRateMs);
@@ -233,7 +255,7 @@ namespace PapyrusAPI
 				logger::warn("PlayVoice: no slot resolvable for actor");
 				return 0;
 			}
-			auto key = FolderCache::ResolveVoiceKey(*settings, *slot, a_category.c_str());
+			auto key = ResolveGaggedKey(*settings, *slot, a_category.c_str(), a_actor);
 			if (key.empty()) {
 				// last resort: non-voice scene sounds (PullOutGape, Smack, ...) live in the sfx table
 				const auto sfxKey = "sfx/" + Config::Normalize(a_category.c_str());
@@ -263,7 +285,7 @@ namespace PapyrusAPI
 				logger::warn("PlayVoiceFromSlot: unknown slot '{}'", a_slot.c_str());
 				return 0;
 			}
-			const auto key = FolderCache::ResolveVoiceKey(*settings, *slot, a_category.c_str());
+			const auto key = ResolveGaggedKey(*settings, *slot, a_category.c_str(), a_follow);
 			if (settings->voiceNoInterrupt && a_channel.length() > 0 &&
 				InstanceManager::IsChannelBusy(a_channel.c_str())) {
 				return 0;

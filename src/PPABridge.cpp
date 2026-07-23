@@ -21,8 +21,14 @@ namespace PPABridge
 		std::atomic<bool>       g_connected{ false };
 		std::atomic<std::uint32_t> g_eventRateMs{ 2000 };
 
-		std::unordered_map<std::uint32_t, ReceiverState> g_receivers;  // native actor handle -> state
-		std::mutex g_lock;
+		// Leaked on purpose: PPA's listener thread calls OnAnimationUpdate and can
+		// fire during static teardown at game exit. Heap objects that are never
+		// freed stay valid for the callback's whole lifetime (no crash-on-exit).
+		// Usages below are unchanged. (g_api/g_listener/g_connected/g_eventRateMs
+		// are trivially destructible, so they don't need this.)
+		std::unordered_map<std::uint32_t, ReceiverState>& g_receivers =
+			*new std::unordered_map<std::uint32_t, ReceiverState>();  // native actor handle -> state
+		std::mutex& g_lock = *new std::mutex();
 
 		std::uint64_t NowMs()
 		{

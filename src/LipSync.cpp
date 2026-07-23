@@ -1,6 +1,7 @@
 #include "LipSync.h"
 
 #include "Config.h"
+#include "GagState.h"
 
 #include <cmath>
 #include <condition_variable>
@@ -18,6 +19,10 @@ namespace LipSync
 
 		constexpr auto TICK = std::chrono::milliseconds(15);
 		constexpr auto AUDIBLE_TIMEOUT = std::chrono::milliseconds(2500);
+		// how often a live entry re-checks the actor for a gag device (equipping
+		// one mid-line hands the mouth to the device); too cheap to walk worn
+		// items every 15ms tick, so throttle it
+		constexpr auto GAG_RECHECK = std::chrono::milliseconds(500);
 
 		// ---------- amplitude envelope ----------
 
@@ -206,15 +211,21 @@ namespace LipSync
 			RE::BSSoundHandle handle;
 			std::chrono::steady_clock::time_point createdAt;
 			std::chrono::steady_clock::time_point audibleAt;
+			std::chrono::steady_clock::time_point gagCheckAt;  // next worn-gag re-check
 			bool  audible = false;
 			bool  stopping = false;
 			bool  drove = false;  // wrote a non-zero phoneme → zero the mouth on removal
 			float current = 0.0f;
 		};
 
-		std::vector<Entry> g_entries;
-		std::unordered_set<RE::FormID> g_blocked;  // guarded by g_entriesLock
-		std::mutex g_entriesLock;
+		// Leaked on purpose: the detached ticker thread (EnsureTicker) runs until
+		// the process dies, so it can still touch this state during static teardown
+		// at game exit. Binding each name to a heap object that is never freed keeps
+		// them valid for the thread's whole lifetime (no use-after-destruction
+		// crash-on-exit). All usages below are unchanged - still plain references.
+		std::vector<Entry>&             g_entries = *new std::vector<Entry>();
+		std::unordered_set<RE::FormID>& g_blocked = *new std::unordered_set<RE::FormID>();  // guarded by g_entriesLock
+		std::mutex&                     g_entriesLock = *new std::mutex();
 
 		std::atomic<bool>  g_enabled{ true };
 		std::atomic<float> g_gain{ 1.0f };
@@ -224,7 +235,7 @@ namespace LipSync
 
 		std::atomic<bool> g_applyPending{ false };
 		std::once_flag    g_tickerOnce;
-		std::condition_variable g_cv;
+		std::condition_variable& g_cv = *new std::condition_variable();  // leaked, see g_entries above
 
 		std::chrono::steady_clock::time_point g_lastApply;  // main thread only
 
@@ -261,6 +272,17 @@ namespace LipSync
 				auto*      actor = actorPtr.get();
 				if (!actor || !actor->Get3D()) {
 					return true;  // face is gone with the 3D; nothing to restore
+				}
+
+				// gag-guard: a gag device equipped mid-line owns the mouth, so
+				// hand it over rather than fighting it (flicker). Throttled - the
+				// worn-item walk is too heavy to run every tick. Drop the entry
+				// without zeroing so the device's face stays put.
+				if (now >= a_entry.gagCheckAt) {
+					a_entry.gagCheckAt = now + GAG_RECHECK;
+					if (GagState::IsGagged(actor)) {
+						return true;
+					}
 				}
 
 				float target = 0.0f;
@@ -321,10 +343,16 @@ namespace LipSync
 							g_cv.wait(lock, []() { return !g_entries.empty(); });
 						}
 						if (!g_applyPending.exchange(true)) {
-							SKSE::GetTaskInterface()->AddTask([]() {
-								ApplyAll();
+							// null during very early load / teardown; reset the flag so
+							// the loop isn't wedged waiting for a task that never queued
+							if (auto* task = SKSE::GetTaskInterface()) {
+								task->AddTask([]() {
+									ApplyAll();
+									g_applyPending.store(false);
+								});
+							} else {
 								g_applyPending.store(false);
-							});
+							}
 						}
 						std::this_thread::sleep_for(TICK);
 					}
@@ -339,18 +367,24 @@ namespace LipSync
 		if (!g_enabled.load() || !a_actor || !a_handle.IsValid()) {
 			return;
 		}
+		// a gagged actor's mouth belongs to the device - don't lipsync over it
+		if (GagState::IsGagged(a_actor)) {
+			return;
+		}
 		const auto envelope = GetEnvelope(a_dataRelPath);
 		if (!envelope || envelope->durationSec < 0.05f) {
 			return;
 		}
 
+		const auto now = std::chrono::steady_clock::now();
 		Entry entry;
 		entry.actor = a_actor->GetHandle();
 		entry.actorID = a_actor->GetFormID();
 		entry.instanceId = a_instanceId;
 		entry.env = envelope;
 		entry.handle = a_handle;
-		entry.createdAt = std::chrono::steady_clock::now();
+		entry.createdAt = now;
+		entry.gagCheckAt = now + GAG_RECHECK;  // checked just above; next re-check later
 
 		EnsureTicker();
 		{

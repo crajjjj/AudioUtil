@@ -24,6 +24,19 @@ namespace Config
 		// category to nothing - lets a scanned pack slot backfill from a stock
 		// slot (chains allowed, capped at 4 hops)
 		std::string fallbackSlot;  // normalized id; empty = none
+
+		// optional muffled parallel slot used instead of this one when the
+		// speaking actor is gagged (see [gag]). Same category names, gagged
+		// audio. Empty = this slot has no gagged variant.
+		std::string gagSlot;  // normalized id; empty = none
+	};
+
+	// a worn keyword that marks an actor as gagged, resolved from a plugin +
+	// local form id at load (e.g. "Devious Devices - Assets.esm|7EB8")
+	struct GagKeyword
+	{
+		std::string   plugin;
+		std::uint32_t localID{ 0 };
 	};
 
 	using StringMap = std::unordered_map<std::string, std::string>;
@@ -92,6 +105,17 @@ namespace Config
 		std::uint32_t lipsyncAttackMs{ 30 };
 		std::uint32_t lipsyncReleaseMs{ 90 };
 		float         lipsyncMinLevel{ 0.04f };
+		// note: a gagged actor's lipsync is suppressed via [gag] device detection
+		// (see GagState), not an MFG mouth-open threshold.
+
+		// gagged-voice routing: when a speaking actor wears any of gagKeywords,
+		// a slot's voice resolves from its gag_slot instead. If the gag slot
+		// lacks the requested category, gagDefaultCategory (a muffled catch-all)
+		// plays there rather than leaking the clear line. Dormant with no
+		// keywords configured, so the SFW-neutral default is unaffected.
+		bool                    gagEnabled{ true };
+		std::string             gagDefaultCategory;  // normalized; empty = none
+		std::vector<GagKeyword> gagKeywords;
 	};
 
 	// lowercase + strip non-alphanumerics: "About To Cum" == "AboutToCum" == "abouttocum"

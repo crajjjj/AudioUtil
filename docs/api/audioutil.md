@@ -147,6 +147,8 @@ Function StopChannel(string channel) global native
 
 `PlayVoice` / `PlayVoiceFromSlot` automatically move the speaking actor's mouth in sync with the clip's loudness: the DLL reads the wav's amplitude envelope and drives the MFG `Aah` / `BigAah` phonemes per frame. Works for **loose PCM wav files**; xwm or BSA-packed audio plays normally but skips the mouth. Configure defaults in the TOML `[lipsync]` table.
 
+Lipsync is also suppressed automatically for a **gagged** actor (one wearing a device configured in the TOML [`[gag]`](../config/reference.md#gag) table) — the device owns the mouth, so the DLL won't fight it. No Papyrus call needed.
+
 !!! tip "Playing nice with expression mods"
     Only the two phonemes above are touched, and they are zeroed when the clip ends. If your mod sets phonemes itself (e.g. an expression cycler), skip your own mouth writes for an actor while `IsLipSyncActive(actor)` is `true` to avoid fighting over the jaw. If your mod fully **owns** the face (an overlay that sets its own expression), use [`SetLipSyncBlocked`](#setlipsyncblocked) instead so AudioUtil never touches that actor's mouth at all.
 

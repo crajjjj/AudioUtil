@@ -93,6 +93,39 @@ min_level = 0.04              # envelope levels below this keep the mouth closed
 # sex = "female"
 # path = 'Sound\fx\AudioUtil\F1'
 # fallback = "F0"
+#
+# A slot may also name a `gag_slot`: when the speaking actor is gagged (see
+# [gag] below), that slot's voice resolves from the gag slot instead - a
+# parallel folder tree of the same categories with muffled audio. The gag
+# slot is a normal [[slot]] and can carry its own `fallback`:
+#
+# [[slot]]
+# id = "F1"
+# sex = "female"
+# path = 'Sound\fx\AudioUtil\F1'
+# gag_slot = "F1gag"
+#
+# [[slot]]
+# id = "F1gag"
+# sex = "female"
+# path = 'Sound\fx\IVDT\F1'   # muffled parallel pack
+
+# ---------- gagged voice ----------
+# When a speaking actor wears any of the keywords below, PlayVoice /
+# PlayVoiceFromSlot route through the slot's `gag_slot` (muffled audio) instead
+# of the clear voice. If the gag slot lacks the requested category,
+# `default_category` plays there as a catch-all so a gagged actor never leaks a
+# clear line. Detection reads the actor's worn items natively - no Papyrus
+# wiring. Dormant unless `keywords` is set, so the SFW-neutral default is unaffected.
+# [gag]
+# enable = true
+# default_category = "Moan"        # muffled catch-all for missing gag categories
+# keywords = [                     # 'Plugin.esp|FormID' (hex), like [npc_overrides] keys
+#   'Devious Devices - Assets.esm|7EB8',   # zad_DeviousGag
+#   'ZaZAnimationPack.esm|8A4D',           # zbfWornGag
+#   'ZaZAnimationPack.esm|8A35',           # zbfEffectOpenMouth
+#   'Toys.esm|8C2',                        # ToysEffectMouthOpen
+# ]
 
 # ---------- VoiceType -> VoiceType synonyms ----------
 # Renames voicetypes you have no pack for to one you do, BEFORE the slot

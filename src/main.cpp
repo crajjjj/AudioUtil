@@ -3,6 +3,7 @@
 
 #include "Config.h"
 #include "FolderCache.h"
+#include "GagState.h"
 #include "InstanceManager.h"
 #include "LipSync.h"
 #include "PPABridge.h"
@@ -52,6 +53,7 @@ namespace
 		case MessagingInterface::kDataLoaded:
 			Config::Load();
 			FolderCache::Rebuild();
+			GagState::Resolve(*Config::Get());
 			InstanceManager::ApplyConfigGroupVolumes();
 			LipSync::ApplyConfig();
 			PPABridge::TryConnect();

@@ -145,6 +145,38 @@ namespace Config
 			settings->lipsyncMinLevel = (*lipsync)["min_level"].value_or(settings->lipsyncMinLevel);
 		}
 
+		if (const auto* gag = root["gag"].as_table()) {
+			settings->gagEnabled = (*gag)["enable"].value_or(settings->gagEnabled);
+			settings->gagDefaultCategory = Normalize((*gag)["default_category"].value_or(""s));
+			if (const auto* keywords = (*gag)["keywords"].as_array()) {
+				for (const auto& entry : *keywords) {
+					const auto text = entry.value<std::string>();
+					if (!text) {
+						continue;
+					}
+					// "Plugin.esp|7EB8" -> {plugin, localID}; the id is hex, 0x optional
+					const auto sep = text->find('|');
+					if (sep == std::string::npos) {
+						logger::warn("[gag] keyword '{}' missing '|' — expected 'Plugin.esp|FormID'", *text);
+						continue;
+					}
+					std::string_view idText = std::string_view(*text).substr(sep + 1);
+					if (idText.starts_with("0x") || idText.starts_with("0X")) {
+						idText.remove_prefix(2);
+					}
+					GagKeyword kw;
+					kw.plugin = text->substr(0, sep);
+					const auto [ptr, ec] =
+						std::from_chars(idText.data(), idText.data() + idText.size(), kw.localID, 16);
+					if (kw.plugin.empty() || ec != std::errc{} || ptr != idText.data() + idText.size()) {
+						logger::warn("[gag] keyword '{}' has an invalid form id", *text);
+						continue;
+					}
+					settings->gagKeywords.push_back(std::move(kw));
+				}
+			}
+		}
+
 		if (const auto* slots = root["slot"].as_array()) {
 			for (const auto& entry : *slots) {
 				const auto* table = entry.as_table();
@@ -155,6 +187,7 @@ namespace Config
 				slot.id = (*table)["id"].value_or(""s);
 				slot.root = (*table)["path"].value_or(""s);
 				slot.fallbackSlot = Normalize((*table)["fallback"].value_or(""s));
+				slot.gagSlot = Normalize((*table)["gag_slot"].value_or(""s));
 				const auto sex = (*table)["sex"].value_or(""s);
 				slot.sex = !sex.empty() && (sex[0] == 'f' || sex[0] == 'F') ? 'F' : 'M';
 				if (const auto* categories = (*table)["categories"].as_table()) {
