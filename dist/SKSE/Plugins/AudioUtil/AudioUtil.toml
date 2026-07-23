@@ -36,10 +36,10 @@ attack_ms = 30                # how fast the mouth opens toward a louder level
 release_ms = 90               # how fast it closes on quiet / clip end
 min_level = 0.04              # envelope levels below this keep the mouth closed
 block_in_dialogue = true      # don't lipsync an actor while they're in a dialogue with the player (the game drives that mouth)
-# block_categories = ["Slurp", "Orgasm"]   # categories that never drive the mouth (matched on requested name)
+# block_categories = ["Slurp"]   # categories that never drive the mouth (additive: overlays may add their own)
 
 [gag]
-# Gag / deepthroat / mouth-owning devices. When a speaking actor wears any
+# Gag / mouth-owning devices. When a speaking actor wears any
 # keyword below, two things happen automatically:
 #   1. her voice routes through her slot's `gag_slot` so a muffled clip plays
 #      instead of the clear line, and

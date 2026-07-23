@@ -12,8 +12,8 @@ Together they map voice-slot ids to folders, categories to subfolders, SFX names
 
     **Merge rules — two kinds of data:**
 
-    - **Globals** — `[general]`, `[ppa]`, `[lipsync]`, and the `[gag]` `enable`/`default_category` toggles — are read **only from the base `AudioUtil.toml`**. An overlay that sets them is **ignored, with a warning** in `AudioUtil.log`. This is deliberate: an add-on (or the user's own tuning) can never silently change engine-wide settings.
-    - **Additive** — `[[slot]]`, `[sfx]`, `[npc_overrides]`, voicetype/race maps, category aliases/fallbacks, `[male_only_remap]`, `[groups]`, and `[gag].keywords` — **accumulate** from the base *and* every overlay (union, last-writer-wins per key). A `[[slot]]` is keyed by `id`: if two files define the same id, the one that sorts last wins that **whole slot** (no per-category deep merge; logged).
+    - **Globals** — `[general]`, `[ppa]`, the `[lipsync]` scalar tuning, and the `[gag]` `enable`/`default_category` toggles — are read **only from the base `AudioUtil.toml`**. An overlay that sets them is **ignored, with a warning** in `AudioUtil.log`. This is deliberate: an add-on (or the user's own tuning) can never silently change engine-wide settings.
+    - **Additive** — `[[slot]]`, `[sfx]`, `[npc_overrides]`, voicetype/race maps, category aliases/fallbacks, `[male_only_remap]`, `[groups]`, `[gag].keywords`, and `[lipsync] block_categories` — **accumulate** from the base *and* every overlay (union, last-writer-wins per key). A `[[slot]]` is keyed by `id`: if two files define the same id, the one that sorts last wins that **whole slot** (no per-category deep merge; logged). Note the last two live inside otherwise-base-only tables: only those specific keys merge, the surrounding scalars don't.
 
     Give every `[[slot]]` a full `Sound\...` `path` and every `[sfx]` entry a full `Sound\...` path — paths are always Data-relative, resolved identically for slots and sfx.
 

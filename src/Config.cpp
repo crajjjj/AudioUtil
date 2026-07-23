@@ -157,20 +157,25 @@ namespace Config
 		}
 
 		if (const auto* lipsync = root["lipsync"].as_table()) {
-			if (!a_isBase) {
-				logger::warn("[lipsync] in an overlay is ignored — globals come only from the base AudioUtil.toml");
-			} else {
+			// block_categories is additive (any file may add mouth-still category
+			// names for the pools it ships), but the scalar tuning is base-only
+			// like the rest of the globals.
+			if (a_isBase) {
 				settings->lipsyncEnabled = (*lipsync)["enable"].value_or(settings->lipsyncEnabled);
 				settings->lipsyncGain = (*lipsync)["gain"].value_or(settings->lipsyncGain);
 				settings->lipsyncAttackMs = (*lipsync)["attack_ms"].value_or(settings->lipsyncAttackMs);
 				settings->lipsyncReleaseMs = (*lipsync)["release_ms"].value_or(settings->lipsyncReleaseMs);
 				settings->lipsyncMinLevel = (*lipsync)["min_level"].value_or(settings->lipsyncMinLevel);
 				settings->lipsyncBlockInDialogue = (*lipsync)["block_in_dialogue"].value_or(settings->lipsyncBlockInDialogue);
-				if (const auto* blocked = (*lipsync)["block_categories"].as_array()) {
-					for (const auto& entry : *blocked) {
-						if (const auto cat = entry.value<std::string>()) {
-							settings->lipsyncBlockCategories.insert(Normalize(*cat));
-						}
+			} else if (lipsync->contains("enable") || lipsync->contains("gain") ||
+					   lipsync->contains("attack_ms") || lipsync->contains("release_ms") ||
+					   lipsync->contains("min_level") || lipsync->contains("block_in_dialogue")) {
+				logger::warn("[lipsync] scalar settings in an overlay are ignored (base-only); block_categories still merge");
+			}
+			if (const auto* blocked = (*lipsync)["block_categories"].as_array()) {
+				for (const auto& entry : *blocked) {
+					if (const auto cat = entry.value<std::string>()) {
+						settings->lipsyncBlockCategories.insert(Normalize(*cat));
 					}
 				}
 			}

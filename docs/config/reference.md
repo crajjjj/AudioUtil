@@ -7,7 +7,7 @@ Paths written `'Sound\...'` are **Data-relative**. Single-quoted TOML literal st
 ## `[general]`
 
 !!! warning "Base-only section"
-    `[general]` (along with `[ppa]`, `[lipsync]`, and the `[gag]` `enable`/`default_category` toggles) is a **global** section, read **only from the base `AudioUtil.toml`**. If a `config\*.toml` overlay sets any of these, it is ignored with a warning in `AudioUtil.log`. See [the merge rules](index.md).
+    `[general]` (along with `[ppa]`, the `[lipsync]` scalar tuning, and the `[gag]` `enable`/`default_category` toggles) is a **global** section, read **only from the base `AudioUtil.toml`**. If a `config\*.toml` overlay sets any of these, it is ignored with a warning in `AudioUtil.log`. The two **additive** exceptions inside those tables — `[lipsync] block_categories` and `[gag] keywords` — *do* merge from every file. See [the merge rules](index.md).
 
 ```toml
 [general]
@@ -50,6 +50,9 @@ event_rate_ms = 2000
 
 ## `[lipsync]`
 
+!!! note "Scalars base-only; `block_categories` is additive"
+    The scalar tuning below (`enable`, `gain`, `attack_ms`, `release_ms`, `min_level`, `block_in_dialogue`) is **base-only** — an overlay that sets it is ignored with a warning. `block_categories` is the exception: it **merges from every file** (base + overlays, union), so an add-on can mark its *own* category pools mouth-still without owning the base config.
+
 ```toml
 [lipsync]
 enable = true
@@ -58,7 +61,7 @@ attack_ms = 30                # how fast the mouth opens toward a louder level
 release_ms = 90               # how fast it closes on quiet / clip end
 min_level = 0.04              # envelope levels below this keep the mouth closed
 block_in_dialogue = true      # never lipsync an actor while they talk to the player
-block_categories = ["BlowjobActionSoft", "Orgasm"]   # never drive the mouth
+block_categories = ["Slurp"]  # never drive the mouth (additive — merges across overlays)
 ```
 
 | Key | Type | Default | Meaning |
@@ -69,7 +72,7 @@ block_categories = ["BlowjobActionSoft", "Orgasm"]   # never drive the mouth
 | `release_ms` | int | `90` | Closing speed on quiet / clip end. |
 | `min_level` | float | `0.04` | Envelope levels below this keep the mouth closed. |
 | `block_in_dialogue` | bool | `true` | Suppress lipsync for an actor while they're **in a dialogue with the player** — the game's own dialogue/voice system drives that mouth from the real voice file, so AudioUtil stays off it to avoid fighting. Checked when the line starts and re-checked on a 500 ms throttle, so a conversation started mid-line hands the mouth back. |
-| `block_categories` | string list | *(none)* | Requested categories that **never** drive lipsync — the line plays mouth-still. Matched on the requested name (normalized), before aliasing, across every slot. For pools that aren't vocalization (oral SFX / slurping) or where another system owns the mouth (a climax/ahegao face). Same effect as passing `blockLipSync=true` to [`PlayVoice`](../api/audioutil.md#playvoice), but declared once in config. |
+| `block_categories` | string list | *(none)* | **Additive** (merges from the base + every overlay). Requested categories that **never** drive lipsync — the line plays mouth-still. Matched on the requested name (normalized), before aliasing, across every slot. For pools that aren't vocalization (oral SFX / slurping) or where another system owns the mouth (a climax/ahegao face). Same effect as passing `blockLipSync=true` to [`PlayVoice`](../api/audioutil.md#playvoice), but declared once in config. |
 
 Runtime overrides: [`SetLipSyncEnabled`](../api/audioutil.md#setlipsyncenabled-islipsyncenabled) / [`SetLipSyncGain`](../api/audioutil.md#setlipsyncgain). `ReloadConfig` restores these TOML values.
 

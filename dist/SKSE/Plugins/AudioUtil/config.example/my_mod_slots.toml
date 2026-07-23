@@ -9,14 +9,18 @@
 # WHAT AN OVERLAY MAY CONTAIN — additive data only:
 #   [[slot]], [sfx], [npc_overrides], [voicetype_map], [voicetype_remap],
 #   [race_map], [category_aliases.*], [category_fallbacks.*], [male_only_remap],
-#   [groups], and [gag].keywords.  These ACCUMULATE across the base file and
-#   every overlay (union; a [[slot]] is keyed by id and whole-slot last-wins).
+#   [groups], [gag].keywords, and [lipsync].block_categories.  These ACCUMULATE
+#   across the base file and every overlay (union; a [[slot]] is keyed by id and
+#   whole-slot last-wins).
 #
 # WHAT AN OVERLAY MAY NOT CONTAIN — globals:
-#   [general], [ppa], [lipsync], and the [gag] enable/default_category toggles
-#   are read ONLY from the base AudioUtil.toml. If you put them here they are
-#   IGNORED with a warning in AudioUtil.log. A mod that needs custom globals
-#   ships its own base AudioUtil.toml instead (see the shipped base for those).
+#   [general], [ppa], the [lipsync] scalar tuning, and the [gag]
+#   enable/default_category toggles are read ONLY from the base AudioUtil.toml.
+#   If you put them here they are IGNORED with a warning in AudioUtil.log. A mod
+#   that needs custom globals ships its own base AudioUtil.toml instead (see the
+#   shipped base for those). The two exceptions above — [gag].keywords and
+#   [lipsync].block_categories — DO merge from here even though the rest of
+#   their tables is base-only.
 #
 # Give every path a full 'Sound\...' Data-relative path — slots and sfx alike.
 # All keys/names are case- and space-insensitive.
@@ -73,3 +77,11 @@ sex = "all"                                      # sex-neutral (see the F1 slot 
 [slot.categories]
 Footstep = 'Sound\fx\MyMod\SFX\Impact\footstep'  # scanned folder
 Thud = ['Sound\fx\MyMod\SFX\thud1.wav']          # explicit list (may point into a BSA)
+
+# ---------- lipsync: mouth-still categories ----------
+# The [lipsync] scalar tuning (gain, attack_ms, ...) is base-only and ignored
+# here, but block_categories is ADDITIVE: list your own pools that shouldn't
+# move the mouth (non-vocal SFX, or a face another system owns) and they merge
+# with the base + other overlays. Matched on the requested category name.
+[lipsync]
+block_categories = ["Slurp", "Squelch"]
