@@ -14,3 +14,4 @@ dist/**
 !dist/SKSE/Plugins/AudioUtil/AudioUtil.toml
 !dist/SKSE/Plugins/AudioUtil/config.example/
 !dist/SKSE/Plugins/AudioUtil/config.example/*.toml
+*.ppj
