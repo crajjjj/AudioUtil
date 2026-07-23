@@ -7,7 +7,12 @@ namespace Config
 		std::string id;    // "F1", "M3"
 		std::string root;  // data-relative folder, e.g. "Sound\\fx\\IVDT\\F1"; may be
 		                   // empty for slots defined purely by explicit categories
-		char        sex;   // 'F' or 'M'
+		char        sex;   // 'F' female, 'M' male, 'A' all/any (sex-neutral: creature
+		                   // and sfx slots). 'A' matches either sex on explicit routes
+		                   // (race_map / voicetype_map / overrides) but is excluded from
+		                   // the blind default-by-sex fallback. For the category layer it
+		                   // shares the MALE aliases/fallbacks (where presets author
+		                   // creature/neutral fallbacks) but skips male_only_remap.
 
 		// explicit [slot.categories]: normalized category -> data-relative files.
 		// These bypass the filesystem scan, so they can reference BSA-packed audio
@@ -78,8 +83,12 @@ namespace Config
 
 		std::unordered_map<std::string, float> groupVolumes;
 
-		std::string voiceRoot{ "Sound\\fx\\AudioUtil" };
-		std::string sfxRoot{ "Sound\\fx\\AudioUtil\\SFX" };
+		// PlaySFX (and the voice-category last resort) resolves a name first as a
+		// category of this slot, then as an entry of the flat [sfx] table. Routing
+		// sfx through a normal [[slot]] lets sfx pools use the full slot toolset:
+		// explicit file lists (BSA-capable), folder refs, or a scanned path — none
+		// of which the string-only [sfx] table can express. Empty = [sfx] only.
+		std::string sfxSlot{ "SFX0" };
 
 		std::uint32_t soundFlags{ 0x1A };
 		std::uint32_t soundPriority{ 128 };
@@ -105,6 +114,11 @@ namespace Config
 		std::uint32_t lipsyncAttackMs{ 30 };
 		std::uint32_t lipsyncReleaseMs{ 90 };
 		float         lipsyncMinLevel{ 0.04f };
+		// requested categories that never drive lipsync — the line plays mouth-still.
+		// For pools that aren't vocalization (oral sfx: slurping) or where another
+		// system owns the mouth (a climax/ahegao face). Matched on the REQUESTED
+		// category name (normalized), before aliasing/remap.
+		std::unordered_set<std::string> lipsyncBlockCategories;
 		// note: a gagged actor's lipsync is suppressed via [gag] device detection
 		// (see GagState), not an MFG mouth-open threshold.
 

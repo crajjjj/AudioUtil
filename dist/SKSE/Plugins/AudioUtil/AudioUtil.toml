@@ -1,188 +1,43 @@
-# AudioUtil — neutral default config.
-# Native folder-based audio player: plays loose WAV files by folder path,
-# no sound-descriptor forms or ESP. All name/key matching is case- and
-# space-insensitive ("Battle Cry" == "BattleCry" == "battlecry").
+# AudioUtil — neutral default config (SFW: no voice slots or SFX defined).
+# Native folder-based audio player: plays loose WAV files by folder path, no
+# sound-descriptor forms or ESP. All key/name matching is case- and space-
+# insensitive ("Battle Cry" == "BattleCry" == "battlecry").
 #
-# This default ships with no voice slots or SFX defined — point AudioUtil at
-# your own folders below. Mods that use AudioUtil ship their own AudioUtil.toml
-# that overwrites this one via load order.
+# This file holds the GLOBAL settings only — [general], [ppa], [lipsync] and the
+# [gag] toggles, which are read only from this base file. The voice slots, SFX,
+# routing maps and gag keywords are ADDITIVE content that accumulates from here
+# plus every SKSE\Plugins\AudioUtil\config\*.toml overlay; ship those in an
+# overlay, not here. A ready-to-copy overlay template lives in the sibling
+# config.example\ folder (that folder is NOT loaded — copy it into config\).
+#
+# Full docs — merge rules, slot/category resolution, every key, the Papyrus API:
+#   https://crajjjj.github.io/AudioUtil/
 
 [general]
 log_level = "info"            # trace | debug | info | warn | error
-sound_flags = 0x1A            # BuildSoundDataFromFile flags (experiment via DebugPlayFile)
+sound_flags = 0x1A            # BuildSoundDataFromFile flags (sweep via DebugPlayFile)
 sound_priority = 128
-# voice_3d = true 3D-positions each voice at its speaker (distance attenuation);
-# false plays voices flat/2D at full volume so every speaker is equally audible
-# regardless of position (the player's voice is otherwise at the listener while
-# others attenuate). Lipsync is unaffected. SFX are always positioned at the actor.
-voice_3d = true
-# voice_no_interrupt = true skips a PlayVoice call whose channel is still playing
-# a line, so a speaker finishes before the next line starts (per channel; other
-# speakers still overlap). Off = a new line cuts the current one. SFX/PlayFile/
-# PlayFolder are unaffected.
-voice_no_interrupt = false
-voice_root = 'Sound\fx\AudioUtil'
-sfx_root = 'Sound\fx\AudioUtil\SFX'
-default_female_slot = "F1"
-default_male_slot = "M1"
-# Reserved player slots (optional): the PC always resolves to this slot and no
-# other actor ever does. Empty = no reservation.
-pc_female_slot = ""
+voice_3d = true               # 3D-position voices at the speaker; false = flat/2D, all equally audible
+voice_no_interrupt = false    # true = a still-playing channel skips the new line instead of cutting it
+# sfx_slot = "SFX0"           # [[slot]] PlaySFX resolves before the [sfx] table ("" = table only)
+default_female_slot = ""      # slot for unrouted female actors ("" = none; an overlay sets it)
+default_male_slot = ""         # slot for unrouted male actors and creatures ("" = none)
+pc_female_slot = ""           # reserved player slot; no NPC ever resolves to it ("" = none)
 pc_male_slot = ""
 
 [ppa]
 enable = false                # optional third-party PPA plugin bridge, off by default
-event_rate_ms = 2000          # min interval per receiver for AudioUtilPPA_Update mod events
-                              # (context changes still fire immediately)
+event_rate_ms = 2000          # min interval per receiver for AudioUtilPPA_Update events
 
 [lipsync]
-# Amplitude-envelope lipsync: PlayVoice / PlayVoiceFromSlot move the speaking
-# actor's mouth in sync with the clip's loudness (MFG phonemes, applied per
-# frame by the DLL). Loose PCM wav files only - xwm or BSA-packed audio plays
-# fine but skips the mouth. Runtime toggles: SetLipSyncEnabled / SetLipSyncGain.
-enable = true
+enable = true                 # amplitude-envelope mouth movement (loose PCM wav only)
 gain = 1.0                    # 0.0-2.0 mouth-open strength
 attack_ms = 30                # how fast the mouth opens toward a louder level
 release_ms = 90               # how fast it closes on quiet / clip end
 min_level = 0.04              # envelope levels below this keep the mouth closed
+# block_categories = ["Slurp", "Orgasm"]   # categories that never drive the mouth (matched on requested name)
 
-# ---------- voice slots ----------
-# Each slot maps an id ("F1", "M1", ...) to a data-relative folder of
-# <Category>\*.wav subfolders. PlayVoice(actor, category) resolves the actor's
-# slot via: pc_*_slot (player only) -> [npc_overrides] -> [voicetype_remap] ->
-# [voicetype_map] -> [race_map] -> default by sex. Non-player actors never
-# resolve to a pc-reserved slot.
-#
-# [[slot]]
-# id = "M4"
-# sex = "male"
-# path = 'Sound\fx\AudioUtil\M4'
-#
-# Instead of (or alongside) a scanned path, a slot may declare explicit
-# per-category file lists. These skip the folder scan entirely, so they can
-# reference audio packed inside BSA archives (resolved by the engine's
-# resource loader at play time - loose files still win over archives):
-#
-# [[slot]]
-# id = "C1"
-# sex = "male"
-# [slot.categories]
-# BattleCry = [
-#   'Sound\FX\NPC\Giant\AttackVocal\NPC_Giant_AttackVocal_01.wav',
-#   'Sound\FX\NPC\Giant\AttackVocal\NPC_Giant_AttackVocal_02.wav',
-# ]
-#
-# A category value may also be a single FOLDER (a string instead of an
-# array): that folder is scanned like any slot folder ('Sound\...' = full
-# Data-relative path, otherwise relative to the slot's path; loose files
-# only - BSAs need the file-list form). Lets several categories share one
-# pool of files without copies. Explicit categories of either form win
-# over a same-named folder found by the path scan:
-#
-# WarCry = 'Sound\fx\SomeOtherMod\shouts'
-# Rally = 'Sound\fx\SomeOtherMod\shouts'
-#
-# A slot may also name a `fallback` slot: any category that resolves to
-# nothing here (no folder, alias, or category fallback) is retried in that
-# slot, per category. Chains are allowed (capped at 4 hops). This is how a
-# scanned pack slot backfills from a stock slot - an empty pack folder means
-# every category falls through; a partial pack only the ones it lacks:
-#
-# [[slot]]
-# id = "F1"
-# sex = "female"
-# path = 'Sound\fx\AudioUtil\F1'
-# fallback = "F0"
-#
-# A slot may also name a `gag_slot`: when the speaking actor is gagged (see
-# [gag] below), that slot's voice resolves from the gag slot instead - a
-# parallel folder tree of the same categories with muffled audio. The gag
-# slot is a normal [[slot]] and can carry its own `fallback`:
-#
-# [[slot]]
-# id = "F1"
-# sex = "female"
-# path = 'Sound\fx\AudioUtil\F1'
-# gag_slot = "F1gag"
-#
-# [[slot]]
-# id = "F1gag"
-# sex = "female"
-# path = 'Sound\fx\IVDT\F1'   # muffled parallel pack
-
-# ---------- gagged voice ----------
-# When a speaking actor wears any of the keywords below, PlayVoice /
-# PlayVoiceFromSlot route through the slot's `gag_slot` (muffled audio) instead
-# of the clear voice. If the gag slot lacks the requested category,
-# `default_category` plays there as a catch-all so a gagged actor never leaks a
-# clear line. Detection reads the actor's worn items natively - no Papyrus
-# wiring. Dormant unless `keywords` is set, so the SFW-neutral default is unaffected.
-# [gag]
-# enable = true
-# default_category = "Moan"        # muffled catch-all for missing gag categories
-# keywords = [                     # 'Plugin.esp|FormID' (hex), like [npc_overrides] keys
-#   'Devious Devices - Assets.esm|7EB8',   # zad_DeviousGag
-#   'ZaZAnimationPack.esm|8A4D',           # zbfWornGag
-#   'ZaZAnimationPack.esm|8A35',           # zbfEffectOpenMouth
-#   'Toys.esm|8C2',                        # ToysEffectMouthOpen
-# ]
-
-# ---------- VoiceType -> VoiceType synonyms ----------
-# Renames voicetypes you have no pack for to one you do, BEFORE the slot
-# lookup: with the entry below, a MaleGuard actor resolves as MaleNord.
-# Values are voicetype names (single hop - the target must be a
-# [voicetype_map] key), not slot ids. enable = false turns the layer off,
-# so only exact [voicetype_map] matches get voices.
-# [voicetype_remap]
-# enable = true
-# MaleGuard = "MaleNord"
-
-# ---------- VoiceType -> slot ----------
-# A value may be one slot id or a list of candidates; with a list, actors
-# sharing the voicetype are spread across the slots deterministically
-# (the same NPC always resolves to the same slot).
-# [voicetype_map]
-# MaleEvenToned = "M1"
-# MaleNord = "M4"
-# MaleBandit = ["M3", "M4"]
-
-# ---------- race -> slot fallback (when no voicetype maps) ----------
-# Hints are substring-matched against the race editor id ("Nord" matches
-# NordRace and NordRaceVampire); the most specific (longest) hint wins.
-# Creature races resolve here too ("Troll" = TrollRace + TrollFrostRace);
-# creatures usually have no ActorBase sex and read as male.
-# [race_map]
-# Nord = "M4"
-# DarkElf = "M6"
-# Troll = "C1"
-
-# ---------- per-NPC slot pin: 'Plugin.esp|FormID' = "SlotId" ----------
-# Checked before voicetype/race resolution; an explicit pin may target any
-# slot, including a pc-reserved one. For ESL-flagged plugins use the last
-# 3 hex digits of the form id ('MyEslMod.esp|D62').
-# [npc_overrides]
-# 'MyFollower.esp|000D62' = "F2"
-
-# ---------- category layer ----------
-# When PlayVoice(actor, category) runs, the category resolves against the
-# actor's slot folders in this order:
-#   exact folder -> alias -> (male_only_remap, male slots only) -> fallback
-# Fallbacks are a single hop: the substitute must resolve directly. If the
-# category still has no folder, PlayVoice tries the [sfx] table under the
-# same name as a last resort before giving up.
-#
-# [category_aliases.female]      # rename: script name -> on-disk folder
-# BattleCry = "War Shout"        # (also [category_aliases.male])
-#
-# [male_only_remap]              # male slots only: substitute categories
-# ComfortLines = "Calm Lines"    # for requests named for the female set
-#
-# [category_fallbacks.female]    # substitute when a category has no folder
-# Whisper = "Murmur"             # (also [category_fallbacks.male])
-
-# ---------- initial group volumes (0.0 - 1.0) ----------
-
-[groups]
+[groups]                      # startup volumes per group, 0.0-1.0 (MCM overrides at runtime)
 pc_high = 1.0
 pc_low = 1.0
 partner_high = 1.0
@@ -190,43 +45,8 @@ partner_low = 1.0
 sfx = 1.0
 oneshot = 1.0
 
-# ---------- SFX name -> folder (relative to sfx_root; 'Sound\...' = full Data path) ----------
-# [sfx]
-# Clap = 'Clap'
-
-# ===========================================================================
-# PAPYRUS CHEAT SHEET (full docs in Scripts\Source\AudioUtil.psc)
-# ===========================================================================
-# Every Play* returns an int handle (0 = nothing played). Arguments:
-#   volume   0.0-1.0, multiplied by the group volume
-#   group    volume/duck bucket, e.g. "sfx" - any name; [groups] sets defaults
-#   channel  any name; playing on a channel STOPS that channel's previous sound
-#
-# ; voice - slot resolved from the actor (override -> voicetype -> race -> default)
-# int h = AudioUtil.PlayVoice(npc, "BattleCry")
-# AudioUtil.PlayVoice(npc, "BattleCry", 0.8, "npc_voice")          ; volume + group
-# AudioUtil.PlayVoice(npc, "Taunt", 1.0, "npc_voice", "npc_main")  ; channel: replaces prior line
-# AudioUtil.PlayVoiceAndWait(npc, "BattleCry")                     ; blocks until the clip ends
-# AudioUtil.PlayVoiceFromSlot("M4", "BattleCry", npc)              ; skip resolution, name the slot
-#
-# ; sfx and raw files
-# AudioUtil.PlaySFX("Clap", npc)                            ; [sfx] table entry, "sfx" group
-# AudioUtil.PlayFile('Sound\fx\MyMod\hit.wav', npc)         ; one file; BSA-packed paths work
-# AudioUtil.PlayFolder('Sound\fx\MyMod\hits', npc)          ; random file from a loose folder
-#
-# ; handles                                 ; groups / channels
-# AudioUtil.IsHandlePlaying(h)              ; AudioUtil.SetGroupVolume("sfx", 0.5)
-# AudioUtil.StopHandle(h)                   ; AudioUtil.DuckGroup("sfx", 0.2)  / UnduckGroup("sfx")
-# AudioUtil.SetHandleVolume(h, 0.5)         ; AudioUtil.StopChannel("npc_main")
-# AudioUtil.GetHandleDuration(h)            ; AudioUtil.StopAllAudio()
-#
-# ; lipsync (automatic on PlayVoice/PlayVoiceFromSlot; see [lipsync] above)
-# AudioUtil.IsLipSyncActive(npc)            ; is AudioUtil driving this actor's mouth now
-# AudioUtil.StopLipSync(npc)                ; fade this actor's mouth closed (audio keeps playing)
-# AudioUtil.SetLipSyncEnabled(false)        ; master switch  / IsLipSyncEnabled()
-# AudioUtil.SetLipSyncGain(1.2)             ; mouth-open strength 0.0-2.0
-#
-# ; introspection / maintenance
-# AudioUtil.GetSlotForActor(npc)            ; -> "M4" (which slot would resolve)
-# AudioUtil.CategoryExists("M4", "BattleCry")
-# AudioUtil.ReloadConfig()                  ; re-read this file + rescan folders in-game
+# ---------------------------------------------------------------------------
+# Voice slots, SFX, [gag], and the voicetype/race/category routing tables are
+# ADDITIVE content — define them in a config\*.toml overlay. See the annotated
+# template in config.example\my_mod_slots.toml and the docs for the full
+# reference and resolution rules: https://crajjjj.github.io/AudioUtil/

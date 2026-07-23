@@ -1,18 +1,19 @@
 # Config Reference
 
-Every table and key in `Data\SKSE\Plugins\AudioUtil\AudioUtil.toml`. Defaults shown are the DLL's internal defaults, applied when a key is absent. All keys/names are [normalized](index.md#normalization) (case- and space-insensitive).
+Every table and key in the config — the base `Data\SKSE\Plugins\AudioUtil\AudioUtil.toml` and any `AudioUtil\config\*.toml` overlays, which are [merged](index.md) into one effective config. Defaults shown are the DLL's internal defaults, applied when a key is absent from *every* file. All keys/names are [normalized](index.md#normalization) (case- and space-insensitive).
 
 Paths written `'Sound\...'` are **Data-relative**. Single-quoted TOML literal strings are used throughout so backslashes need no escaping.
 
 ## `[general]`
+
+!!! warning "Base-only section"
+    `[general]` (along with `[ppa]`, `[lipsync]`, and the `[gag]` `enable`/`default_category` toggles) is a **global** section, read **only from the base `AudioUtil.toml`**. If a `config\*.toml` overlay sets any of these, it is ignored with a warning in `AudioUtil.log`. See [the merge rules](index.md).
 
 ```toml
 [general]
 log_level = "info"            # trace | debug | info | warn | error
 sound_flags = 0x1A            # BuildSoundDataFromFile flags
 sound_priority = 128
-voice_root = 'Sound\fx\AudioUtil'
-sfx_root = 'Sound\fx\AudioUtil\SFX'
 default_female_slot = "F1"
 default_male_slot = "M1"
 pc_female_slot = ""           # reserved player slot; empty = no reservation
@@ -26,8 +27,7 @@ voice_no_interrupt = false    # skip a new line while its channel is still playi
 | `log_level` | string | `"info"` | Verbosity of `AudioUtil.log`. |
 | `sound_flags` | int | `0x1A` | `BuildSoundDataFromFile` flags. Sweep with [`DebugPlayFile`](../api/audioutil.md#debugplayfile) if audio is silent or not 3D. |
 | `sound_priority` | int | `128` | Sound priority passed to the engine. |
-| `voice_root` | path | `Sound\fx\AudioUtil` | Base folder documentation/convention for slot paths. |
-| `sfx_root` | path | `Sound\fx\AudioUtil\SFX` | Base for relative `[sfx]` folder values. |
+| `sfx_slot` | slot id | `"SFX0"` | The `[[slot]]` whose categories [`PlaySFX`](../api/audioutil.md#playsfx) resolves before the flat `[sfx]` table (see [SFX](#sfx-the-sfx-slot-sfx-table)). `""` = table only. |
 | `default_female_slot` | slot id | `"F1"` | Slot for unrouted female actors. |
 | `default_male_slot` | slot id | `"M1"` | Slot for unrouted male actors (and creatures). |
 | `pc_female_slot` | slot id | `""` | Reserved for the player; no NPC ever resolves to it. |
@@ -57,6 +57,7 @@ gain = 1.0                    # 0.0-2.0 mouth-open strength
 attack_ms = 30                # how fast the mouth opens toward a louder level
 release_ms = 90               # how fast it closes on quiet / clip end
 min_level = 0.04              # envelope levels below this keep the mouth closed
+block_categories = ["BlowjobActionSoft", "Orgasm"]   # never drive the mouth
 ```
 
 | Key | Type | Default | Meaning |
@@ -66,6 +67,7 @@ min_level = 0.04              # envelope levels below this keep the mouth closed
 | `attack_ms` | int | `30` | Opening speed toward a louder level. |
 | `release_ms` | int | `90` | Closing speed on quiet / clip end. |
 | `min_level` | float | `0.04` | Envelope levels below this keep the mouth closed. |
+| `block_categories` | string list | *(none)* | Requested categories that **never** drive lipsync — the line plays mouth-still. Matched on the requested name (normalized), before aliasing, across every slot. For pools that aren't vocalization (oral SFX / slurping) or where another system owns the mouth (a climax/ahegao face). Same effect as passing `blockLipSync=true` to [`PlayVoice`](../api/audioutil.md#playvoice), but declared once in config. |
 
 Runtime overrides: [`SetLipSyncEnabled`](../api/audioutil.md#setlipsyncenabled-islipsyncenabled) / [`SetLipSyncGain`](../api/audioutil.md#setlipsyncgain). `ReloadConfig` restores these TOML values.
 
@@ -103,7 +105,7 @@ An array of tables — one per voice pack. See [Overview → three ways](index.m
 ```toml
 [[slot]]
 id = "M4"
-sex = "male"                  # "male" | "female"
+sex = "male"                  # "male" | "female" | "all"
 path = 'Sound\fx\MyMod\M4'    # scanned for <Category>\*.wav subfolders
 fallback = "M1"               # optional: backfill empty categories from this slot
 gag_slot = "M4gag"            # optional: muffled parallel slot used when gagged
@@ -112,7 +114,7 @@ gag_slot = "M4gag"            # optional: muffled parallel slot used when gagged
 | Key | Type | Meaning |
 |-----|------|---------|
 | `id` | string | Slot id (`"F1"`, `"M4"`, `"C2"`, …). |
-| `sex` | string | `"male"` or `"female"`. Creatures read as male. |
+| `sex` | string | `"male"`, `"female"`, or `"all"`. `"all"` is sex-neutral: it matches either sex on explicit routes (`[race_map]`/`[voicetype_map]`/`[npc_overrides]`) but is skipped by the blind default-by-sex fallback. For the category layer it shares the **male** aliases/`[category_fallbacks.male]` (where creature/neutral fallbacks are authored) and skips `[male_only_remap]`. Use it for **creature** slots (a creature's reported sex is unreliable) and the sfx slot. Plain `"male"`/`"female"` otherwise; creatures otherwise read as male. |
 | `path` | path | Folder scanned for `<Category>\*.wav` subfolders. Optional if the slot is defined purely by explicit categories. Loose files only. |
 | `fallback` | slot id | Optional. Per-category backfill slot when a category resolves to nothing here. Chains capped at **4 hops**. |
 | `gag_slot` | slot id | Optional. A parallel slot (another `[[slot]]`, same category names, muffled audio) used **instead of this one** when the speaking actor is gagged. See [`[gag]`](#gag). |
@@ -208,12 +210,24 @@ sfx = 1.0
 oneshot = 1.0
 ```
 
-## `[sfx]`
+## SFX — the sfx slot + `[sfx]` table
 
-SFX name → folder, relative to `sfx_root` (`'Sound\...'` = full Data path). Each entry is a shuffle-bag folder played by [`PlaySFX`](../api/audioutil.md#playsfx), and also reachable as a category last-resort.
+[`PlaySFX(name, ...)`](../api/audioutil.md#playsfx) plays a named shuffle-bag pool, and a voice category with no folder falls through to an sfx pool of the same name (last resort). A name resolves in two places, **in order**:
+
+1. **A category of the sfx slot** — id **`SFX0`** by default, set `sfx_slot` in [`[general]`](#general) to rename (`""` disables it). Since it's a normal `[[slot]]`, each sfx pool can use **any** [category form](#slot) — a scanned folder, an explicit **file list (BSA-capable)**, or a folder ref. Preferred, and the only way to give an sfx pool BSA-packed audio.
+2. **The `[sfx]` table** — flat `name = folder`, loose files only. The value is a full `Sound\...` Data-relative path, same as a slot path.
+
+Names are matched **directly** (no `category_aliases`/fallbacks). The slot's `sex` is irrelevant to sfx lookup.
 
 ```toml
-[sfx]
-Clap = 'Clap'                        # -> <sfx_root>\Clap
-Thud = 'Sound\fx\MyMod\thuds'        # full Data path
+[[slot]]
+id = "SFX0"                          # PlaySFX resolves categories here first
+sex = "all"                          # sex-neutral (irrelevant to sfx lookup)
+[slot.categories]
+Clap = 'Sound\fx\MyMod\SFX\Clap'          # scanned folder
+Slap = ['Sound\fx\MyMod\SFX\slap01.wav']  # explicit list — may point into a BSA
+
+[sfx]                                # legacy flat table, still supported
+Thud = 'Sound\fx\MyMod\thuds'        # full Data path (loose files only)
+Clap = 'Sound\fx\MyMod\SFX\Clap'     # full Data path
 ```

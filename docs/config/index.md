@@ -1,11 +1,32 @@
 # TOML Configuration — Overview
 
-AudioUtil reads a single file, **`Data\SKSE\Plugins\AudioUtil\AudioUtil.toml`**, at `kDataLoaded` (and again on [`ReloadConfig()`](../api/audioutil.md#reloadconfig)). It maps voice-slot ids to folders, categories to subfolders, SFX names to folders, and sets group volumes plus lipsync/PPA options.
+AudioUtil reads its config at `kDataLoaded` (and again on [`ReloadConfig()`](../api/audioutil.md#reloadconfig)) from **two places, merged in order**:
 
-!!! info "Who ships this file"
-    The plugin's own bundled `AudioUtil.toml` is **SFW-neutral**: it defines no slots and no SFX. **Consumer mods overwrite it via load order** — install the content mod after AudioUtil and its TOML wins. So as a content author, *your* mod ships the `AudioUtil.toml`; there is exactly one active file (last in load order), not a merge.
+1. The base file **`Data\SKSE\Plugins\AudioUtil\AudioUtil.toml`** — loaded first.
+2. Every **`Data\SKSE\Plugins\AudioUtil\config\*.toml`** overlay — merged on top in **sorted filename order**.
 
-On a parse error the **previous (or default) settings are kept** and the error is logged to `AudioUtil.log` — a broken edit never leaves the game silent, it just doesn't take effect.
+Together they map voice-slot ids to folders, categories to subfolders, SFX names to folders, and set group volumes plus lipsync/PPA options. Either place may be absent; only one file needs to exist.
+
+!!! info "Who ships config — one mod or many"
+    The plugin's own bundled `AudioUtil.toml` is **SFW-neutral**: it defines no slots and no SFX. A content mod that needs custom globals ships its **own** base `AudioUtil.toml` (overwriting the neutral one via load order). Pure add-ons (extra voice packs, an SFX set) instead drop an additive overlay in `config\` (e.g. `config\MyPack.toml`) — different filenames don't collide in the virtual file system, so any number of add-ons **compose** on top of whichever base is active.
+
+    **Merge rules — two kinds of data:**
+
+    - **Globals** — `[general]`, `[ppa]`, `[lipsync]`, and the `[gag]` `enable`/`default_category` toggles — are read **only from the base `AudioUtil.toml`**. An overlay that sets them is **ignored, with a warning** in `AudioUtil.log`. This is deliberate: an add-on (or the user's own tuning) can never silently change engine-wide settings.
+    - **Additive** — `[[slot]]`, `[sfx]`, `[npc_overrides]`, voicetype/race maps, category aliases/fallbacks, `[male_only_remap]`, `[groups]`, and `[gag].keywords` — **accumulate** from the base *and* every overlay (union, last-writer-wins per key). A `[[slot]]` is keyed by `id`: if two files define the same id, the one that sorts last wins that **whole slot** (no per-category deep merge; logged).
+
+    Give every `[[slot]]` a full `Sound\...` `path` and every `[sfx]` entry a full `Sound\...` path — paths are always Data-relative, resolved identically for slots and sfx.
+
+Each file is parsed independently: a parse error in one overlay **skips just that file** (logged to `AudioUtil.log`) and the rest still merge. If *every* file fails to parse, the **previous (or default) settings are kept** — a broken edit never leaves the game silent.
+
+### Recommended layout
+
+Split config by *nature* — which is also where the base-only/additive line falls:
+
+- **Base `AudioUtil.toml`** — the singleton globals (`[general]`, `[ppa]`, `[lipsync]`, `[gag]` toggles) plus the resolution/routing maps a user tweaks. Only the base can set globals, so a preset mod ships this file.
+- **`config\<YourMod>.toml`** — the bulky additive content: every `[[slot]]` and the `[sfx]` table. Add-on mods ship *only* this.
+
+Use a stable, unique filename prefix so an add-on's files sort together and never collide with another mod's. A copy-paste additive-overlay template ships in the plugin's **`config.example\`** folder — that folder is *not* loaded; copy the file into `config\` to activate it.
 
 ## Normalization
 

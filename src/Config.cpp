@@ -2,14 +2,24 @@
 
 #include <toml++/toml.hpp>
 
+#include <algorithm>
 #include <charconv>
+#include <filesystem>
 #include <format>
+#include <vector>
 
 namespace Config
 {
 	namespace
 	{
-		constexpr auto CONFIG_PATH = "Data\\SKSE\\Plugins\\AudioUtil\\AudioUtil.toml"sv;
+		// Base config, then overlay files. The base loads first (holds the SFW
+		// defaults + machine-wide tuning); each config\*.toml then merges on top in
+		// sorted filename order, so consumer mods ship their own file instead of
+		// clobbering a single shared one. Numeric prefixes (50_, 99_) let a mod
+		// deliberately win the global scalars. See MergeFile for merge semantics.
+		constexpr auto CONFIG_DIR = "Data\\SKSE\\Plugins\\AudioUtil"sv;
+		constexpr auto BASE_FILE = "AudioUtil.toml"sv;
+		constexpr auto OVERLAY_SUBDIR = "config"sv;
 
 		std::shared_ptr<const Settings> g_settings = std::make_shared<Settings>();
 		std::mutex                      g_settingsLock;
@@ -95,59 +105,85 @@ namespace Config
 		return out;
 	}
 
-	bool Load()
+	// Merge one parsed TOML file into an accumulating Settings. Called once per
+	// config file in load order (base first, then config\*.toml sorted), so the
+	// merge rules are:
+	//   - scalar globals ([general]/[ppa]/[lipsync]/[gag] toggles) are
+	//     last-writer-wins: value_or(settings->x) carries the prior file's value
+	//     forward, and a later file only overrides keys it actually specifies.
+	//   - maps ([npc_overrides], [voicetype_map], [sfx], aliases, ...) union,
+	//     last-writer-wins per key.
+	//   - [[slot]] is keyed by id: a later file with the same id replaces the
+	//     whole slot (no per-category deep merge) and logs a warning.
+	//   - [gag].keywords and [race_map] accumulate; race_map is sorted once by
+	//     Load after all files are merged.
+	// Global scalar sections ([general], [ppa], [lipsync], and the [gag] scalar
+	// toggles) are OWNED BY THE BASE AudioUtil.toml only. A config\*.toml overlay
+	// that sets them is ignored with a warning — this keeps a content mod (or the
+	// user's own tuning) from silently stomping engine-wide globals. Overlays
+	// remain free to contribute all the ADDITIVE data below (slots, sfx,
+	// resolution/category maps, and [gag].keywords).
+	void MergeFile(Settings* settings, const toml::table& root, bool a_isBase)
 	{
-		std::scoped_lock lock{ g_loadLock };
-
-		toml::table root;
-		try {
-			root = toml::parse_file(CONFIG_PATH);
-		} catch (const toml::parse_error& e) {
-			logger::error("Failed to parse {}: {} (line {})", CONFIG_PATH,
-				e.description(), e.source().begin.line);
-			return false;
-		} catch (const std::exception& e) {
-			logger::error("Failed to read {}: {}", CONFIG_PATH, e.what());
-			return false;
-		}
-
-		auto settings = std::make_shared<Settings>();
-
 		if (const auto* general = root["general"].as_table()) {
-			settings->voiceRoot = (*general)["voice_root"].value_or(settings->voiceRoot);
-			settings->sfxRoot = (*general)["sfx_root"].value_or(settings->sfxRoot);
-			settings->soundFlags = (*general)["sound_flags"].value_or(settings->soundFlags);
-			settings->soundPriority = (*general)["sound_priority"].value_or(settings->soundPriority);
-			settings->defaultFemaleSlot = (*general)["default_female_slot"].value_or(settings->defaultFemaleSlot);
-			settings->defaultMaleSlot = (*general)["default_male_slot"].value_or(settings->defaultMaleSlot);
-			settings->pcFemaleSlot = (*general)["pc_female_slot"].value_or(settings->pcFemaleSlot);
-			settings->pcMaleSlot = (*general)["pc_male_slot"].value_or(settings->pcMaleSlot);
-			settings->voice3D = (*general)["voice_3d"].value_or(settings->voice3D);
-			settings->voiceNoInterrupt = (*general)["voice_no_interrupt"].value_or(settings->voiceNoInterrupt);
+			if (!a_isBase) {
+				logger::warn("[general] in an overlay is ignored — globals come only from the base AudioUtil.toml");
+			} else {
+				settings->sfxSlot = (*general)["sfx_slot"].value_or(settings->sfxSlot);
+				settings->soundFlags = (*general)["sound_flags"].value_or(settings->soundFlags);
+				settings->soundPriority = (*general)["sound_priority"].value_or(settings->soundPriority);
+				settings->defaultFemaleSlot = (*general)["default_female_slot"].value_or(settings->defaultFemaleSlot);
+				settings->defaultMaleSlot = (*general)["default_male_slot"].value_or(settings->defaultMaleSlot);
+				settings->pcFemaleSlot = (*general)["pc_female_slot"].value_or(settings->pcFemaleSlot);
+				settings->pcMaleSlot = (*general)["pc_male_slot"].value_or(settings->pcMaleSlot);
+				settings->voice3D = (*general)["voice_3d"].value_or(settings->voice3D);
+				settings->voiceNoInterrupt = (*general)["voice_no_interrupt"].value_or(settings->voiceNoInterrupt);
 
-			if (const auto level = (*general)["log_level"].value<std::string>()) {
-				const auto lvl = spdlog::level::from_str(*level);
-				spdlog::default_logger()->set_level(lvl);
-				spdlog::flush_on(lvl);
+				if (const auto level = (*general)["log_level"].value<std::string>()) {
+					const auto lvl = spdlog::level::from_str(*level);
+					spdlog::default_logger()->set_level(lvl);
+					spdlog::flush_on(lvl);
+				}
 			}
 		}
 
 		if (const auto* ppa = root["ppa"].as_table()) {
-			settings->ppaEnabled = (*ppa)["enable"].value_or(settings->ppaEnabled);
-			settings->ppaEventRateMs = (*ppa)["event_rate_ms"].value_or(settings->ppaEventRateMs);
+			if (!a_isBase) {
+				logger::warn("[ppa] in an overlay is ignored — globals come only from the base AudioUtil.toml");
+			} else {
+				settings->ppaEnabled = (*ppa)["enable"].value_or(settings->ppaEnabled);
+				settings->ppaEventRateMs = (*ppa)["event_rate_ms"].value_or(settings->ppaEventRateMs);
+			}
 		}
 
 		if (const auto* lipsync = root["lipsync"].as_table()) {
-			settings->lipsyncEnabled = (*lipsync)["enable"].value_or(settings->lipsyncEnabled);
-			settings->lipsyncGain = (*lipsync)["gain"].value_or(settings->lipsyncGain);
-			settings->lipsyncAttackMs = (*lipsync)["attack_ms"].value_or(settings->lipsyncAttackMs);
-			settings->lipsyncReleaseMs = (*lipsync)["release_ms"].value_or(settings->lipsyncReleaseMs);
-			settings->lipsyncMinLevel = (*lipsync)["min_level"].value_or(settings->lipsyncMinLevel);
+			if (!a_isBase) {
+				logger::warn("[lipsync] in an overlay is ignored — globals come only from the base AudioUtil.toml");
+			} else {
+				settings->lipsyncEnabled = (*lipsync)["enable"].value_or(settings->lipsyncEnabled);
+				settings->lipsyncGain = (*lipsync)["gain"].value_or(settings->lipsyncGain);
+				settings->lipsyncAttackMs = (*lipsync)["attack_ms"].value_or(settings->lipsyncAttackMs);
+				settings->lipsyncReleaseMs = (*lipsync)["release_ms"].value_or(settings->lipsyncReleaseMs);
+				settings->lipsyncMinLevel = (*lipsync)["min_level"].value_or(settings->lipsyncMinLevel);
+				if (const auto* blocked = (*lipsync)["block_categories"].as_array()) {
+					for (const auto& entry : *blocked) {
+						if (const auto cat = entry.value<std::string>()) {
+							settings->lipsyncBlockCategories.insert(Normalize(*cat));
+						}
+					}
+				}
+			}
 		}
 
 		if (const auto* gag = root["gag"].as_table()) {
-			settings->gagEnabled = (*gag)["enable"].value_or(settings->gagEnabled);
-			settings->gagDefaultCategory = Normalize((*gag)["default_category"].value_or(""s));
+			// [gag].keywords is additive (any file may add gag markers), but the
+			// enable/default_category scalars are base-only like the rest.
+			if (a_isBase) {
+				settings->gagEnabled = (*gag)["enable"].value_or(settings->gagEnabled);
+				settings->gagDefaultCategory = Normalize((*gag)["default_category"].value_or(""s));
+			} else if (gag->contains("enable") || gag->contains("default_category")) {
+				logger::warn("[gag] enable/default_category in an overlay are ignored (base-only); its keywords still merge");
+			}
 			if (const auto* keywords = (*gag)["keywords"].as_array()) {
 				for (const auto& entry : *keywords) {
 					const auto text = entry.value<std::string>();
@@ -188,8 +224,14 @@ namespace Config
 				slot.root = (*table)["path"].value_or(""s);
 				slot.fallbackSlot = Normalize((*table)["fallback"].value_or(""s));
 				slot.gagSlot = Normalize((*table)["gag_slot"].value_or(""s));
+				// sex: 'F' female, 'A' all/any (sex-neutral: creatures, sfx pools), else
+				// 'M' male (the default). First letter only, case-insensitive.
 				const auto sex = (*table)["sex"].value_or(""s);
-				slot.sex = !sex.empty() && (sex[0] == 'f' || sex[0] == 'F') ? 'F' : 'M';
+				slot.sex = 'M';
+				if (!sex.empty()) {
+					const char c = static_cast<char>(std::tolower(static_cast<unsigned char>(sex[0])));
+					slot.sex = c == 'f' ? 'F' : c == 'a' ? 'A' : 'M';
+				}
 				if (const auto* categories = (*table)["categories"].as_table()) {
 					for (auto&& [catName, catValue] : *categories) {
 						if (const auto* files = catValue.as_array()) {
@@ -209,7 +251,17 @@ namespace Config
 					logger::warn("Skipping [[slot]] entry with missing id, or neither path nor categories");
 					continue;
 				}
-				settings->slots.push_back(std::move(slot));
+				// whole-slot last-wins: a later file redefining an existing id replaces
+				// it outright (no per-category deep merge). Match on normalized id.
+				const auto idNorm = Normalize(slot.id);
+				const auto existing = std::find_if(settings->slots.begin(), settings->slots.end(),
+					[&](const Slot& a_s) { return Normalize(a_s.id) == idNorm; });
+				if (existing != settings->slots.end()) {
+					logger::warn("Slot '{}' redefined by a later config file — replacing the earlier definition", slot.id);
+					*existing = std::move(slot);
+				} else {
+					settings->slots.push_back(std::move(slot));
+				}
 			}
 		}
 
@@ -233,19 +285,15 @@ namespace Config
 			}
 		}
 
-		// [race_map] hints are substring-matched, so precedence must not depend on
-		// toml table iteration (alphabetical): longest hint first makes the most
-		// specific entry win ("darkelf" and "highelf" both beat "elf")
+		// [race_map] hints accumulate across files; Load sorts the merged list
+		// longest-hint-first once all files are in (see the sort there). Sorting
+		// per-file would mis-order hints contributed by different files.
 		if (const auto* raceMap = root["race_map"].as_table()) {
 			for (auto&& [key, value] : *raceMap) {
 				if (auto slots = ReadSlotList(value); !slots.empty()) {
 					settings->raceMap.emplace_back(Normalize(key.str()), std::move(slots));
 				}
 			}
-			std::stable_sort(settings->raceMap.begin(), settings->raceMap.end(),
-				[](const auto& a_lhs, const auto& a_rhs) {
-					return a_lhs.first.size() > a_rhs.first.size();
-				});
 		}
 
 		if (const auto* overrides = root["npc_overrides"].as_table()) {
@@ -275,11 +323,106 @@ namespace Config
 			}
 		}
 
+	}
+
+	// Ordered list of config files to merge: base first, then config\*.toml in
+	// sorted filename order. Missing base/overlay dir is not an error (an install
+	// may ship only overlays, or only the base). Returns paths as strings for
+	// toml::parse_file.
+	struct ConfigFile
+	{
+		std::string path;
+		bool        isBase;  // the base AudioUtil.toml owns globals; overlays are additive-only
+	};
+
+	std::vector<ConfigFile> CollectConfigFiles()
+	{
+		namespace fs = std::filesystem;
+		std::vector<ConfigFile> files;
+
+		const auto base = fs::path(CONFIG_DIR) / std::string(BASE_FILE);
+		std::error_code ec;
+		if (fs::exists(base, ec)) {
+			files.push_back({ base.string(), true });
+		}
+
+		const auto overlayDir = fs::path(CONFIG_DIR) / std::string(OVERLAY_SUBDIR);
+		std::vector<std::string> overlays;
+		// Walk with the non-throwing ec overloads throughout: a missing/unreadable
+		// dir leaves `it == end` (clean skip), and a mid-iteration filesystem error
+		// stops the walk via the loop condition instead of throwing out of Load
+		// (which runs inside an SKSE message handler — an escaped exception crashes).
+		auto       it = fs::directory_iterator(overlayDir, ec);
+		const auto end = fs::directory_iterator();
+		for (; !ec && it != end; it.increment(ec)) {
+			std::error_code entryEc;  // separate: a per-entry query must not end the walk
+			if (!it->is_regular_file(entryEc) || entryEc) {
+				continue;
+			}
+			auto path = it->path();
+			auto ext = path.extension().string();
+			std::transform(ext.begin(), ext.end(), ext.begin(),
+				[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+			if (ext == ".toml") {
+				overlays.push_back(path.string());
+			}
+		}
+		// directory_iterator order is unspecified; sort so precedence is deterministic
+		std::sort(overlays.begin(), overlays.end());
+		for (auto& o : overlays) {
+			files.push_back({ std::move(o), false });
+		}
+		return files;
+	}
+
+	bool Load()
+	{
+		std::scoped_lock lock{ g_loadLock };
+
+		const auto files = CollectConfigFiles();
+		if (files.empty()) {
+			logger::error("No config files found under {} — keeping previous settings", CONFIG_DIR);
+			return false;
+		}
+
+		auto settings = std::make_shared<Settings>();
+		int merged = 0;
+		for (const auto& file : files) {
+			toml::table root;
+			try {
+				root = toml::parse_file(file.path);
+			} catch (const toml::parse_error& e) {
+				logger::error("Failed to parse {}: {} (line {}) — skipping this file",
+					file.path, e.description(), e.source().begin.line);
+				continue;
+			} catch (const std::exception& e) {
+				logger::error("Failed to read {}: {} — skipping this file", file.path, e.what());
+				continue;
+			}
+			MergeFile(settings.get(), root, file.isBase);
+			++merged;
+			logger::info("Merged config file: {}{}", file.path, file.isBase ? " (base)" : " (overlay)");
+		}
+
+		// every file failed to parse — don't clobber working settings with an empty set
+		if (merged == 0) {
+			logger::error("All {} config file(s) failed to parse — keeping previous settings", files.size());
+			return false;
+		}
+
+		// [race_map] hints are substring-matched, so precedence must not depend on
+		// toml table iteration or file order: longest hint first makes the most
+		// specific entry win ("darkelf" and "highelf" both beat "elf")
+		std::stable_sort(settings->raceMap.begin(), settings->raceMap.end(),
+			[](const auto& a_lhs, const auto& a_rhs) {
+				return a_lhs.first.size() > a_rhs.first.size();
+			});
+
 		StoreSettings(std::shared_ptr<const Settings>(std::move(settings)));
 
 		const auto& loaded = *Get();
-		logger::info("Config loaded: {} slots, {} voicetype mappings, {} sfx entries, flags=0x{:X}, priority={}",
-			loaded.slots.size(), loaded.voicetypeMap.size(), loaded.sfxTable.size(),
+		logger::info("Config loaded from {} file(s): {} slots, {} voicetype mappings, {} sfx entries, flags=0x{:X}, priority={}",
+			merged, loaded.slots.size(), loaded.voicetypeMap.size(), loaded.sfxTable.size(),
 			loaded.soundFlags, loaded.soundPriority);
 		return true;
 	}

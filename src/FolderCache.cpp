@@ -162,11 +162,8 @@ namespace FolderCache
 
 		std::size_t sfxFolders = 0;
 		for (const auto& [name, folder] : settings->sfxTable) {
-			// values starting with "Sound\" are full Data-relative paths; others are
-			// relative to sfx_root
-			const bool absolute = folder.size() >= 6 && _strnicmp(folder.c_str(), "sound\\", 6) == 0;
-			std::filesystem::path dir = absolute ? dataRoot / folder :
-			                                       dataRoot / settings->sfxRoot / folder;
+			// [sfx] values are full Data-relative paths, same as slot paths
+			std::filesystem::path dir = dataRoot / folder;
 			const auto key = "sfx/" + name;
 			if (ScanDir(key, dir, dataRoot)) {
 				++sfxFolders;
@@ -226,6 +223,10 @@ namespace FolderCache
 		// alias -> male_only_remap -> category-fallback resolution within one slot
 		const auto resolveInSlot = [&](const Config::Slot& a_inSlot) -> std::string {
 			const auto inSlotNorm = Config::Normalize(a_inSlot.id);
+			// Female slots use the female category layer; male AND 'all' (sex-neutral:
+			// creature / sfx) slots share the male layer, since presets author their
+			// creature/neutral category fallbacks there (e.g. Breathing -> Orgasm).
+			// male_only_remap below stays 'M'-only, so 'all' slots skip it.
 			const auto& aliases = a_inSlot.sex == 'F' ? a_settings.femaleAliases : a_settings.maleAliases;
 			const auto& fallbacks = a_inSlot.sex == 'F' ? a_settings.femaleFallbacks : a_settings.maleFallbacks;
 

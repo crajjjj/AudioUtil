@@ -1,0 +1,75 @@
+# AudioUtil overlay EXAMPLE — an additive content overlay.
+#
+# THIS FOLDER (config.example\) IS NOT LOADED. AudioUtil only scans
+# SKSE\Plugins\AudioUtil\config\*.toml. To use this template, COPY it into that
+# config\ folder, rename it with a stable unique prefix (e.g. MyMod.toml), and
+# edit. Multiple mods can each drop their own file there — different filenames
+# never collide, so their content composes.
+#
+# WHAT AN OVERLAY MAY CONTAIN — additive data only:
+#   [[slot]], [sfx], [npc_overrides], [voicetype_map], [voicetype_remap],
+#   [race_map], [category_aliases.*], [category_fallbacks.*], [male_only_remap],
+#   [groups], and [gag].keywords.  These ACCUMULATE across the base file and
+#   every overlay (union; a [[slot]] is keyed by id and whole-slot last-wins).
+#
+# WHAT AN OVERLAY MAY NOT CONTAIN — globals:
+#   [general], [ppa], [lipsync], and the [gag] enable/default_category toggles
+#   are read ONLY from the base AudioUtil.toml. If you put them here they are
+#   IGNORED with a warning in AudioUtil.log. A mod that needs custom globals
+#   ships its own base AudioUtil.toml instead (see the shipped base for those).
+#
+# Give every path a full 'Sound\...' Data-relative path — slots and sfx alike.
+# All keys/names are case- and space-insensitive.
+
+# sex is "female", "male", or "all". "all" = sex-neutral: it matches either sex
+# on explicit routes (race_map / voicetype_map / npc_overrides) — ideal for
+# creature and sfx slots — but is skipped by the blind default-by-sex fallback.
+[[slot]]  # form 1: a scanned folder tree — drop <Category>\*.wav under this path
+id = "F1"
+sex = "female"
+path = 'Sound\fx\MyMod\F1'
+# fallback = "F0"      # optional: another slot consulted per-category when this
+                       #           one resolves nothing (chains up to 4 hops)
+# gag_slot = "F1gag"   # optional: muffled slot used when the speaker is gagged
+
+[[slot]]  # form 2: explicit per-category FILE lists (BSA-capable, no folders needed)
+id = "M1"
+sex = "male"
+[slot.categories]
+BattleCry = [
+  'Sound\fx\MyMod\M1\battlecry_01.wav',
+  'Sound\fx\MyMod\M1\battlecry_02.wav',
+]
+# form 3: a single folder scanned for one category (string value, not an array)
+Taunt = 'Sound\fx\MyMod\M1\taunts'
+
+# route voicetypes to your slots (accumulates with the base + other overlays)
+[voicetype_map]
+MaleEvenToned = "M1"
+FemaleEvenToned = "F1"
+
+# race -> slot, used when no voicetype matches. Hints are substring-matched
+# against the race editor id, longest/most-specific hint winning: "Nord" hits
+# NordRace AND NordRaceVampire. Creatures resolve here too — point their hint at
+# a sex="all" creature slot (see the SFX0 sex note) so it matches whatever sex
+# the engine reports. A value may be a list to spread actors across slots.
+[race_map]
+Nord = "M1"
+Argonian = ["M1", "F1"]   # list = deterministic spread (same NPC → same slot)
+# Werewolf = "C1"         # a creature slot (sex="all") you'd define in this overlay
+
+# pin one NPC: 'Plugin.esp|FormID' = "SlotId"  (ESL plugins: last 3 hex digits)
+# [npc_overrides]
+# 'MyFollower.esp|000D62' = "F1"
+
+# ---------- SFX ----------
+# PlaySFX(name) resolves a name first as a category of the sfx slot ("SFX0" by
+# default), then the flat [sfx] table. Routing sfx through a slot lets each pool
+# use the full toolset — a scanned folder, an explicit file list (BSA-capable),
+# or a folder ref — so this is the preferred form.
+[[slot]]
+id = "SFX0"
+sex = "all"                                      # sex-neutral (see the F1 slot note on sex)
+[slot.categories]
+Footstep = 'Sound\fx\MyMod\SFX\Impact\footstep'  # scanned folder
+Thud = ['Sound\fx\MyMod\SFX\thud1.wav']          # explicit list (may point into a BSA)

@@ -145,8 +145,12 @@ namespace PapyrusAPI
 					raceID = Config::Normalize(race->GetFormEditorID());
 				}
 				if (!raceID.empty()) {
+					// a race-mapped slot qualifies if it matches the actor's sex OR is
+					// sex-neutral ('A') — this is what lets one creature slot serve a
+					// creature regardless of the sex the engine reports for it
 					const auto sexUsable = [&](const Config::Slot* a_slot) {
-						return a_slot && a_slot->sex == (female ? 'F' : 'M') && usable(a_slot);
+						return a_slot && (a_slot->sex == (female ? 'F' : 'M') || a_slot->sex == 'A') &&
+						       usable(a_slot);
 					};
 					for (const auto& [hint, slotIDs] : a_settings.raceMap) {
 						if (raceID.find(hint) == std::string::npos) {
@@ -159,7 +163,11 @@ namespace PapyrusAPI
 				}
 			}
 
-			// 4. default by sex; if reserved (or missing), first free slot of the sex
+			// 4. default by sex; if reserved (or missing), first free slot of the sex.
+			// This blind scan is F/M only — 'A' (sex-neutral) slots are reached only
+			// by explicit routing, so an sfx/creature slot never leaks onto a
+			// voiceless human here. (default_*_slot may still name an 'A' slot: that
+			// goes through FindSlot above, not this scan.)
 			const auto* fallback = Config::FindSlot(a_settings,
 				female ? a_settings.defaultFemaleSlot : a_settings.defaultMaleSlot);
 			if (usable(fallback)) {
@@ -191,6 +199,25 @@ namespace PapyrusAPI
 				key = FolderCache::ResolveVoiceKey(a_settings, *slot, a_settings.gagDefaultCategory);
 			}
 			return key;
+		}
+
+		// resolve an sfx name to a folder key: first as a category of the dedicated
+		// sfx slot (id defaults to "SFX0"), so sfx pools get the full [[slot]]
+		// toolset — explicit file lists (BSA-capable), folder refs, or a scanned
+		// path — then the legacy flat [sfx] table. Direct key lookups (no
+		// alias/fallback), so a name only in the [sfx] table doesn't trip the
+		// voice resolver's miss warning.
+		std::string ResolveSfxKey(const Config::Settings& a_settings, std::string_view a_name)
+		{
+			const auto catNorm = Config::Normalize(a_name);
+			if (!a_settings.sfxSlot.empty()) {
+				const auto slotKey = Config::Normalize(a_settings.sfxSlot) + "/" + catNorm;
+				if (FolderCache::FileCount(slotKey) > 0) {
+					return slotKey;
+				}
+			}
+			const auto sfxKey = "sfx/" + catNorm;
+			return FolderCache::FileCount(sfxKey) > 0 ? sfxKey : std::string{};
 		}
 
 		// ---------- shared play helper ----------
@@ -257,11 +284,9 @@ namespace PapyrusAPI
 			}
 			auto key = ResolveGaggedKey(*settings, *slot, a_category.c_str(), a_actor);
 			if (key.empty()) {
-				// last resort: non-voice scene sounds (PullOutGape, Smack, ...) live in the sfx table
-				const auto sfxKey = "sfx/" + Config::Normalize(a_category.c_str());
-				if (FolderCache::FileCount(sfxKey) > 0) {
-					key = sfxKey;
-				}
+				// last resort: non-voice scene sounds (PullOutGape, Smack, ...) live in
+				// the sfx slot / [sfx] table
+				key = ResolveSfxKey(*settings, a_category.c_str());
 			}
 			// no-interrupt early-out: cheap pre-check to avoid building a sound we'd
 			// drop (the atomic claim in PlayFromKey closes the check/claim race)
@@ -271,8 +296,11 @@ namespace PapyrusAPI
 			}
 			// 3D-follow only when voice3D is on; either way the mouth actor drives lipsync
 			RE::Actor* follow = settings->voice3D ? a_actor : nullptr;
+			// per-call opt-out OR a category configured to never lipsync (oral sfx, climax)
+			const bool blockLip = a_blockLipSync ||
+				settings->lipsyncBlockCategories.contains(Config::Normalize(a_category.c_str()));
 			return PlayFromKey(key, follow, a_volume, a_group.c_str(), a_channel.c_str(),
-				a_blockLipSync ? nullptr : a_actor, settings->voiceNoInterrupt);
+				blockLip ? nullptr : a_actor, settings->voiceNoInterrupt);
 		}
 
 		std::int32_t PlayVoiceFromSlot(RE::StaticFunctionTag*, RE::BSFixedString a_slot,
@@ -291,15 +319,17 @@ namespace PapyrusAPI
 				return 0;
 			}
 			RE::Actor* follow = settings->voice3D ? a_follow : nullptr;
+			const bool blockLip = a_blockLipSync ||
+				settings->lipsyncBlockCategories.contains(Config::Normalize(a_category.c_str()));
 			return PlayFromKey(key, follow, a_volume, a_group.c_str(), a_channel.c_str(),
-				a_blockLipSync ? nullptr : a_follow, settings->voiceNoInterrupt);
+				blockLip ? nullptr : a_follow, settings->voiceNoInterrupt);
 		}
 
 		std::int32_t PlaySFX(RE::StaticFunctionTag*, RE::BSFixedString a_name,
 			RE::Actor* a_follow, float a_volume, RE::BSFixedString a_group,
 			RE::BSFixedString a_channel)
 		{
-			const auto key = "sfx/" + Config::Normalize(a_name.c_str());
+			const auto key = ResolveSfxKey(*Config::Get(), a_name.c_str());
 			return PlayFromKey(key, a_follow, a_volume, a_group.c_str(), a_channel.c_str());
 		}
 
