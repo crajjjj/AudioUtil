@@ -6,6 +6,7 @@
 namespace FolderCache
 {
 	void AuditExplicitFiles(const Config::Settings& a_settings);  // defined after Rebuild
+	void AuditWiring(const Config::Settings& a_settings);         // defined after Rebuild
 
 	namespace
 	{
@@ -86,6 +87,9 @@ namespace FolderCache
 
 		std::size_t voiceFolders = 0;
 		for (const auto& slot : settings->slots) {
+			// how many category folders THIS slot contributed (explicit + scanned).
+			// Used below to flag a pack slot whose `path` exists but scanned empty.
+			std::size_t slotFolders = 0;
 			// explicit [slot.categories] first: trusted as-is (no filesystem check,
 			// so they can point at BSA-packed audio the engine resolves at play time)
 			for (const auto& [category, files] : slot.categories) {
@@ -105,6 +109,7 @@ namespace FolderCache
 				}
 				g_folders[key] = std::move(folder);
 				++voiceFolders;
+				++slotFolders;
 			}
 
 			// folder-string categories: scanned like the [sfx] table ('Sound\...' =
@@ -129,6 +134,7 @@ namespace FolderCache
 				}
 				if (ScanDir(key, dir, dataRoot)) {
 					++voiceFolders;
+					++slotFolders;
 				} else {
 					logger::warn("Slot {} category '{}': no audio files in {}", slot.id, category, dir.string());
 				}
@@ -156,7 +162,26 @@ namespace FolderCache
 				}
 				if (ScanDir(key, entry.path(), dataRoot)) {
 					++voiceFolders;
+					++slotFolders;
 				}
+			}
+
+			// A slot that declares a scannable `path` is meant to hold a pack. The
+			// scan above is otherwise UNAUDITED (unlike explicit file lists, see
+			// AuditExplicitFiles) — so a folder that exists but yields no category
+			// subfolders is invisible in the log and silently falls back to the
+			// slot's `fallback` (e.g. F1 -> stock F0 moans). Surface it: a pack
+			// scanned to zero almost always means an extra nesting level, folder
+			// names that don't match the category scheme, or BSA-packed audio a
+			// loose-file scan can't see.
+			if (slotFolders == 0) {
+				logger::warn("Slot {}: 0 category folders under {} — folder exists but has no "
+					"<Category> subfolders. Check for an extra nesting level, non-standard "
+					"folder names, or BSA-packed audio (folder scans see loose files only).",
+					slot.id, slotDir.string());
+			} else {
+				logger::info("Slot {}: {} category folders scanned under {}",
+					slot.id, slotFolders, slotDir.string());
 			}
 		}
 
@@ -175,6 +200,7 @@ namespace FolderCache
 		logger::info("FolderCache: {} voice category folders, {} sfx folders", voiceFolders, sfxFolders);
 
 		AuditExplicitFiles(*settings);
+		AuditWiring(*settings);
 	}
 
 	// walk every explicit [slot.categories] file list (the hand-written, BSA-capable
@@ -204,6 +230,78 @@ namespace FolderCache
 		} else {
 			logger::warn("Audit: {} of {} explicit slot files are MISSING (see warnings above)",
 				missing, checked);
+		}
+	}
+
+	// A slot is "wired" only if some config route points an actor at it: a
+	// default / pc / sfx assignment, an [npc_overrides] / [voicetype_map] /
+	// [race_map] target, or another slot's fallback / gag_slot. A slot that holds
+	// audio yet is the target of none of these resolves for no actor through the
+	// config — the follower-pack mistake (drop a pack into F4, forget to map a
+	// voicetype). This is invisible otherwise: the content scans in fine, the log
+	// looks clean, the slot just never resolves. (A script CAN still play it
+	// directly via PlayVoiceFromSlot, so this is a warning, not an error.) Empty
+	// unrouted slots are NOT flagged — F2/F3 ship as reserved placeholders until a
+	// pack is installed — so we key off slots that actually resolved content.
+	// Caller holds g_lock (reads g_folders).
+	void AuditWiring(const Config::Settings& a_settings)
+	{
+		// slots that ended up with >=1 resolved category (explicit or scanned):
+		// g_folders keys are "normslot/category" (and "sfx/..." for the flat table).
+		std::unordered_set<std::string> withContent;
+		for (const auto& [key, folder] : g_folders) {
+			if (const auto slash = key.find('/'); slash != std::string::npos) {
+				withContent.insert(key.substr(0, slash));
+			}
+		}
+
+		// every slot id some routing path can reach (normalized; add() re-normalizes,
+		// which is idempotent, so it's safe on already-normalized fallback/gag ids).
+		std::unordered_set<std::string> wired;
+		const auto add = [&wired](std::string_view a_id) {
+			if (!a_id.empty()) {
+				wired.insert(Config::Normalize(a_id));
+			}
+		};
+		add(a_settings.defaultFemaleSlot);
+		add(a_settings.defaultMaleSlot);
+		add(a_settings.pcFemaleSlot);
+		add(a_settings.pcMaleSlot);
+		add(a_settings.sfxSlot);
+		for (const auto& [key, target] : a_settings.npcOverrides) {
+			add(target);
+		}
+		for (const auto& [voicetype, ids] : a_settings.voicetypeMap) {
+			for (const auto& id : ids) {
+				add(id);
+			}
+		}
+		for (const auto& [hint, ids] : a_settings.raceMap) {
+			for (const auto& id : ids) {
+				add(id);
+			}
+		}
+		for (const auto& slot : a_settings.slots) {
+			add(slot.fallbackSlot);
+			add(slot.gagSlot);
+		}
+		// note: [voicetype_remap] values are voicetype NAMES, not slot ids — they
+		// redirect to another voicetype that must itself map, so they're not routes.
+
+		std::size_t orphaned = 0;
+		for (const auto& slot : a_settings.slots) {
+			const auto norm = Config::Normalize(slot.id);
+			if (withContent.contains(norm) && !wired.contains(norm)) {
+				++orphaned;
+				logger::warn("Slot {}: has audio but no config route points to it — no actor "
+					"resolves to this slot (a script may still target it via PlayVoiceFromSlot). "
+					"To route actors, add it to [voicetype_map] / [npc_overrides] / [race_map], set "
+					"it as a default/pc/sfx slot, or reference it as another slot's fallback / gag_slot.",
+					slot.id);
+			}
+		}
+		if (orphaned == 0) {
+			logger::info("Wiring: every slot with audio is routable");
 		}
 	}
 
