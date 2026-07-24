@@ -66,7 +66,7 @@ bool Function HasKey(string asFile, string asKey) global native
 bool Function Reload(string asFile) global native
 ```
 
-Re-parse one file (live tuning: edit the TOML, call this in-game). Returns `false` **and keeps the previously cached contents** on parse failure. Console (with [ConsoleUtil Extended](https://www.nexusmods.com/skyrimspecialedition/mods/133569)): `toml reload "SKSE\Plugins\MyMod\MyMod.toml"`.
+Re-parse one file (live tuning: edit the TOML, call this in-game). Returns `false` **and keeps the previously cached contents** on parse failure. Console: `toml reload "SKSE\Plugins\MyMod\MyMod.toml"` — see [Console Commands](../console.md).
 
 ## Example
 

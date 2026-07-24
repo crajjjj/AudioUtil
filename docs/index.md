@@ -28,6 +28,10 @@ Point it at a folder of `.wav` files and call `AudioUtil.PlayVoice(actor, "Categ
 
     How a consumer mod's `AudioUtil.toml` maps voice slots, categories, and SFX. See [Voice & Category Resolution](config/resolution.md) for the lookup order and the full [Config Reference](config/reference.md).
 
+- :material-console: **[Console Commands](console.md)**
+
+    Reload config and play test files from the in-game console (via ConsoleUtil Extended) while developing or troubleshooting.
+
 </div>
 
 ## Minimal example

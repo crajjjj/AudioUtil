@@ -20,7 +20,7 @@ API version of the loaded DLL, for compatibility checks. `0` = DLL not installed
 bool Function ReloadConfig() global native
 ```
 
-Re-read `AudioUtil.toml` and rescan all slot folders in-game — no restart needed. Returns `false` if the file failed to parse, in which case the **previous config stays active**. Console (with [ConsoleUtil Extended](https://www.nexusmods.com/skyrimspecialedition/mods/133569)): `au reload`.
+Re-read `AudioUtil.toml` and rescan all slot folders in-game — no restart needed. Returns `false` if the file failed to parse, in which case the **previous config stays active**. Console: `au reload` — see [Console Commands](../console.md).
 
 ## Playback
 
