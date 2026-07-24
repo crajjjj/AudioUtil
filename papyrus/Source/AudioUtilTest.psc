@@ -1,5 +1,6 @@
 Scriptname AudioUtilTest Hidden
-{Console test harness. With ConsoleUtil: cgf "AudioUtilTest.T1" etc.}
+{Console test harness. Reachable as console commands via ConsoleUtil Extended -
+ see dist\SKSE\CustomConsole\AudioUtilTest.yaml (e.g. autest play <path>).}
 
 ; basic file play, default flags
 Function T1() global
@@ -57,4 +58,38 @@ EndFunction
 
 Function TReload() global
     Debug.Notification("reload=" + AudioUtil.ReloadConfig())
+EndFunction
+
+; --- parameterized helpers: content-agnostic, driven from console args (via CUE) ---
+; Unlike T1-T7 (which hardcode IVDT paths/slots), these take what to play as
+; arguments, so they work on any install by pointing at content you actually have.
+
+; Play any loose wav by Data-relative path at the player.  e.g.  autest play "Sound\fx\foo\bar.wav"
+Function PlayPath(string path) global
+    int h = AudioUtil.PlayFile(path, Game.GetPlayer())
+    if h > 0
+        Debug.Notification("play '" + path + "' handle=" + h + " dur=" + AudioUtil.GetHandleDuration(h))
+    else
+        Debug.Notification("play '" + path + "' FAILED (0) - missing or BSA-packed? see AudioUtil.log")
+    endif
+EndFunction
+
+; Play a voice category from an explicit slot at the player.  e.g.  autest voice M1 Orgasm
+Function Voice(string slot, string category) global
+    int n = AudioUtil.GetCategoryFileCount(slot, category)
+    int h = AudioUtil.PlayVoiceFromSlot(slot, category, Game.GetPlayer())
+    Debug.Notification("voice " + slot + "/" + category + " files=" + n + " handle=" + h)
+EndFunction
+
+; Resolve the player's slot and play a category through it.  e.g.  autest voicepc Orgasm
+Function VoicePC(string category) global
+    string slot = AudioUtil.GetSlotForActor(Game.GetPlayer())
+    int h = AudioUtil.PlayVoice(Game.GetPlayer(), category)
+    Debug.Notification("voicepc " + category + " slot=" + slot + " handle=" + h)
+EndFunction
+
+; Play an SFX by name at the player.  e.g.  autest sfx MediumClap
+Function Sfx(string name) global
+    int h = AudioUtil.PlaySFX(name, Game.GetPlayer())
+    Debug.Notification("sfx " + name + " handle=" + h)
 EndFunction

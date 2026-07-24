@@ -1,0 +1,22 @@
+# ConsoleUtil Extended (CUE) command config for the generic TomlUtil reader.
+# Requires: ConsoleUtil Extended  https://www.nexusmods.com/skyrimspecialedition/mods/133569
+# Drops into Data\SKSE\CustomConsole\. Replaces the old (Skyrim-invalid)
+# `cgf "TomlUtil.Reload" "SKSE\Plugins\MyMod\MyMod.toml"` example.
+#
+# Usage in console:  TomlUtil reload "SKSE\Plugins\MyMod\MyMod.toml"
+#                    (alias)  toml reload "SKSE\Plugins\MyMod\MyMod.toml"
+version: 1
+name: TomlUtil
+alias: toml
+script: TomlUtil
+help: Generic TOML reader console commands
+subs:
+  - name: Reload
+    alias: reload
+    func: Reload
+    help: Re-parse one Data-relative TOML file; prints true on success, false (and keeps cached contents) on parse failure
+    args:
+      - name: file
+        type: String
+        required: true
+        help: Data-relative path, e.g. SKSE\Plugins\MyMod\MyMod.toml

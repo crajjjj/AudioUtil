@@ -45,5 +45,5 @@ bool Function HasKey(string asFile, string asKey) global native
 
 ; Re-parse one file (live tuning: edit the toml, call this in-game).
 ; Returns false AND KEEPS the previously cached contents on parse failure.
-; Console: cgf "TomlUtil.Reload" "SKSE\Plugins\MyMod\MyMod.toml"
+; Console (ConsoleUtil Extended): toml reload "SKSE\Plugins\MyMod\MyMod.toml"
 bool Function Reload(string asFile) global native

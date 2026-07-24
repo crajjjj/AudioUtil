@@ -41,7 +41,7 @@ int Function GetAPIVersion() global native
 
 ; Re-read AudioUtil.toml and rescan all slot folders in-game (no restart
 ; needed). Returns false if the file failed to parse - the previous config
-; stays active in that case. Console: cgf "AudioUtil.ReloadConfig"
+; stays active in that case. Console (ConsoleUtil Extended): au reload
 bool Function ReloadConfig() global native
 
 ; Play a voice line for an actor, resolving WHICH voice pack (slot) to use

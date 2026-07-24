@@ -1,0 +1,16 @@
+# ConsoleUtil Extended (CUE) command config for the AudioUtil core API.
+# Requires: ConsoleUtil Extended  https://www.nexusmods.com/skyrimspecialedition/mods/133569
+# Drops into Data\SKSE\CustomConsole\. Replaces the old (Skyrim-invalid)
+# `cgf "AudioUtil.ReloadConfig"` example with a real console command.
+#
+# Usage in console:  AudioUtil reload   (alias)  au reload
+version: 1
+name: AudioUtil
+alias: au
+script: AudioUtil
+help: AudioUtil core console commands
+subs:
+  - name: ReloadConfig
+    alias: reload
+    func: ReloadConfig
+    help: Re-parse AudioUtil.toml and rescan all slot folders; prints true on success, false if the file failed to parse (previous config stays active)

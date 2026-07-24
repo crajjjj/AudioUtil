@@ -93,7 +93,7 @@ Every `Play*` returns an `int` instance handle: `>0` success, `0` = nothing play
 
 **`TomlUtil.psc`** (`Hidden`) — generic, audio-independent TOML reader: `GetAPIVersion()`, `GetInt/GetFloat/GetString/GetBool(asFile, asKey, default)`, `GetStringArray(asFile, asKey)`, `HasKey`, `Reload(asFile)`. File path is Data-relative; dotted keys (`voice.pcvolume`); read-only by design.
 
-**`AudioUtilTest.psc`** (`Hidden`) — console harness (needs ConsoleUtil): `cgf "AudioUtilTest.T1"` etc. T1 basic play, T2F flags/priority sweep, T3 PlayVoice, T4 shuffle-bag, T5 SFX, T6 channel replacement, T7 group duck, T8 PPA status, TReload.
+**`AudioUtilTest.psc`** (`Hidden`) — console harness. Skyrim has **no** `cgf` command (that's Fallout 4); the global test functions are exposed as real console commands via **ConsoleUtil Extended** (CUE) configs in `dist\SKSE\CustomConsole\*.yaml` (e.g. `autest T1`, `au reload`). Legacy IVDT-hardcoded probes: T1 basic play, T2F flags/priority sweep, T3 PlayVoice, T4 shuffle-bag, T5 SFX, T6 channel replacement, T7 group duck, T8 PPA status, TReload. Content-agnostic (arg-driven, work on any install): `play <path>`, `voice <slot> <category>`, `voicepc <category>`, `sfx <name>`.
 
 Native registration lives in `PapyrusAPI::RegisterFuncs`, split across `SCRIPT_NAME="AudioUtil"`, `PPA_SCRIPT_NAME="AudioUtilPPA"`, `TOML_SCRIPT_NAME="TomlUtil"`. Both `API_VERSION` and `TOML_API_VERSION` are `1`.
 

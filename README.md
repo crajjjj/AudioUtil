@@ -54,7 +54,9 @@ and enables the PPA bridge.
   fails closed when PPA is absent)
 - `papyrus\Source\AudioUtil.psc` — native declarations + `PlayAndWait` wrappers
   (master copy; `Hentairim p+ 3.0.4\Scripts\Source\` carries a copy for compilation)
-- `papyrus\Source\AudioUtilTest.psc` — console test harness (`cgf "AudioUtilTest.T1"`)
+- `papyrus\Source\AudioUtilTest.psc` — console test harness; reachable as console commands via
+  [ConsoleUtil Extended](https://www.nexusmods.com/skyrimspecialedition/mods/133569) (configs in
+  `dist\SKSE\CustomConsole\`), e.g. `autest play <path>`, `autest voice <slot> <category>`, `autest sfx <name>`
 - `dist\` — mod-shaped output: DLL, compiled scripts + sources, and the SFW-neutral default
   `SKSE\Plugins\AudioUtil\AudioUtil.toml`
 - `lib\commonlibsse-ng` — CommonLibSSE-NG as a git submodule (pinned to the same commit
@@ -84,8 +86,9 @@ With `xmake f --copy_to_mod=y` and `XSE_TES5_MODS_PATH` set (e.g. `E:\nefaram\mo
 ## Config
 
 `Data\SKSE\Plugins\AudioUtil\AudioUtil.toml` — see the comments in the default file.
-All key/name matching is case- and space-insensitive. `ReloadConfig()` (or
-`cgf "AudioUtilTest.TReload"`) re-parses and rescans without restarting the game.
+All key/name matching is case- and space-insensitive. `ReloadConfig()` (console: `au reload`
+via [ConsoleUtil Extended](https://www.nexusmods.com/skyrimspecialedition/mods/133569)) re-parses
+and rescans without restarting the game.
 
 `sound_flags` / `sound_priority` are the `BuildSoundDataFromFile` parameters (default `0x1A` /
 `128`). If audio doesn't play or isn't 3D, sweep values in-game with

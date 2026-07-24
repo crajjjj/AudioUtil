@@ -1,0 +1,88 @@
+# ConsoleUtil Extended (CUE) command config for the AudioUtil test harness.
+# Requires: ConsoleUtil Extended  https://www.nexusmods.com/skyrimspecialedition/mods/133569
+# Drops into Data\SKSE\CustomConsole\ ; maps console subcommands onto the
+# global functions in AudioUtilTest.psc. A function's return prints to console
+# (the T* harness uses Debug.Notification, so watch the top-left corner too).
+#
+# Usage in console:  AudioUtilTest T1     (or the alias)  autest T1
+version: 1
+name: AudioUtilTest
+alias: autest
+script: AudioUtilTest
+help: AudioUtil console test harness (T1-T8, reload)
+subs:
+  - name: T1
+    func: T1
+    help: Basic loose-file play with default flags (0x1A / 128)
+  - name: T2F
+    func: T2F
+    help: Play with explicit sound flags and priority (sweep these when silent/not 3D)
+    args:
+      - name: flags
+        type: int
+        default: 26        # 0x1A
+        help: Sound flags (default 0x1A = 26)
+      - name: priority
+        type: int
+        default: 128
+        help: Sound priority (default 128)
+  - name: T3
+    func: T3
+    help: PlayVoice via slot resolution on the player
+  - name: T4
+    func: T4
+    help: Shuffle-bag check - plays a category 5x back to back (watch the log)
+  - name: T5
+    func: T5
+    help: SFX table lookup / play
+  - name: T6
+    func: T6
+    help: Channel replacement - second play should cut the first
+  - name: T7
+    func: T7
+    help: Group duck / unduck
+  - name: T8
+    func: T8
+    help: PPA connection status
+  - name: TReload
+    alias: reload
+    func: TReload
+    help: Reload AudioUtil.toml and rescan (via the test wrapper)
+
+  # --- content-agnostic: pass what to play as args (work on any install) ---
+  - name: play
+    func: PlayPath
+    help: Play any loose wav at the player by Data-relative path
+    args:
+      - name: path
+        type: String
+        required: true
+        help: Data-relative wav path, e.g. Sound\fx\foo\bar.wav
+  - name: voice
+    func: Voice
+    help: Play a voice category from an explicit slot at the player
+    args:
+      - name: slot
+        type: String
+        required: true
+        help: Slot id, e.g. M1
+      - name: category
+        type: String
+        required: true
+        help: Category name, e.g. Orgasm
+  - name: voicepc
+    func: VoicePC
+    help: Resolve the player's slot and play a category through it
+    args:
+      - name: category
+        type: String
+        required: true
+        help: Category name, e.g. Orgasm
+  - name: sfx
+    func: Sfx
+    help: Play an SFX by name at the player
+    args:
+      - name: name
+        type: String
+        required: true
+        help: SFX/category name, e.g. MediumClap
