@@ -1,9 +1,15 @@
 -- Runs Pyro on AudioUtil.ppj: compiles papyrus\Source -> dist\Scripts, mirrors
 -- the .psc sources into dist, and (Zip="true" in the ppj) writes the <ZipFiles>
 -- archive to Release\ — BFNG-style: pyro owns the release packaging.
+-- The ppj writes Release\AudioUtil.zip (from @ModName); this script then renames
+-- it to Release\AudioUtil-<version>.zip so the artifact is self-labeling. The
+-- version comes from set_version in xmake.lua (PROJECT_VERSION), read here via
+-- project.version() — single source of truth. (It can't be reached as a plain
+-- global: that lives in description scope, this runs in script scope.)
 -- Overrides: PYRO_EXE (pyro.exe path), SKYRIM_GAME_PATH (game root).
 
 function main()
+    import("core.project.project")
     local pyro = os.getenv("PYRO_EXE")
     if not pyro or not os.isfile(pyro) then
         local home = os.getenv("USERPROFILE") or ""
@@ -28,4 +34,17 @@ function main()
         "-i", path.join(os.projectdir(), "AudioUtil.ppj"),
         "--game-path", game
     })
+
+    -- stamp the version into the archive name (Pyro can't; the ppj is static).
+    -- Release\AudioUtil.zip -> Release\AudioUtil-<version>.zip.
+    local version = project.version()
+    if version and version ~= "" then
+        local base = path.join(os.projectdir(), "Release", "AudioUtil")
+        local src_zip = base .. ".zip"
+        local dst_zip = base .. "-" .. version .. ".zip"
+        if os.isfile(src_zip) then
+            os.mv(src_zip, dst_zip)
+            print("pyro: release archive -> " .. dst_zip)
+        end
+    end
 end

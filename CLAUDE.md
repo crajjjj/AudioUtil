@@ -39,16 +39,16 @@ xmake                     # build DLL -> dist\SKSE\Plugins\AudioUtil.dll
 ### Papyrus scripts + release packaging (Pyro)
 
 ```
-xmake build papyrus       # Pyro: papyrus\Source\*.psc -> dist\Scripts + Release\AudioUtil.zip
+xmake build papyrus       # Pyro: papyrus\Source\*.psc -> dist\Scripts + Release\AudioUtil-<version>.zip
 xmake build release       # rebuilds the DLL first (add_deps AudioUtil), then runs Pyro
 ```
 
-- `scripts/pyro.lua` mirrors `papyrus\Source\*.psc` into `dist\Scripts\Source`, then runs `pyro.exe -i AudioUtil.ppj --game-path <game>`.
+- `scripts/pyro.lua` mirrors `papyrus\Source\*.psc` into `dist\Scripts\Source`, then runs `pyro.exe -i AudioUtil.ppj --game-path <game>`. Afterward it renames the ppj's `Release\AudioUtil.zip` to **`Release\AudioUtil-<version>.zip`** — the version is passed in from `xmake.lua` `PROJECT_VERSION` (single source of truth; the static `.ppj` can't template it).
 - `pyro.exe` is auto-located from the VSCode papyrus-lang extension (`%USERPROFILE%\.vscode\extensions\joelday.papyrus-lang-vscode-*\pyro\pyro.exe`). Override with env **`PYRO_EXE`**.
 - Game root defaults to `C:\SteamLibrary\steamapps\common\Skyrim Special Edition`; override with env **`SKYRIM_GAME_PATH`**.
 - **VSCode default build task** (`Ctrl+Shift+B`, `.vscode/tasks.json`) runs the same `AudioUtil.ppj` via the `pyro` task type, with `gamePath` hardcoded to the same Steam path.
 
-`AudioUtil.ppj` has `Zip="true"`, so **every Pyro run refreshes `Release\AudioUtil.zip`** — a ready-to-install mod archive (`<ZipFiles>` RootDir `.\dist`, matching `Scripts\*.pex`, `Scripts\Source\*.psc`, `SKSE\*.*`). This is the BFNG convention where Pyro owns release packaging.
+`AudioUtil.ppj` has `Zip="true"`, so **every Pyro run refreshes the release archive** — a ready-to-install mod archive (`<ZipFiles>` RootDir `.\dist`, matching `Scripts\*.pex`, `Scripts\Source\*.psc`, `SKSE\*.*`), which `pyro.lua` then renames to **`Release\AudioUtil-<version>.zip`** (version from `xmake.lua` `PROJECT_VERSION`). This is the BFNG convention where Pyro owns release packaging.
 
 ### Env vars summary
 
@@ -120,7 +120,7 @@ dist/
   Scripts/Source/*.psc                         ← source copies mirrored by pyro.lua
 ```
 
-`.gitignore` ignores all of `dist/**` **except** the tracked, hand-written `dist/SKSE/Plugins/AudioUtil/AudioUtil.toml` and `dist/SKSE/Plugins/AudioUtil/config.example/*.toml` — everything else (DLL from xmake, `.pex`/`.psc` from Pyro) is generated. Pyro zips the whole `dist/` tree into `Release\AudioUtil.zip`.
+`.gitignore` ignores all of `dist/**` **except** the tracked, hand-written `dist/SKSE/Plugins/AudioUtil/AudioUtil.toml` and `dist/SKSE/Plugins/AudioUtil/config.example/*.toml` — everything else (DLL from xmake, `.pex`/`.psc` from Pyro) is generated. Pyro zips the whole `dist/` tree into `Release\AudioUtil-<version>.zip`.
 
 ## Gotchas & Non-obvious Details
 
