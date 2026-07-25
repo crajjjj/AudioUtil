@@ -423,6 +423,16 @@ namespace PapyrusAPI
 			return slot ? slot->id.c_str() : "";
 		}
 
+		// Optional per-slot schema label: "B" for a pack using the alternate
+		// folder/category layout, "A" otherwise (default, and for unknown slots).
+		// AudioUtil does not interpret it - consumers gate their own routing on it.
+		RE::BSFixedString GetSlotVariation(RE::StaticFunctionTag*, RE::BSFixedString a_slot)
+		{
+			const auto settings = Config::Get();
+			const auto* slot = Config::FindSlot(*settings, a_slot.c_str());
+			return (slot && slot->variation == "B") ? "B" : "A";
+		}
+
 		std::int32_t GetCategoryFileCount(RE::StaticFunctionTag*, RE::BSFixedString a_slot,
 			RE::BSFixedString a_category)
 		{
@@ -620,6 +630,7 @@ namespace PapyrusAPI
 		REGISTERFUNC(IsLipSyncEnabled, SCRIPT_NAME);
 		REGISTERFUNC(SetLipSyncGain, SCRIPT_NAME);
 		REGISTERFUNC(GetSlotForActor, SCRIPT_NAME);
+		REGISTERFUNC(GetSlotVariation, SCRIPT_NAME);
 		REGISTERFUNC(GetCategoryFileCount, SCRIPT_NAME);
 		REGISTERFUNC(CategoryExists, SCRIPT_NAME);
 		REGISTERFUNC(FileExists, SCRIPT_NAME);

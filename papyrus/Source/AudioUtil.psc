@@ -174,6 +174,14 @@ Function SetLipSyncGain(float gain) global native
 ; "F1", ...; "" if none). Useful for debugging voice assignment.
 string Function GetSlotForActor(Actor akActor) global native
 
+; Optional per-slot schema label, for consumers whose voice packs ship in more
+; than one folder/category layout. "B" = the alternate layout, "A" = the default
+; (also returned for a slot that doesn't set it, and for an unknown slot id).
+; AudioUtil does not interpret this itself - a consumer mod sets variation on the
+; slot and gates its own category routing on it. Leave unset if all packs share
+; one layout.
+string Function GetSlotVariation(string slot) global native
+
 ; Number of playable files behind slot/category after full category
 ; resolution (aliases/fallbacks applied). 0 = a PlayVoice would fail.
 int Function GetCategoryFileCount(string slot, string category) global native

@@ -120,6 +120,7 @@ sex = "male"                  # "male" | "female" | "all"
 path = 'Sound\fx\MyMod\M4'    # scanned for <Category>\*.wav subfolders
 fallback = "M1"               # optional: backfill empty categories from this slot
 gag_slot = "M4gag"            # optional: muffled parallel slot used when gagged
+# variation = "B"             # optional schema label (see below); default "A"
 ```
 
 | Key | Type | Meaning |
@@ -129,6 +130,7 @@ gag_slot = "M4gag"            # optional: muffled parallel slot used when gagged
 | `path` | path | Folder scanned for `<Category>\*.wav` subfolders. Optional if the slot is defined purely by explicit categories. Loose files only. |
 | `fallback` | slot id | Optional. Per-category backfill slot when a category resolves to nothing here. Chains capped at **4 hops**. |
 | `gag_slot` | slot id | Optional. A parallel slot (another `[[slot]]`, same category names, muffled audio) used **instead of this one** when the speaking actor is gagged. See [`[gag]`](#gag). |
+| `variation` | string | Optional per-slot schema label, surfaced to Papyrus via [`GetSlotVariation`](../api/audioutil.md#getslotvariation). `"B"` = the alternate layout, anything else (incl. unset) = `"A"`. **AudioUtil does not interpret it** — resolution, fallback and scanning are unchanged regardless of value. It exists purely for a consumer mod whose voice packs ship in more than one folder/category layout, so the consumer can read it per resolved slot and gate its own category routing. Leave unset if all packs share one layout. |
 | `[slot.categories]` | table | Optional explicit categories (below). Win over same-named scanned folders. |
 
 ### `[slot.categories]` — explicit categories

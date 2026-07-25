@@ -238,6 +238,12 @@ namespace Config
 				slot.root = (*table)["path"].value_or(""s);
 				slot.fallbackSlot = Normalize((*table)["fallback"].value_or(""s));
 				slot.gagSlot = Normalize((*table)["gag_slot"].value_or(""s));
+				// variation: optional per-slot schema label. "B" = the alternate
+				// folder/category layout, anything else (incl. unset) = "A".
+				// First letter only, case-insensitive.
+				const auto var = (*table)["variation"].value_or(""s);
+				slot.variation = (!var.empty() &&
+					std::tolower(static_cast<unsigned char>(var[0])) == 'b') ? "B" : "A";
 				// sex: 'F' female, 'A' all/any (sex-neutral: creatures, sfx pools), else
 				// 'M' male (the default). First letter only, case-insensitive.
 				const auto sex = (*table)["sex"].value_or(""s);

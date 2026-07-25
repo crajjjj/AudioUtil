@@ -34,6 +34,12 @@ namespace Config
 		// speaking actor is gagged (see [gag]). Same category names, gagged
 		// audio. Empty = this slot has no gagged variant.
 		std::string gagSlot;  // normalized id; empty = none
+
+		// optional per-slot schema label, for consumers whose voice packs ship in
+		// more than one folder/category layout. "B" = the alternate layout, "A"
+		// (default) = the primary one. AudioUtil does not interpret it; a consumer
+		// mod sets it and gates its own category routing on it. Empty/unset = "A".
+		std::string variation;  // "A" or "B"; default "A"
 	};
 
 	// a plugin + local form id reference, resolved to a live form at load

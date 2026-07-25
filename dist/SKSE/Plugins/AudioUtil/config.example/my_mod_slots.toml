@@ -35,6 +35,11 @@ path = 'Sound\fx\MyMod\F1'
 # fallback = "F0"      # optional: another slot consulted per-category when this
                        #           one resolves nothing (chains up to 4 hops)
 # gag_slot = "F1gag"   # optional: muffled slot used when the speaker is gagged
+# variation = "B"      # optional schema label read back via GetSlotVariation.
+                       #           AudioUtil doesn't interpret it — only for a
+                       #           consumer whose packs ship in more than one
+                       #           folder layout, to gate its own routing. Omit
+                       #           (= "A") if all your packs share one layout.
 
 [[slot]]  # form 2: explicit per-category FILE lists (BSA-capable, no folders needed)
 id = "M1"
