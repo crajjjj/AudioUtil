@@ -39,26 +39,35 @@ block_in_dialogue = true      # don't lipsync an actor while they're in a dialog
 # block_categories = ["Slurp"]   # categories that never drive the mouth (additive: overlays may add their own)
 
 [gag]
-# Gag / mouth-owning devices. When a speaking actor wears any
-# keyword below, two things happen automatically:
+# Gag / mouth-owning devices. When a speaking actor wears any gag marker below
+# - a `keywords` keyword or a specific `items` armor form - two things happen
+# automatically:
 #   1. her voice routes through her slot's `gag_slot` so a muffled clip plays
 #      instead of the clear line, and
 #   2. lipsync is suppressed - the device owns the mouth, so the DLL won't
 #      fight it.
 # If the gag slot lacks the requested category, `default_category` plays there
 # as a muffled catch-all - never silence, never a clear line.
-# Keywords are 'Plugin.esp|FormID' (hex), same form as [npc_overrides] keys.
-# A keyword whose mod you don't run is silently skipped, so leaving all of
+# Both lists use 'Plugin.esp|FormID' (hex), same form as [npc_overrides] keys.
+# A marker whose mod you don't run is silently skipped, so leaving all of
 # these listed is harmless. enable = false turns the whole feature off.
-# enable / default_category are globals -> base-only; the keywords list is
-# ADDITIVE, so an overlay may contribute more gag markers.
+# enable / default_category are globals -> base-only; the keywords and items
+# lists are ADDITIVE, so an overlay may contribute more gag markers.
 enable = true
 default_category = "GagMoan"
+# keywords: match any worn item carrying one of these keywords - covers a whole
+# device family (every gag in a mod) with one entry. Prefer this when the mod
+# tags its gags with a keyword.
 keywords = [
   'Devious Devices - Assets.esm|7EB8',   # zad_DeviousGag
   'ZaZAnimationPack.esm|8A4D',           # zbfWornGag
   'ZaZAnimationPack.esm|8A35',           # zbfEffectOpenMouth
   'Toys.esm|8C2',                        # ToysEffectMouthOpen
+]
+# items: match these specific worn item forms (usually ARMO armor). Use for a
+# one-off gag that carries no usable keyword - point straight at the item.
+items = [
+  # 'MyGagMod.esp|000800',   # a specific worn gag with no keyword to match
 ]
 
 [groups]                      # startup volumes per group, 0.0-1.0 (MCM overrides at runtime)
@@ -70,7 +79,7 @@ sfx = 1.0
 oneshot = 1.0
 
 # ---------------------------------------------------------------------------
-# Voice slots, SFX, [gag].keywords, and the voicetype/race/category routing
+# Voice slots, SFX, [gag].keywords/[gag].items, and the voicetype/race/category routing
 # tables are ADDITIVE content — define them in a config\*.toml overlay. See the annotated
 # template in config.example\my_mod_slots.toml and the docs for the full
 # reference and resolution rules: https://crajjjj.github.io/AudioUtil/

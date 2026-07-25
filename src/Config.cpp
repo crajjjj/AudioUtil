@@ -115,14 +115,14 @@ namespace Config
 	//     last-writer-wins per key.
 	//   - [[slot]] is keyed by id: a later file with the same id replaces the
 	//     whole slot (no per-category deep merge) and logs a warning.
-	//   - [gag].keywords and [race_map] accumulate; race_map is sorted once by
+	//   - [gag].keywords, [gag].items and [race_map] accumulate; race_map is sorted once by
 	//     Load after all files are merged.
 	// Global scalar sections ([general], [ppa], [lipsync], and the [gag] scalar
 	// toggles) are OWNED BY THE BASE AudioUtil.toml only. A config\*.toml overlay
 	// that sets them is ignored with a warning — this keeps a content mod (or the
 	// user's own tuning) from silently stomping engine-wide globals. Overlays
 	// remain free to contribute all the ADDITIVE data below (slots, sfx,
-	// resolution/category maps, and [gag].keywords).
+	// resolution/category maps, and [gag].keywords/[gag].items).
 	void MergeFile(Settings* settings, const toml::table& root, bool a_isBase)
 	{
 		if (const auto* general = root["general"].as_table()) {
@@ -182,16 +182,22 @@ namespace Config
 		}
 
 		if (const auto* gag = root["gag"].as_table()) {
-			// [gag].keywords is additive (any file may add gag markers), but the
-			// enable/default_category scalars are base-only like the rest.
+			// [gag].keywords/[gag].items are additive (any file may add gag markers),
+			// but the enable/default_category scalars are base-only like the rest.
 			if (a_isBase) {
 				settings->gagEnabled = (*gag)["enable"].value_or(settings->gagEnabled);
 				settings->gagDefaultCategory = Normalize((*gag)["default_category"].value_or(""s));
 			} else if (gag->contains("enable") || gag->contains("default_category")) {
-				logger::warn("[gag] enable/default_category in an overlay are ignored (base-only); its keywords still merge");
+				logger::warn("[gag] enable/default_category in an overlay are ignored (base-only); its keywords/items still merge");
 			}
-			if (const auto* keywords = (*gag)["keywords"].as_array()) {
-				for (const auto& entry : *keywords) {
+			// both gag-marker lists share the "Plugin.esp|FormID" form: keywords
+			// match by worn keyword, items match a specific worn item form.
+			const auto parseFormRefs = [](const toml::array* a_arr, const char* a_what,
+										   std::vector<FormRef>& a_out) {
+				if (!a_arr) {
+					return;
+				}
+				for (const auto& entry : *a_arr) {
 					const auto text = entry.value<std::string>();
 					if (!text) {
 						continue;
@@ -199,24 +205,26 @@ namespace Config
 					// "Plugin.esp|7EB8" -> {plugin, localID}; the id is hex, 0x optional
 					const auto sep = text->find('|');
 					if (sep == std::string::npos) {
-						logger::warn("[gag] keyword '{}' missing '|' — expected 'Plugin.esp|FormID'", *text);
+						logger::warn("[gag] {} '{}' missing '|' — expected 'Plugin.esp|FormID'", a_what, *text);
 						continue;
 					}
 					std::string_view idText = std::string_view(*text).substr(sep + 1);
 					if (idText.starts_with("0x") || idText.starts_with("0X")) {
 						idText.remove_prefix(2);
 					}
-					GagKeyword kw;
-					kw.plugin = text->substr(0, sep);
+					FormRef ref;
+					ref.plugin = text->substr(0, sep);
 					const auto [ptr, ec] =
-						std::from_chars(idText.data(), idText.data() + idText.size(), kw.localID, 16);
-					if (kw.plugin.empty() || ec != std::errc{} || ptr != idText.data() + idText.size()) {
-						logger::warn("[gag] keyword '{}' has an invalid form id", *text);
+						std::from_chars(idText.data(), idText.data() + idText.size(), ref.localID, 16);
+					if (ref.plugin.empty() || ec != std::errc{} || ptr != idText.data() + idText.size()) {
+						logger::warn("[gag] {} '{}' has an invalid form id", a_what, *text);
 						continue;
 					}
-					settings->gagKeywords.push_back(std::move(kw));
+					a_out.push_back(std::move(ref));
 				}
-			}
+			};
+			parseFormRefs((*gag)["keywords"].as_array(), "keyword", settings->gagKeywords);
+			parseFormRefs((*gag)["items"].as_array(), "item", settings->gagItems);
 		}
 
 		if (const auto* slots = root["slot"].as_array()) {

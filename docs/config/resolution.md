@@ -69,7 +69,7 @@ The key is `'Plugin.esp|FormID'`. For **ESL-flagged** plugins use the last **3**
 
 ### `gag_slot` — muffled voice when gagged
 
-After the slot is resolved by the steps above, one more check runs: if the actor **wears a gag device** (a worn keyword configured in [`[gag]`](reference.md#gag)) and the resolved slot names a `gag_slot`, resolution switches to that gag slot. Category resolution (section 2) then runs there instead — same category name, muffled audio.
+After the slot is resolved by the steps above, one more check runs: if the actor **wears a gag device** (a worn keyword or item configured in [`[gag]`](reference.md#gag)) and the resolved slot names a `gag_slot`, resolution switches to that gag slot. Category resolution (section 2) then runs there instead — same category name, muffled audio.
 
 If the requested category has no audio in the gag slot, `[gag] default_category` plays there as a catch-all, so a gagged actor never leaks a clear line and never falls silent. Give the gag slot **no clear `fallback`** if you want strictly-gagged output — otherwise its own fallback chain could resolve the category to clear audio before the catch-all is reached.
 

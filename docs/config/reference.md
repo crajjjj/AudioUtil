@@ -7,7 +7,7 @@ Paths written `'Sound\...'` are **Data-relative**. Single-quoted TOML literal st
 ## `[general]`
 
 !!! warning "Base-only section"
-    `[general]` (along with `[ppa]`, the `[lipsync]` scalar tuning, and the `[gag]` `enable`/`default_category` toggles) is a **global** section, read **only from the base `AudioUtil.toml`**. If a `config\*.toml` overlay sets any of these, it is ignored with a warning in `AudioUtil.log`. The two **additive** exceptions inside those tables — `[lipsync] block_categories` and `[gag] keywords` — *do* merge from every file. See [the merge rules](index.md).
+    `[general]` (along with `[ppa]`, the `[lipsync]` scalar tuning, and the `[gag]` `enable`/`default_category` toggles) is a **global** section, read **only from the base `AudioUtil.toml`**. If a `config\*.toml` overlay sets any of these, it is ignored with a warning in `AudioUtil.log`. The **additive** exceptions inside those tables — `[lipsync] block_categories` and `[gag] keywords`/`items` — *do* merge from every file. See [the merge rules](index.md).
 
 ```toml
 [general]
@@ -76,13 +76,15 @@ block_categories = ["Slurp"]  # never drive the mouth (additive — merges acros
 
 Runtime overrides: [`SetLipSyncEnabled`](../api/audioutil.md#setlipsyncenabled-islipsyncenabled) / [`SetLipSyncGain`](../api/audioutil.md#setlipsyncgain). `ReloadConfig` restores these TOML values.
 
-Lipsync is **suppressed automatically for a gagged actor** — when the speaker wears a device configured in [`[gag]`](#gag), the device owns the mouth and the DLL won't drive it (checked when the line starts and re-checked on a 500 ms throttle, so a gag equipped mid-line hands the mouth over). No mouth-open threshold to tune.
+Lipsync is **suppressed automatically for a gagged actor** — when the speaker wears a marker configured in [`[gag]`](#gag), the device owns the mouth and the DLL won't drive it (checked when the line starts and re-checked on a 500 ms throttle, so a gag equipped mid-line hands the mouth over). No mouth-open threshold to tune.
 
 ## `[gag]`
 
-Gag / deepthroat / mouth-owning devices. When a speaking actor wears any configured keyword, AudioUtil (1) routes their voice through the slot's [`gag_slot`](#slot) so a muffled clip plays instead of the clear line, and (2) suppresses lipsync (see above). Detection is **native** — the DLL reads the actor's worn items, no Papyrus wiring.
+Gag / deepthroat / mouth-owning devices. When a speaking actor wears any configured gag marker — a `keywords` keyword **or** a specific `items` item form — AudioUtil (1) routes their voice through the slot's [`gag_slot`](#slot) so a muffled clip plays instead of the clear line, and (2) suppresses lipsync (see above). Detection is **native** — the DLL reads the actor's worn items, no Papyrus wiring.
 
-Dormant unless `keywords` is set, so the SFW-neutral default is unaffected.
+Reach for `keywords` first: one keyword matches a whole device family. Use `items` for a one-off gag that carries no usable keyword — you point straight at the worn item form (usually an `ARMO`).
+
+Dormant unless `keywords` or `items` is set, so the SFW-neutral default is unaffected.
 
 ```toml
 [gag]
@@ -93,13 +95,17 @@ keywords = [                     # 'Plugin.esp|FormID' (hex), like [npc_override
   'ZaZAnimationPack.esm|8A4D',
   'Toys.esm|8C2',
 ]
+items = [                        # specific worn item forms, same 'Plugin.esp|FormID' form
+  'MyGagMod.esp|000800',
+]
 ```
 
 | Key | Type | Default | Meaning |
 |-----|------|---------|---------|
-| `enable` | bool | `true` | Master switch. Feature is also inert while `keywords` is empty. |
+| `enable` | bool | `true` | Master switch. Feature is also inert while both `keywords` and `items` are empty. |
 | `default_category` | category | `""` | Played from the gag slot when the requested category has no audio there — a muffled catch-all so a gagged actor never leaks a clear line (and never falls silent). Empty = no catch-all. |
 | `keywords` | list of `'Plugin.esp\|FormID'` | *(none)* | Worn keywords that mark an actor as gagged. Hex form id, `0x` optional; same format as `[npc_overrides]` keys. A keyword whose plugin isn't in the load order is **skipped** (one `debug` line), so listing optional mods is harmless. |
+| `items` | list of `'Plugin.esp\|FormID'` | *(none)* | Specific worn item forms (usually `ARMO`) that mark an actor as gagged — for a gag with no keyword to match. Same form-id format and same skip-if-missing behavior as `keywords`. |
 
 See [Resolution → gag redirect](resolution.md#gag_slot-muffled-voice-when-gagged) for how the redirect interacts with the category chain.
 

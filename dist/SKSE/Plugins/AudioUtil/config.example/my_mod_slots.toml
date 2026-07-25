@@ -9,7 +9,7 @@
 # WHAT AN OVERLAY MAY CONTAIN — additive data only:
 #   [[slot]], [sfx], [npc_overrides], [voicetype_map], [voicetype_remap],
 #   [race_map], [category_aliases.*], [category_fallbacks.*], [male_only_remap],
-#   [groups], [gag].keywords, and [lipsync].block_categories.  These ACCUMULATE
+#   [groups], [gag].keywords, [gag].items, and [lipsync].block_categories.  These ACCUMULATE
 #   across the base file and every overlay (union; a [[slot]] is keyed by id and
 #   whole-slot last-wins).
 #
@@ -18,8 +18,8 @@
 #   enable/default_category toggles are read ONLY from the base AudioUtil.toml.
 #   If you put them here they are IGNORED with a warning in AudioUtil.log. A mod
 #   that needs custom globals ships its own base AudioUtil.toml instead (see the
-#   shipped base for those). The two exceptions above — [gag].keywords and
-#   [lipsync].block_categories — DO merge from here even though the rest of
+#   shipped base for those). The exceptions above — [gag].keywords, [gag].items
+#   and [lipsync].block_categories — DO merge from here even though the rest of
 #   their tables is base-only.
 #
 # Give every path a full 'Sound\...' Data-relative path — slots and sfx alike.

@@ -36,9 +36,10 @@ namespace Config
 		std::string gagSlot;  // normalized id; empty = none
 	};
 
-	// a worn keyword that marks an actor as gagged, resolved from a plugin +
-	// local form id at load (e.g. "Devious Devices - Assets.esm|7EB8")
-	struct GagKeyword
+	// a plugin + local form id reference, resolved to a live form at load
+	// (e.g. "Devious Devices - Assets.esm|7EB8"). Used for [gag] gag markers:
+	// both worn keywords and specific worn item forms.
+	struct FormRef
 	{
 		std::string   plugin;
 		std::uint32_t localID{ 0 };
@@ -127,14 +128,16 @@ namespace Config
 		// note: a gagged actor's lipsync is suppressed via [gag] device detection
 		// (see GagState), not an MFG mouth-open threshold.
 
-		// gagged-voice routing: when a speaking actor wears any of gagKeywords,
+		// gagged-voice routing: when a speaking actor wears any gag marker — a
+		// worn keyword from gagKeywords or a specific worn item from gagItems —
 		// a slot's voice resolves from its gag_slot instead. If the gag slot
 		// lacks the requested category, gagDefaultCategory (a muffled catch-all)
 		// plays there rather than leaking the clear line. Dormant with no
-		// keywords configured, so the SFW-neutral default is unaffected.
-		bool                    gagEnabled{ true };
-		std::string             gagDefaultCategory;  // normalized; empty = none
-		std::vector<GagKeyword> gagKeywords;
+		// markers configured, so the SFW-neutral default is unaffected.
+		bool                  gagEnabled{ true };
+		std::string           gagDefaultCategory;  // normalized; empty = none
+		std::vector<FormRef>  gagKeywords;
+		std::vector<FormRef>  gagItems;  // specific worn item forms (ARMO/…)
 	};
 
 	// lowercase + strip non-alphanumerics: "About To Cum" == "AboutToCum" == "abouttocum"
