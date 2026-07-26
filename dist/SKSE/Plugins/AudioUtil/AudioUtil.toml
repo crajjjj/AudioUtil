@@ -70,7 +70,7 @@ items = [
   # 'MyGagMod.esp|000800',   # a specific worn gag with no keyword to match
 ]
 
-[groups]                      # startup volumes per group, 0.0-1.0 (MCM overrides at runtime)
+[groups]                      # startup volumes per group, 0.0-1.0 (a consumer mod overrides at runtime via SetGroupVolume)
 pc_high = 1.0
 pc_low = 1.0
 partner_high = 1.0

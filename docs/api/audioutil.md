@@ -120,7 +120,7 @@ Conventional group names: `pc_high` / `pc_low` (player voice), `partner_high` / 
 Function SetGroupVolume(string group, float volume) global native
 ```
 
-Set a group's volume (`0.0`–`1.0`). Applies immediately to playing members and to everything started later. **MCM sliders typically call this** — the TOML `[groups]` values are only the startup state.
+Set a group's volume (`0.0`–`1.0`). Applies immediately to playing members and to everything started later. **A consumer mod calls this at runtime** (e.g. from its own MCM — AudioUtil itself ships none) — the TOML `[groups]` values are only the startup state.
 
 ### `DuckGroup` / `UnduckGroup`
 
@@ -183,7 +183,7 @@ Master switch (runtime; the TOML value is restored on `ReloadConfig`). Turning i
 Function SetLipSyncGain(float gain) global native
 ```
 
-Mouth-open strength, `0.0`–`2.0` (`1.0` = envelope as-is). For MCM sliders.
+Mouth-open strength, `0.0`–`2.0` (`1.0` = envelope as-is). For a consumer mod's runtime control (e.g. its MCM).
 
 !!! tip "Owning an actor's face across many lines"
     There is no standing per-actor lipsync block. If your mod takes over an actor's face (an ahegao / expression overlay), pass **`blockLipSync = true`** on each [`PlayVoice`](#playvoice) for that actor while the face is up — decide it per call from your own face-ownership state. Because it's decided per line rather than latched, there's no state to leak or to be cleared on load, and two systems that both play lines for the same actor can't clobber each other's block. For a whole category that should never lipsync (oral SFX, climax pools), list it in [`[lipsync] block_categories`](../config/reference.md#lipsync) instead.

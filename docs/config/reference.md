@@ -211,7 +211,7 @@ Whisper = "Murmur"
 
 ## `[groups]`
 
-Startup volumes, `0.0`–`1.0`. **Startup state only** — MCM sliders override at runtime via [`SetGroupVolume`](../api/audioutil.md#setgroupvolume). Groups are created on first use; these are just the conventional ones.
+Startup volumes, `0.0`–`1.0`. **Startup state only** — a consumer mod overrides at runtime via [`SetGroupVolume`](../api/audioutil.md#setgroupvolume) (AudioUtil ships no MCM of its own). Groups are created on first use; these are just the conventional ones.
 
 ```toml
 [groups]

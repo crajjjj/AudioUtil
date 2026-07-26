@@ -119,8 +119,9 @@ Function SetHandleVolume(int handle, float volume) global native
 ; other name works - groups are created on first use.
 
 ; Set a group's volume (0.0-1.0). Applies immediately to playing members and
-; to everything started later. MCM sliders typically call this - toml
-; [groups] values are only the startup state.
+; to everything started later. A consumer mod calls this at runtime (e.g. from
+; its own MCM - AudioUtil ships none); the toml [groups] values are only the
+; startup state.
 Function SetGroupVolume(string group, float volume) global native
 
 ; Temporarily scale a group by factor (0.0 = silent, 1.0 = no duck) without
@@ -165,7 +166,7 @@ Function StopLipSync(Actor akActor) global native
 Function SetLipSyncEnabled(bool enable) global native
 bool Function IsLipSyncEnabled() global native
 
-; Mouth-open strength, 0.0-2.0 (1.0 = envelope as-is). For MCM sliders.
+; Mouth-open strength, 0.0-2.0 (1.0 = envelope as-is). For a consumer mod's runtime control.
 Function SetLipSyncGain(float gain) global native
 
 ; ===================== NATIVE — introspection =====================
