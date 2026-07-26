@@ -16,7 +16,7 @@ namespace PapyrusAPI
 		constexpr auto SCRIPT_NAME = "AudioUtil";
 		constexpr auto PPA_SCRIPT_NAME = "AudioUtilPPA";
 		constexpr auto TOML_SCRIPT_NAME = "TomlUtil";
-		constexpr std::int32_t API_VERSION = 1;
+		constexpr std::int32_t API_VERSION = 2;  // v2: added GetSlotVariation
 
 		using VM = RE::BSScript::IVirtualMachine;
 
