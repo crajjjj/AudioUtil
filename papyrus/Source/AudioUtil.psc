@@ -44,8 +44,27 @@ int Function GetAPIVersion() global native
 ; stays active in that case. Console (ConsoleUtil Extended): au reload
 bool Function ReloadConfig() global native
 
-; Play a voice line for an actor, resolving WHICH voice pack (slot) to use
-; from the actor, then WHICH folder inside it from the category.
+; Play a voice line for an actor. Returns a handle (see CONCEPTS); 0 if no slot
+; or no audio resolved.
+;
+; Arguments:
+;   akActor      - who speaks. Resolves WHICH voice pack (slot), and is the 3D /
+;                  lipsync target (see "Slot resolution" below).
+;   category     - WHICH folder inside the slot to pull a wav from (shuffle-bag,
+;                  no repeats until the deck empties). Case- and space-insensitive
+;                  ("Battle Cry" == "BattleCry"). See "Category resolution" below.
+;   volume       - per-line gain, 1.0 = full. Effective volume is
+;                  volume x group_volume x duck_factor.
+;   group        - volume/duck bucket this line joins (SetGroupVolume / DuckGroup);
+;                  "" = ungrouped.
+;   channel      - exclusivity lane: starting a line on a busy channel stops the
+;                  previous one (or skips the new one if voice_no_interrupt is set).
+;                  "" = no channel. Different channels overlap freely.
+;   blockLipSync - true plays this one line WITHOUT moving the speaker's mouth. If
+;                  your mod owns an actor's face across many lines (an ahegao /
+;                  expression overlay), pass true on each call while the face is up
+;                  - it is per call, there is no standing per-actor block. Categories
+;                  in [lipsync] block_categories never drive the mouth regardless.
 ;
 ; Slot resolution (first hit wins):
 ;   1. pc_female_slot / pc_male_slot  - player only; reserved from NPCs
@@ -63,37 +82,63 @@ bool Function ReloadConfig() global native
 ; If the actor is gagged (wears a [gag] keyword) and the slot names a gag_slot,
 ; resolution runs in that muffled slot instead, with [gag] default_category as
 ; the catch-all.
-;
-; category is case- and space-insensitive ("Battle Cry" == "BattleCry").
-; blockLipSync=true plays this one line without moving the speaker's mouth.
-; If your mod owns an actor's face across many lines (an ahegao / expression
-; overlay), pass blockLipSync=true on each PlayVoice for that actor while the
-; face is up - decide it per call from your own face-ownership state; there is
-; no standing per-actor block in the API. Categories listed in [lipsync]
-; block_categories never drive the mouth even when blockLipSync=false.
-; Returns a handle (see CONCEPTS); 0 if no slot or no audio resolved.
 int Function PlayVoice(Actor akActor, string category, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false) global native
 
-; Same as PlayVoice but the slot is named explicitly ("F1", "M4", "C2"...)
-; instead of resolved from an actor - for samples, tests, or when the caller
-; already decided the voice. akFollow only provides the 3D position.
+; Like PlayVoice but the slot is named explicitly instead of resolved from an
+; actor - for samples, tests, or when the caller already decided the voice.
+; Returns a handle (see CONCEPTS); 0 if no audio resolved.
+;
+; Arguments:
+;   slot         - which voice pack to play from, by id ("F1", "M4", "C2"...).
+;   category     - WHICH folder inside the slot. Same resolution + case rules as
+;                  PlayVoice (aliases, fallbacks, gag_slot, [sfx] last resort).
+;   akFollow     - 3D position + lipsync (mouth) target. None = flat/2D, no lipsync.
+;                  The slot is given, so this actor is never used to resolve it.
+;   volume       - per-line gain, 1.0 = full. Effective = volume x group x duck.
+;   group        - volume/duck bucket (SetGroupVolume / DuckGroup); "" = ungrouped.
+;   channel      - exclusivity lane: busy channel stops the previous line (or skips
+;                  the new one if voice_no_interrupt); "" = no channel.
+;   blockLipSync - true plays this line without moving akFollow's mouth (see PlayVoice).
 int Function PlayVoiceFromSlot(string slot, string category, Actor akFollow, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false) global native
 
-; Play a named SFX. sfxName resolves first as a category of the sfx slot
-; ("SFX0" by default; set via [general] sfx_slot), then the flat [sfx] table -
-; so an sfx pool can use a scanned folder, an explicit file list (BSA-capable),
-; or a folder ref, exactly like a voice category. Defaults into the "sfx" group
-; so SFX volume/ducking applies unless overridden.
+; Play a named sound effect. Returns a handle (see CONCEPTS); 0 if nothing resolved.
+;
+; Arguments:
+;   sfxName  - resolves first as a category of the sfx slot ("SFX0" by default; set
+;              via [general] sfx_slot), then the flat [sfx] table - so an sfx pool
+;              can use a scanned folder, an explicit file list (BSA-capable), or a
+;              folder ref, just like a voice category. Case- and space-insensitive.
+;   akFollow - 3D position for the sound. None = play flat/2D. (SFX never lipsync.)
+;   volume   - per-line gain, 1.0 = full. Effective = volume x group x duck.
+;   group    - volume/duck bucket; defaults to "sfx" so SFX volume/ducking applies
+;              unless you override it.
+;   channel  - exclusivity lane: busy channel stops the previous line; "" = no channel.
 int Function PlaySFX(string sfxName, Actor akFollow, float volume = 1.0, string group = "sfx", string channel = "") global native
 
-; Play one specific file. Path is relative to Data\ ('Sound\fx\MyMod\a.wav')
-; and may resolve to a loose file OR to audio packed inside a BSA - the
-; engine's resource loader handles both (loose wins over archive).
+; Play one specific file. Returns a handle (see CONCEPTS); 0 if it did not resolve.
+;
+; Arguments:
+;   dataRelativePath - file path relative to Data\ ('Sound\fx\MyMod\a.wav'). May be
+;                      a loose file OR audio packed in a BSA - the engine resolves
+;                      both (loose wins over archive).
+;   akFollow         - 3D position for the sound. None = play flat/2D.
+;   volume           - per-line gain, 1.0 = full. Effective = volume x group x duck.
+;   group            - volume/duck bucket; "" = ungrouped.
+;   channel          - exclusivity lane: busy channel stops the previous line; "" = none.
 int Function PlayFile(string dataRelativePath, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
 
-; Play a random file from a loose folder (scanned on first use, then cached
-; as a shuffle bag). Folder scanning cannot see into BSAs - for archived
-; audio use PlayFile or a [slot.categories] file list in the toml.
+; Play a random file from a loose folder (scanned on first use, then cached as a
+; shuffle bag - no repeats until the deck empties). Returns a handle (see
+; CONCEPTS); 0 if the folder had no audio.
+;
+; Arguments:
+;   dataRelativeFolder - folder relative to Data\ to pick a wav from. Scanning
+;                        cannot see into BSAs - for archived audio use PlayFile or
+;                        a [slot.categories] file list in the toml.
+;   akFollow           - 3D position for the sound. None = play flat/2D.
+;   volume             - per-line gain, 1.0 = full. Effective = volume x group x duck.
+;   group              - volume/duck bucket; "" = ungrouped.
+;   channel            - exclusivity lane: busy channel stops the previous line; "" = none.
 int Function PlayFolder(string dataRelativeFolder, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
 
 ; ===================== NATIVE — handles =====================

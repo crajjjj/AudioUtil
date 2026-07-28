@@ -35,6 +35,12 @@ namespace Config
 		// audio. Empty = this slot has no gagged variant.
 		std::string gagSlot;  // normalized id; empty = none
 
+		// true = this slot is reached only by script (PlayVoiceFromSlot), never by
+		// actor->slot routing, so the wiring audit must NOT flag it as an orphan
+		// ("has audio but no route"). For deliberately manual pools (e.g. a mod's
+		// own SFX/ambient slot it plays directly). Default false.
+		bool scriptOnly{ false };
+
 		// optional per-slot schema label, for consumers whose voice packs ship in
 		// more than one folder/category layout. "B" = the alternate layout, "A"
 		// (default) = the primary one. AudioUtil does not interpret it; a consumer

@@ -3,10 +3,13 @@
 #include "AudioEngine.h"
 #include "Config.h"
 
+#include <format>
+
 namespace FolderCache
 {
 	void AuditExplicitFiles(const Config::Settings& a_settings);  // defined after Rebuild
 	void AuditWiring(const Config::Settings& a_settings);         // defined after Rebuild
+	void LogRoster(const Config::Settings& a_settings);          // defined after Rebuild
 
 	namespace
 	{
@@ -201,6 +204,7 @@ namespace FolderCache
 
 		AuditExplicitFiles(*settings);
 		AuditWiring(*settings);
+		LogRoster(*settings);
 	}
 
 	// walk every explicit [slot.categories] file list (the hand-written, BSA-capable
@@ -240,7 +244,8 @@ namespace FolderCache
 	// config — the follower-pack mistake (drop a pack into F4, forget to map a
 	// voicetype). This is invisible otherwise: the content scans in fine, the log
 	// looks clean, the slot just never resolves. (A script CAN still play it
-	// directly via PlayVoiceFromSlot, so this is a warning, not an error.) Empty
+	// directly via PlayVoiceFromSlot, so this is a warning, not an error — a slot
+	// deliberately driven that way sets script_only=true to opt out entirely.) Empty
 	// unrouted slots are NOT flagged — F2/F3 ship as reserved placeholders until a
 	// pack is installed — so we key off slots that actually resolved content.
 	// Caller holds g_lock (reads g_folders).
@@ -291,6 +296,11 @@ namespace FolderCache
 		std::size_t orphaned = 0;
 		for (const auto& slot : a_settings.slots) {
 			const auto norm = Config::Normalize(slot.id);
+			// script_only slots are reached directly via PlayVoiceFromSlot by design,
+			// so "no route points to them" is expected, not a mistake — skip them.
+			if (slot.scriptOnly) {
+				continue;
+			}
 			if (withContent.contains(norm) && !wired.contains(norm)) {
 				++orphaned;
 				logger::warn("Slot {}: has audio but no config route points to it — no actor "
@@ -303,6 +313,200 @@ namespace FolderCache
 		if (orphaned == 0) {
 			logger::info("Wiring: every slot with audio is routable");
 		}
+	}
+
+	// One consolidated dump of the fully MERGED configuration: every slot and
+	// every resolution table as they ended up AFTER the base config and all
+	// overlays were unioned (additively, last-writer-wins per key). This is the
+	// one thing the rest of the log can't show — a slot, route, alias, or sfx
+	// entry can be contributed by any of several files, and only the combined
+	// result decides what actually resolves, so the effective state is otherwise
+	// impossible to read back without replaying every file by hand. Emitted once
+	// per load (and on `au reload`), after the audits. Reads g_folders for the
+	// resolved per-category file counts, so the caller must hold g_lock.
+	void LogRoster(const Config::Settings& a_settings)
+	{
+		const auto joinSlots = [](const Config::SlotList& a_ids) {
+			std::string out;
+			for (const auto& id : a_ids) {
+				if (!out.empty()) {
+					out += ',';
+				}
+				out += id;
+			}
+			return out;
+		};
+
+		// sorted key/value dump for the additive string maps (route + category layers)
+		const auto dumpMap = [](std::string_view a_label, const Config::StringMap& a_map) {
+			if (a_map.empty()) {
+				return;
+			}
+			logger::info("{} ({}):", a_label, a_map.size());
+			std::vector<std::string> keys;
+			keys.reserve(a_map.size());
+			for (const auto& [k, v] : a_map) {
+				keys.push_back(k);
+			}
+			std::sort(keys.begin(), keys.end());
+			for (const auto& k : keys) {
+				logger::info("  {} -> {}", k, a_map.at(k));
+			}
+		};
+
+		logger::info("================= AudioUtil registration roster (merged config) =================");
+
+		// ---- slots: a summary line per slot, then its resolved categories wrapped
+		// a few per indented line (a slot can have 60+ categories - one per line
+		// would bury the maps below, one giant line is unreadable). categories come
+		// from g_folders (explicit lists + scanned folders merged), so the counts
+		// are what will actually PLAY, not just what the TOML declared.
+		std::size_t maxIdLen = 0;
+		for (const auto& slot : a_settings.slots) {
+			maxIdLen = std::max(maxIdLen, slot.id.size());
+		}
+		logger::info("Slots ({}):", a_settings.slots.size());
+		for (const auto& slot : a_settings.slots) {
+			const auto prefix = Config::Normalize(slot.id) + "/";
+			std::vector<std::string> cats;  // "moan(12)"
+			std::size_t totalFiles = 0;
+			for (const auto& [key, folder] : g_folders) {
+				if (key.starts_with(prefix)) {
+					cats.push_back(key.substr(prefix.size()) + "(" +
+						std::to_string(folder.files.size()) + ")");
+					totalFiles += folder.files.size();
+				}
+			}
+			std::sort(cats.begin(), cats.end());
+
+			// flags: explicit-only marker (no scan root), then variation / fallback /
+			// gag redirect - only the ones actually set, space-joined
+			std::string attrs;
+			const auto addAttr = [&attrs](const std::string& a_s) {
+				if (!attrs.empty()) {
+					attrs += ' ';
+				}
+				attrs += a_s;
+			};
+			if (slot.root.empty()) {
+				addAttr("explicit");
+			}
+			if (slot.scriptOnly) {
+				addAttr("script-only");
+			}
+			if (!slot.variation.empty() && slot.variation != "A") {
+				addAttr("var=" + slot.variation);
+			}
+			if (!slot.fallbackSlot.empty()) {
+				addAttr("fb=" + slot.fallbackSlot);
+			}
+			if (!slot.gagSlot.empty()) {
+				addAttr("gag=" + slot.gagSlot);
+			}
+
+			std::string idPad = slot.id;
+			idPad.resize(maxIdLen, ' ');  // align the [sex] column across all slots
+			std::string line = "  " + idPad + " [" + std::string(1, slot.sex) + "]";
+			if (!attrs.empty()) {
+				line += " " + attrs;
+			}
+			if (cats.empty()) {
+				line += "  EMPTY (no resolved audio)";
+			} else {
+				line += "  " + std::to_string(cats.size()) + (cats.size() == 1 ? " cat  " : " cats  ") +
+					std::to_string(totalFiles) + " files";
+			}
+			logger::info("{}", line);
+
+			// categories wrapped 6 per line, indented under the slot
+			const std::size_t perLine = 6;
+			for (std::size_t i = 0; i < cats.size(); i += perLine) {
+				std::string wrap = "      ";
+				for (std::size_t j = i; j < cats.size() && j < i + perLine; ++j) {
+					if (j > i) {
+						wrap += ' ';
+					}
+					wrap += cats[j];
+				}
+				logger::info("{}", wrap);
+			}
+		}
+
+		// ---- blind default / PC-reservation / sfx slot assignments ----
+		logger::info("defaults: female={} male={}  pc.female={} pc.male={}  sfx={}",
+			a_settings.defaultFemaleSlot, a_settings.defaultMaleSlot,
+			a_settings.pcFemaleSlot.empty() ? "-" : a_settings.pcFemaleSlot,
+			a_settings.pcMaleSlot.empty() ? "-" : a_settings.pcMaleSlot,
+			a_settings.sfxSlot.empty() ? "-" : a_settings.sfxSlot);
+
+		// ---- actor -> slot routing tables (all additive) ----
+		logger::info("voicetype_map ({}):", a_settings.voicetypeMap.size());
+		{
+			std::vector<std::string> keys;
+			keys.reserve(a_settings.voicetypeMap.size());
+			for (const auto& [vt, ids] : a_settings.voicetypeMap) {
+				keys.push_back(vt);
+			}
+			std::sort(keys.begin(), keys.end());
+			for (const auto& vt : keys) {
+				logger::info("  {} -> [{}]", vt, joinSlots(a_settings.voicetypeMap.at(vt)));
+			}
+		}
+
+		if (!a_settings.voicetypeRemapEnabled) {
+			logger::info("voicetype_remap is DISABLED ([voicetype_remap] enable=false)");
+		}
+		dumpMap("voicetype_remap", a_settings.voicetypeRemap);
+		dumpMap("npc_overrides", a_settings.npcOverrides);
+
+		logger::info("race_map ({}, longest-hint-first):", a_settings.raceMap.size());
+		for (const auto& [hint, ids] : a_settings.raceMap) {
+			logger::info("  {} -> [{}]", hint, joinSlots(ids));
+		}
+
+		// ---- category layer: aliases / fallbacks / male-only remap ----
+		dumpMap("aliases[F]", a_settings.femaleAliases);
+		dumpMap("aliases[M/A]", a_settings.maleAliases);
+		dumpMap("male_only_remap", a_settings.maleOnlyRemap);
+		dumpMap("fallbacks[F]", a_settings.femaleFallbacks);
+		dumpMap("fallbacks[M/A]", a_settings.maleFallbacks);
+
+		// ---- sfx table + group volumes + gag markers ----
+		dumpMap("sfx table", a_settings.sfxTable);
+
+		if (!a_settings.groupVolumes.empty()) {
+			std::string line = "group volumes:";
+			std::vector<std::string> keys;
+			keys.reserve(a_settings.groupVolumes.size());
+			for (const auto& [g, v] : a_settings.groupVolumes) {
+				keys.push_back(g);
+			}
+			std::sort(keys.begin(), keys.end());
+			for (const auto& g : keys) {
+				line += " " + g + "=" + std::format("{:.2f}", a_settings.groupVolumes.at(g));
+			}
+			logger::info("{}", line);
+		}
+
+		if (!a_settings.lipsyncBlockCategories.empty()) {
+			std::vector<std::string> cats(a_settings.lipsyncBlockCategories.begin(),
+				a_settings.lipsyncBlockCategories.end());
+			std::sort(cats.begin(), cats.end());
+			std::string line = "lipsync block_categories:";
+			for (const auto& c : cats) {
+				line += " " + c;
+			}
+			logger::info("{}", line);
+		}
+
+		// gag keyword/item counts are the CONFIGURED refs; GagState logs how many
+		// actually resolved to live forms in the current load order.
+		logger::info("gag: {}  default_category={}  keywords={}  items={}",
+			a_settings.gagEnabled ? "enabled" : "disabled",
+			a_settings.gagDefaultCategory.empty() ? "-" : a_settings.gagDefaultCategory,
+			a_settings.gagKeywords.size(), a_settings.gagItems.size());
+
+		logger::info("================================================================================");
 	}
 
 	std::string ResolveVoiceKey(const Config::Settings& a_settings,

@@ -238,6 +238,9 @@ namespace Config
 				slot.root = (*table)["path"].value_or(""s);
 				slot.fallbackSlot = Normalize((*table)["fallback"].value_or(""s));
 				slot.gagSlot = Normalize((*table)["gag_slot"].value_or(""s));
+				// script_only: this slot is played directly by a script via
+				// PlayVoiceFromSlot, so the wiring audit skips it (no orphan warning).
+				slot.scriptOnly = (*table)["script_only"].value_or(false);
 				// variation: optional per-slot schema label. "B" = the alternate
 				// folder/category layout, anything else (incl. unset) = "A".
 				// First letter only, case-insensitive.
