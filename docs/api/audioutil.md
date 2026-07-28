@@ -222,6 +222,14 @@ bool Function CategoryExists(string slot, string category) global native
 
 `True` if slot/category resolves to at least one file. Cheap way to guard optional content ("play the rare line only if the pack ships it").
 
+### `GetResolvingSlot`
+
+```papyrus
+string Function GetResolvingSlot(string slot, string category) global native
+```
+
+Which slot **actually supplies the audio** for slot/category, walking the same alias/fallback resolution `PlayVoiceFromSlot` uses: the queried slot's own id when the pack itself voices the category, the fallback slot's id when it backfills (e.g. `"F0"` stock moans), or `""` when nothing resolves at all. `CategoryExists` answers *"will something play?"* — this answers *"will it be the **pack**?"*, which is what a voice-pack audit really wants to know: a slot can report every category as resolving while 100 % of it is stock backfill. Requires API version **>= 3**; guard with `GetAPIVersion()` on older installs.
+
 ## Debug
 
 ### `DebugPlayFile`

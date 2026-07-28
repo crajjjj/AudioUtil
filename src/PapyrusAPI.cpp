@@ -16,7 +16,7 @@ namespace PapyrusAPI
 		constexpr auto SCRIPT_NAME = "AudioUtil";
 		constexpr auto PPA_SCRIPT_NAME = "AudioUtilPPA";
 		constexpr auto TOML_SCRIPT_NAME = "TomlUtil";
-		constexpr std::int32_t API_VERSION = 2;  // v2: added GetSlotVariation
+		constexpr std::int32_t API_VERSION = 3;  // v3: added GetResolvingSlot
 
 		using VM = RE::BSScript::IVirtualMachine;
 
@@ -451,6 +451,37 @@ namespace PapyrusAPI
 			return GetCategoryFileCount(nullptr, a_slot, a_category) > 0;
 		}
 
+		// Which slot in the fallback chain actually supplies the audio for
+		// slot/category: the queried slot itself (the pack voices it), one of its
+		// fallback slots (backfill), or "" when nothing resolves. Same resolution
+		// PlayVoiceFromSlot uses — lets a consumer audit whether a category would
+		// really play from the pack or lean on stock backfill.
+		RE::BSFixedString GetResolvingSlot(RE::StaticFunctionTag*, RE::BSFixedString a_slot,
+			RE::BSFixedString a_category)
+		{
+			const auto settings = Config::Get();
+			const auto* slot = Config::FindSlot(*settings, a_slot.c_str());
+			if (!slot) {
+				return "";
+			}
+			const auto key = FolderCache::ResolveVoiceKey(*settings, *slot, a_category.c_str());
+			if (key.empty()) {
+				return "";
+			}
+			// voice keys are "<normalized slot id>/<category>"; walk the same
+			// fallback chain ResolveVoiceKey walked (same hop cap) to map the
+			// prefix back to a display slot id
+			const auto prefix = key.substr(0, key.find('/'));
+			const Config::Slot* hopSlot = slot;
+			for (int hop = 0; hopSlot != nullptr && hop < 4; ++hop) {
+				if (Config::Normalize(hopSlot->id) == prefix) {
+					return hopSlot->id.c_str();
+				}
+				hopSlot = Config::FindSlot(*settings, hopSlot->fallbackSlot);
+			}
+			return slot->id.c_str();
+		}
+
 		// does a data-relative path resolve to a real resource (loose or BSA)
 		// in the current load order? Confirms the path resolves, not that the
 		// audio is valid PCM. Path separators may be '/' or '\'.
@@ -548,7 +579,7 @@ namespace PapyrusAPI
 
 		namespace Toml
 		{
-			constexpr std::int32_t TOML_API_VERSION = 1;
+			constexpr std::int32_t TOML_API_VERSION = 2;  // v2: added SetInt/SetFloat/SetString/SetBool
 
 			std::int32_t GetAPIVersion(RE::StaticFunctionTag*)
 			{
@@ -602,6 +633,37 @@ namespace PapyrusAPI
 			{
 				return TomlStore::Reload(a_file.c_str());
 			}
+
+			// comment-preserving writers (see TomlStore/TomlEdit): the value is
+			// spliced into the file text in place, validated, persisted, and the
+			// cache refreshed - false = nothing was written
+
+			bool SetInt(RE::StaticFunctionTag*, RE::BSFixedString a_file,
+				RE::BSFixedString a_key, std::int32_t a_value)
+			{
+				return TomlStore::SetInt(a_file.c_str(), a_key.c_str(), a_value);
+			}
+
+			bool SetFloat(RE::StaticFunctionTag*, RE::BSFixedString a_file,
+				RE::BSFixedString a_key, float a_value)
+			{
+				// route through the float's shortest decimal form: a raw
+				// float->double promotion would serialize 0.1 as 0.10000000149...
+				const auto value = std::strtod(std::format("{}", a_value).c_str(), nullptr);
+				return TomlStore::SetFloat(a_file.c_str(), a_key.c_str(), value);
+			}
+
+			bool SetString(RE::StaticFunctionTag*, RE::BSFixedString a_file,
+				RE::BSFixedString a_key, RE::BSFixedString a_value)
+			{
+				return TomlStore::SetString(a_file.c_str(), a_key.c_str(), a_value.c_str());
+			}
+
+			bool SetBool(RE::StaticFunctionTag*, RE::BSFixedString a_file,
+				RE::BSFixedString a_key, bool a_value)
+			{
+				return TomlStore::SetBool(a_file.c_str(), a_key.c_str(), a_value);
+			}
 		}
 	}
 
@@ -633,6 +695,7 @@ namespace PapyrusAPI
 		REGISTERFUNC(GetSlotVariation, SCRIPT_NAME);
 		REGISTERFUNC(GetCategoryFileCount, SCRIPT_NAME);
 		REGISTERFUNC(CategoryExists, SCRIPT_NAME);
+		REGISTERFUNC(GetResolvingSlot, SCRIPT_NAME);
 		REGISTERFUNC(FileExists, SCRIPT_NAME);
 		REGISTERFUNC(DebugPlayFile, SCRIPT_NAME);
 		REGISTERFUNC(IsConnected, PPA_SCRIPT_NAME);
@@ -649,6 +712,10 @@ namespace PapyrusAPI
 		a_vm->RegisterFunction("GetStringArray"sv, TOML_SCRIPT_NAME, Toml::GetStringArray, true);
 		a_vm->RegisterFunction("HasKey"sv, TOML_SCRIPT_NAME, Toml::HasKey, true);
 		a_vm->RegisterFunction("Reload"sv, TOML_SCRIPT_NAME, Toml::Reload, true);
+		a_vm->RegisterFunction("SetInt"sv, TOML_SCRIPT_NAME, Toml::SetInt, true);
+		a_vm->RegisterFunction("SetFloat"sv, TOML_SCRIPT_NAME, Toml::SetFloat, true);
+		a_vm->RegisterFunction("SetString"sv, TOML_SCRIPT_NAME, Toml::SetString, true);
+		a_vm->RegisterFunction("SetBool"sv, TOML_SCRIPT_NAME, Toml::SetBool, true);
 		return true;
 	}
 }

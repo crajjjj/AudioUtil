@@ -38,10 +38,12 @@ configure.
 |---|---|---|
 | `AudioUtil ReloadConfig` | `au reload` | Re-parse `AudioUtil.toml` + all `config\*.toml` overlays and rescan every slot folder — live, no restart. Prints `true`, or `false` if a file failed to parse (the previous config stays active). |
 | `TomlUtil Reload "<file>"` | `toml reload "<file>"` | Re-parse one Data-relative TOML file (any `TomlUtil` consumer). Prints `true`, or `false` (and keeps the cached contents) on parse failure. |
+| `TomlUtil SetInt "<file>" <key> <value>` | `toml setint …` | Write an int to a dotted key, **preserving comments/formatting** (TomlUtil API v2+). Prints `true` when written; `false` = nothing touched. Same for `setfloat` / `setstring` / `setbool` (`true`/`false` or `1`/`0`). |
 
 ```
 au reload
 toml reload "SKSE\Plugins\MyMod\MyMod.toml"
+toml setint "SKSE\Plugins\MyMod\MyMod.toml" voice.pcvolume 80
 ```
 
 ### Test harness (`autest`)

@@ -1,5 +1,9 @@
 #include "TomlStore.h"
 
+#include "TomlEdit.h"
+
+#include <filesystem>
+#include <fstream>
 #include <toml++/toml.hpp>
 
 namespace TomlStore
@@ -77,6 +81,53 @@ namespace TomlStore
 			}
 			return std::as_const(entry->table).at_path(a_key);
 		}
+
+		// shared writer behind the typed Set* fronts: splice the literal into the
+		// file's text (comment-preserving, see TomlEdit.h), persist, refresh cache
+		bool SetLiteral(const std::string& a_file, const std::string& a_key,
+			const std::string& a_literal)
+		{
+			std::scoped_lock lock{ g_lock };
+			const auto norm = NormalizePath(a_file);
+			if (!PathIsSafe(norm)) {
+				logger::warn("Rejected unsafe path '{}'", a_file);
+				return false;
+			}
+			const auto diskPath = "Data\\" + norm;
+
+			std::string text;  // missing file -> edit from empty (creates it)
+			if (std::ifstream in{ diskPath, std::ios::binary }; in) {
+				text.assign(std::istreambuf_iterator<char>{ in }, std::istreambuf_iterator<char>{});
+			}
+
+			const auto edited = TomlEdit::SetInText(text, a_key, a_literal);
+			if (!edited) {
+				logger::warn("TomlUtil: cannot set {} = {} in {} (unparseable file, "
+					"non-scalar target, or unsupported layout)", a_key, a_literal, diskPath);
+				return false;
+			}
+
+			std::error_code ec;
+			std::filesystem::create_directories(std::filesystem::path(diskPath).parent_path(), ec);
+			std::ofstream out{ diskPath, std::ios::binary | std::ios::trunc };
+			if (!out || !(out << *edited)) {
+				logger::warn("TomlUtil: failed to write {}", diskPath);
+				return false;
+			}
+			out.close();
+
+			// refresh the cache from the exact text we validated, so readers see
+			// the new value immediately without re-touching the disk
+			try {
+				auto& entry = g_files[norm];
+				entry.table = toml::parse(*edited);
+				entry.ok = true;
+			} catch (...) {
+				g_files.erase(norm);  // can't happen (validated); re-parse lazily if it does
+			}
+			logger::info("TomlUtil: set {} = {} in {}", a_key, a_literal, diskPath);
+			return true;
+		}
 	}
 
 	std::optional<std::int64_t> GetInt(const std::string& a_file, const std::string& a_key)
@@ -124,6 +175,26 @@ namespace TomlStore
 	{
 		std::scoped_lock lock{ g_lock };
 		return static_cast<bool>(Find(a_file, a_key));
+	}
+
+	bool SetInt(const std::string& a_file, const std::string& a_key, std::int64_t a_value)
+	{
+		return SetLiteral(a_file, a_key, TomlEdit::Literal(a_value));
+	}
+
+	bool SetFloat(const std::string& a_file, const std::string& a_key, double a_value)
+	{
+		return SetLiteral(a_file, a_key, TomlEdit::Literal(a_value));
+	}
+
+	bool SetString(const std::string& a_file, const std::string& a_key, const std::string& a_value)
+	{
+		return SetLiteral(a_file, a_key, TomlEdit::Literal(a_value));
+	}
+
+	bool SetBool(const std::string& a_file, const std::string& a_key, bool a_value)
+	{
+		return SetLiteral(a_file, a_key, TomlEdit::Literal(a_value));
 	}
 
 	bool Reload(const std::string& a_file)

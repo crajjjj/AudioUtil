@@ -73,7 +73,8 @@ xmake build release       # rebuilds the DLL first (add_deps AudioUtil), then ru
 | `LipSync` | Drives MFG `Aah`/`BigAah` phonemes from a wav's amplitude envelope in sync with a playing instance (attack/release/gain/min-level). Skips non-PCM/BSA-packed audio and creatures without facegen. Suppressed for gagged actors via `GagState::IsGagged` and for actors in a dialogue with the player via `RE::MenuTopicManager::speaker` (`[lipsync] block_in_dialogue`, default true — the game drives that mouth): both checked at `Start` and re-checked on a 500 ms throttle (`handoverCheckAt`/`HANDOVER_RECHECK`) so a gag equipped or a dialogue started mid-line hands the mouth over. Also skipped per-call (`blockLipSync`) and per-category (`[lipsync] block_categories`, matched on the requested category name in `PlayVoice`/`PlayVoiceFromSlot` — for oral-sfx / climax pools that shouldn't move the mouth) |
 | `PPABridge` | Dynamically connects to `AccuratePenetration.dll`; per-receiver snapshot cache under a mutex; sends throttled `AudioUtilPPA_Update`/`AudioUtilPPA_End` mod events via the SKSE task interface |
 | `PapyrusAPI` | Registers all natives across `AudioUtil`, `AudioUtilPPA`, `TomlUtil`; holds actor→slot resolution (`ResolveSlotForActor`, `PickFromSlotList` with per-NPC spreading via `StableLocalID`), the `ResolveGaggedKey` gag-routing helper, and the shared `PlayFromKey` helper |
-| `TomlStore` | Generic lazily-parsed/cached TOML reader backing `TomlUtil`; caches parse failure (one warning); missing file/key/type-mismatch returns caller's default; rejects absolute paths and `..` traversal |
+| `TomlStore` | Generic lazily-parsed/cached TOML reader/writer backing `TomlUtil`; caches parse failure (one warning); missing file/key/type-mismatch returns caller's default; rejects absolute paths and `..` traversal. `Set*` writers splice the value into the file **text** in place via `TomlEdit.h` (comments/formatting survive; new keys insert under the table header, new tables/files are created), round-trip-validate before writing, and refresh the cache; unsafe/unsupported edits return false with nothing written |
+| `TomlEdit.h` | Pure comment-preserving TOML text-splice algorithm used by `TomlStore` setters (toml++ source-region replace + header-anchored insert + re-parse validation). No game deps — unit-testable standalone |
 | `PCH.h` | Precompiled header |
 
 ## Papyrus API Surface (`papyrus/Source/*.psc`)
@@ -85,17 +86,17 @@ Every `Play*` returns an `int` instance handle: `>0` success, `0` = nothing play
 - Handles: `IsHandlePlaying`, `StopHandle`, `GetHandleDuration`, `SetHandleVolume`.
 - Groups/channels: `SetGroupVolume`, `DuckGroup(group, factor=0.0)`, `UnduckGroup`, `StopGroup`, `StopAllAudio`, `StopChannel`.
 - Lipsync: `IsLipSyncActive(Actor)`, `StopLipSync(Actor)`, `SetLipSyncEnabled(bool)`, `IsLipSyncEnabled()`, `SetLipSyncGain(float)`. Owning an actor's face is per-call via `blockLipSync` (no standing block native).
-- Introspection: `GetSlotForActor(Actor)`, `GetCategoryFileCount(slot, category)`, `CategoryExists(slot, category)`.
+- Introspection: `GetSlotForActor(Actor)`, `GetCategoryFileCount(slot, category)`, `CategoryExists(slot, category)`, `GetResolvingSlot(slot, category)` (which slot in the fallback chain actually supplies the audio — the slot itself, a fallback slot, or `""`).
 - Config/debug: `GetAPIVersion()`, `ReloadConfig()`, `DebugPlayFile(path, Actor, flags, priority)`.
 - Papyrus (non-native) wrappers: `WaitForHandle`, `PlayVoiceAndWait`, `PlaySFXAndWait`, `Play(category, Actor, waitForCompletion, ...)`.
 
 **`AudioUtilPPA.psc`** (`Hidden`) — optional PPA bridge: `IsConnected()`, `SetEventRate(ms)`, `GetContext(akReceiver)` (bitmask), `GetDepth(Actor)`, `GetVaginalOpening(Actor)`, `GetAnalOpening(Actor)`. Consumers read the cached snapshot cheaply and/or handle mod events `AudioUtilPPA_Update` / `AudioUtilPPA_End`.
 
-**`TomlUtil.psc`** (`Hidden`) — generic, audio-independent TOML reader: `GetAPIVersion()`, `GetInt/GetFloat/GetString/GetBool(asFile, asKey, default)`, `GetStringArray(asFile, asKey)`, `HasKey`, `Reload(asFile)`. File path is Data-relative; dotted keys (`voice.pcvolume`); read-only by design.
+**`TomlUtil.psc`** (`Hidden`) — generic, audio-independent TOML reader/writer: `GetAPIVersion()`, `GetInt/GetFloat/GetString/GetBool(asFile, asKey, default)`, `GetStringArray(asFile, asKey)`, `HasKey`, `Reload(asFile)`, and (API v2) comment-preserving scalar writers `SetInt/SetFloat/SetString/SetBool(asFile, asKey, value)` (+ non-native `ConsoleSet*` string-arg wrappers for the `toml set*` console commands). File path is Data-relative; dotted keys (`voice.pcvolume`).
 
 **`AudioUtilTest.psc`** (`Hidden`) — console harness. Skyrim has **no** `cgf` command (that's Fallout 4); the global test functions are exposed as real console commands via **ConsoleUtil Extended** (CUE) configs in `dist\SKSE\CustomConsole\*.yaml` (e.g. `autest T1`, `au reload`). Legacy IVDT-hardcoded probes: T1 basic play, T2F flags/priority sweep, T3 PlayVoice, T4 shuffle-bag, T5 SFX, T6 channel replacement, T7 group duck, T8 PPA status, TReload. Content-agnostic (arg-driven, work on any install): `play <path>`, `voice <slot> <category>`, `voicepc <category>`, `sfx <name>`.
 
-Native registration lives in `PapyrusAPI::RegisterFuncs`, split across `SCRIPT_NAME="AudioUtil"`, `PPA_SCRIPT_NAME="AudioUtilPPA"`, `TOML_SCRIPT_NAME="TomlUtil"`. `API_VERSION` is `2` (v2 added `GetSlotVariation`); `TOML_API_VERSION` is `1`.
+Native registration lives in `PapyrusAPI::RegisterFuncs`, split across `SCRIPT_NAME="AudioUtil"`, `PPA_SCRIPT_NAME="AudioUtilPPA"`, `TOML_SCRIPT_NAME="TomlUtil"`. `API_VERSION` is `3` (v2 added `GetSlotVariation`, v3 added `GetResolvingSlot`); `TOML_API_VERSION` is `2` (v2 added the `Set*` writers).
 
 ## PPA Bridge (Accurate Penetration)
 

@@ -20,3 +20,73 @@ subs:
         type: String
         required: true
         help: Data-relative path, e.g. SKSE\Plugins\MyMod\MyMod.toml
+
+  # --- comment-preserving writers (TomlUtil API v2+); prints true when written ---
+  - name: SetInt
+    alias: setint
+    func: ConsoleSetInt
+    help: Write an int value to a TOML key, preserving comments/formatting
+    args:
+      - name: file
+        type: String
+        required: true
+        help: Data-relative path, e.g. SKSE\Plugins\MyMod\MyMod.toml
+      - name: key
+        type: String
+        required: true
+        help: Dotted key, e.g. voice.pcvolume
+      - name: value
+        type: String
+        required: true
+        help: Integer value, e.g. 80
+  - name: SetFloat
+    alias: setfloat
+    func: ConsoleSetFloat
+    help: Write a float value to a TOML key, preserving comments/formatting
+    args:
+      - name: file
+        type: String
+        required: true
+        help: Data-relative path
+      - name: key
+        type: String
+        required: true
+        help: Dotted key
+      - name: value
+        type: String
+        required: true
+        help: Float value, e.g. 1.5
+  - name: SetString
+    alias: setstring
+    func: ConsoleSetString
+    help: Write a string value to a TOML key, preserving comments/formatting
+    args:
+      - name: file
+        type: String
+        required: true
+        help: Data-relative path
+      - name: key
+        type: String
+        required: true
+        help: Dotted key
+      - name: value
+        type: String
+        required: true
+        help: String value (quote if it contains spaces)
+  - name: SetBool
+    alias: setbool
+    func: ConsoleSetBool
+    help: Write a bool value to a TOML key, preserving comments/formatting
+    args:
+      - name: file
+        type: String
+        required: true
+        help: Data-relative path
+      - name: key
+        type: String
+        required: true
+        help: Dotted key
+      - name: value
+        type: String
+        required: true
+        help: true/false or 1/0

@@ -191,6 +191,14 @@ int Function GetCategoryFileCount(string slot, string category) global native
 ; optional content ("play the rare line only if the pack ships it").
 bool Function CategoryExists(string slot, string category) global native
 
+; Which slot actually supplies the audio for slot/category, walking the same
+; alias/fallback resolution PlayVoiceFromSlot uses: returns the queried slot id
+; when the pack itself voices the category, the fallback slot's id when it
+; backfills (e.g. "F0" stock moans), or "" when nothing resolves at all.
+; Lets an audit tell "the pack plays this" from "this only works because of
+; backfill". Requires API version >= 3.
+string Function GetResolvingSlot(string slot, string category) global native
+
 ; True if a data-relative path resolves to a real resource (loose file OR
 ; BSA-packed) in the current load order - the same lookup PlayFile uses. Confirms
 ; the path resolves, not that the audio is valid PCM. Use to audit explicit file
