@@ -83,7 +83,7 @@ Every `Play*` returns an `int` instance handle: `>0` success, `0` = nothing play
 
 **`AudioUtil.psc`** (`Hidden`) — core API. Natives:
 - Play: `PlayVoice(Actor, category, volume, group, channel, blockLipSync=false)`, `PlayVoiceFromSlot(slot, category, akFollow, volume, group, channel, blockLipSync=false)`, `PlaySFX(sfxName, Actor, volume, group="sfx", channel)` (resolves `sfxName` first as a category of the **sfx slot** — `[general] sfx_slot`, default `SFX0` — then the flat `[sfx]` table, via `PapyrusAPI::ResolveSfxKey`; the sfx slot gives sfx pools the full `[[slot]]` toolset incl. BSA file-lists), `PlayFile(dataRelPath, Actor, volume, group, channel)`, `PlayFolder(dataRelFolder, Actor, volume, group, channel)`. `blockLipSync=true` = play this one line without moving the mouth (per-call opt-out; a mod that owns an actor's face across many lines passes `true` on each — there is no standing per-actor block). A category listed in `[lipsync] block_categories` also never lipsyncs.
-- Handles: `IsHandlePlaying`, `StopHandle`, `GetHandleDuration`, `SetHandleVolume`.
+- Handles: `IsHandlePlaying`, `StopHandle`, `GetHandleDuration`, `SetHandleVolume`, `GetHandlePath` (data-relative path of the file the handle played — the exact shuffle-bag pick; read right after the Play* call).
 - Groups/channels: `SetGroupVolume`, `DuckGroup(group, factor=0.0)`, `UnduckGroup`, `StopGroup`, `StopAllAudio`, `StopChannel`.
 - Lipsync: `IsLipSyncActive(Actor)`, `StopLipSync(Actor)`, `SetLipSyncEnabled(bool)`, `IsLipSyncEnabled()`, `SetLipSyncGain(float)`. Owning an actor's face is per-call via `blockLipSync` (no standing block native).
 - Introspection: `GetSlotForActor(Actor)`, `GetCategoryFileCount(slot, category)`, `CategoryExists(slot, category)`, `GetResolvingSlot(slot, category)` (which slot in the fallback chain actually supplies the audio — the slot itself, a fallback slot, or `""`).
@@ -96,7 +96,7 @@ Every `Play*` returns an `int` instance handle: `>0` success, `0` = nothing play
 
 **`AudioUtilTest.psc`** (`Hidden`) — console harness. Skyrim has **no** `cgf` command (that's Fallout 4); the global test functions are exposed as real console commands via **ConsoleUtil Extended** (CUE) configs in `dist\SKSE\CustomConsole\*.yaml` (e.g. `autest T1`, `au reload`). Legacy IVDT-hardcoded probes: T1 basic play, T2F flags/priority sweep, T3 PlayVoice, T4 shuffle-bag, T5 SFX, T6 channel replacement, T7 group duck, T8 PPA status, TReload. Content-agnostic (arg-driven, work on any install): `play <path>`, `voice <slot> <category>`, `voicepc <category>`, `sfx <name>`.
 
-Native registration lives in `PapyrusAPI::RegisterFuncs`, split across `SCRIPT_NAME="AudioUtil"`, `PPA_SCRIPT_NAME="AudioUtilPPA"`, `TOML_SCRIPT_NAME="TomlUtil"`. `API_VERSION` is `3` (v2 added `GetSlotVariation`, v3 added `GetResolvingSlot`); `TOML_API_VERSION` is `2` (v2 added the `Set*` writers).
+Native registration lives in `PapyrusAPI::RegisterFuncs`, split across `SCRIPT_NAME="AudioUtil"`, `PPA_SCRIPT_NAME="AudioUtilPPA"`, `TOML_SCRIPT_NAME="TomlUtil"`. `API_VERSION` is `4` (v2 added `GetSlotVariation`, v3 added `GetResolvingSlot`, v4 added `GetHandlePath`); `TOML_API_VERSION` is `2` (v2 added the `Set*` writers).
 
 ## PPA Bridge (Accurate Penetration)
 

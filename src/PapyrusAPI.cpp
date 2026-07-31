@@ -16,7 +16,7 @@ namespace PapyrusAPI
 		constexpr auto SCRIPT_NAME = "AudioUtil";
 		constexpr auto PPA_SCRIPT_NAME = "AudioUtilPPA";
 		constexpr auto TOML_SCRIPT_NAME = "TomlUtil";
-		constexpr std::int32_t API_VERSION = 3;  // v3: added GetResolvingSlot
+		constexpr std::int32_t API_VERSION = 4;  // v4: added GetHandlePath
 
 		using VM = RE::BSScript::IVirtualMachine;
 
@@ -239,7 +239,7 @@ namespace PapyrusAPI
 			if (!handle.IsValid()) {
 				return 0;
 			}
-			const auto id = InstanceManager::Register(handle, a_volume, a_group);
+			const auto id = InstanceManager::Register(handle, a_volume, a_group, file);
 			if (!a_channel.empty()) {
 				// claim atomically: if no-interrupt loses the race for a channel
 				// still playing, drop this one (it's within startup grace, silent)
@@ -343,7 +343,7 @@ namespace PapyrusAPI
 			if (!handle.IsValid()) {
 				return 0;
 			}
-			const auto id = InstanceManager::Register(handle, a_volume, a_group.c_str());
+			const auto id = InstanceManager::Register(handle, a_volume, a_group.c_str(), path);
 			if (a_channel.length() > 0) {
 				InstanceManager::PlayOnChannel(a_channel.c_str(), id);
 			}
@@ -373,6 +373,15 @@ namespace PapyrusAPI
 		float GetHandleDuration(RE::StaticFunctionTag*, std::int32_t a_handle)
 		{
 			return a_handle > 0 ? InstanceManager::DurationSec(a_handle) : 0.0f;
+		}
+
+		// data-relative path of the file this handle played — the exact shuffle-bag
+		// pick, so a script can read back which clip a Play* call actually chose.
+		// "" for a dead/unknown handle. Valid until the instance is swept (handle
+		// stops playing) — read it right after the Play* call returns.
+		RE::BSFixedString GetHandlePath(RE::StaticFunctionTag*, std::int32_t a_handle)
+		{
+			return a_handle > 0 ? RE::BSFixedString(InstanceManager::InstancePath(a_handle)) : "";
 		}
 
 		void SetHandleVolume(RE::StaticFunctionTag*, std::int32_t a_handle, float a_volume)
@@ -570,7 +579,7 @@ namespace PapyrusAPI
 			if (!handle.IsValid()) {
 				return 0;
 			}
-			return InstanceManager::Register(handle, 1.0f, "");
+			return InstanceManager::Register(handle, 1.0f, "", a_path.c_str());
 		}
 
 		// ---------- natives: TomlUtil (generic consumer-config surface) ----------
@@ -679,6 +688,7 @@ namespace PapyrusAPI
 		REGISTERFUNC(IsHandlePlaying, SCRIPT_NAME);
 		REGISTERFUNC(StopHandle, SCRIPT_NAME);
 		REGISTERFUNC(GetHandleDuration, SCRIPT_NAME);
+		REGISTERFUNC(GetHandlePath, SCRIPT_NAME);
 		REGISTERFUNC(SetHandleVolume, SCRIPT_NAME);
 		REGISTERFUNC(SetGroupVolume, SCRIPT_NAME);
 		REGISTERFUNC(DuckGroup, SCRIPT_NAME);

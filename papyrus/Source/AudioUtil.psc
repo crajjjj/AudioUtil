@@ -155,6 +155,16 @@ bool Function StopHandle(int handle) global native
 ; prepared (see WaitForHandle for how to cope with that).
 float Function GetHandleDuration(int handle) global native
 
+; The data-relative path of the file this handle actually played - the exact
+; wav the shuffle bag picked (e.g. "Sound\SLOVE\F1\Moan\moan_03.wav"). Lets a
+; script learn which clip a Play* call chose, since selection is random inside
+; the DLL. Works for every Play* (PlayVoice / PlayVoiceFromSlot / PlaySFX /
+; PlayFile / PlayFolder). Returns the FULL Data-relative path (separators '\');
+; call GetFileNameFromPath-style trimming yourself if you only want the leaf.
+; Read it right after the Play* call returns - it is retained only while the
+; instance is alive, and "" for a dead/unknown handle. Requires API version >= 4.
+string Function GetHandlePath(int handle) global native
+
 ; Change one instance's base volume mid-play (group multipliers still apply).
 Function SetHandleVolume(int handle, float volume) global native
 

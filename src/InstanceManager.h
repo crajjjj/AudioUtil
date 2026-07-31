@@ -2,13 +2,19 @@
 
 namespace InstanceManager
 {
-	// hand a freshly played handle over; returns the public int32 id (>0)
-	std::int32_t Register(RE::BSSoundHandle a_handle, float a_baseVolume, std::string a_group);
+	// hand a freshly played handle over; returns the public int32 id (>0).
+	// a_path is the data-relative file that was played (the shuffle-bag pick),
+	// retained so a script can read back exactly which clip a handle played.
+	std::int32_t Register(RE::BSSoundHandle a_handle, float a_baseVolume, std::string a_group,
+		std::string a_path = {});
 
 	bool  IsPlaying(std::int32_t a_id);
 	bool  Stop(std::int32_t a_id);
 	float DurationSec(std::int32_t a_id);
 	void  SetInstanceVolume(std::int32_t a_id, float a_volume);
+
+	// data-relative path of the file this handle played ("" if the id is unknown)
+	std::string InstancePath(std::int32_t a_id);
 
 	void SetGroupVolume(const std::string& a_group, float a_volume);
 	void DuckGroup(const std::string& a_group, float a_factor);

@@ -12,6 +12,7 @@ namespace InstanceManager
 			RE::BSSoundHandle handle;
 			float             baseVolume;
 			std::string       group;
+			std::string       path;  // data-relative file this instance played
 			// stream startup is asynchronous: for a short window after Play() the
 			// engine still reports "not playing", which made IsPlaying()/Sweep()
 			// treat brand-new instances as finished (PlayAndWait returned instantly)
@@ -75,12 +76,14 @@ namespace InstanceManager
 		}
 	}
 
-	std::int32_t Register(RE::BSSoundHandle a_handle, float a_baseVolume, std::string a_group)
+	std::int32_t Register(RE::BSSoundHandle a_handle, float a_baseVolume, std::string a_group,
+		std::string a_path)
 	{
 		std::scoped_lock lock{ g_lock };
 		Sweep();
 		const auto id = g_nextId++;
-		auto& instance = g_instances[id] = Instance{ a_handle, a_baseVolume, std::move(a_group) };
+		auto& instance = g_instances[id] =
+			Instance{ a_handle, a_baseVolume, std::move(a_group), std::move(a_path) };
 		ApplyEffectiveVolume(instance);
 		return id;
 	}
@@ -130,6 +133,13 @@ namespace InstanceManager
 			instance->baseVolume = a_volume;
 			ApplyEffectiveVolume(*instance);
 		}
+	}
+
+	std::string InstancePath(std::int32_t a_id)
+	{
+		std::scoped_lock lock{ g_lock };
+		auto* instance = Find(a_id);
+		return instance ? instance->path : std::string{};
 	}
 
 	void SetGroupVolume(const std::string& a_group, float a_volume)
