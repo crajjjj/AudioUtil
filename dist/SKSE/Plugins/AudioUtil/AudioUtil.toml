@@ -4,8 +4,8 @@
 # insensitive ("Battle Cry" == "BattleCry" == "battlecry").
 #
 # This file holds the GLOBAL settings only — [general], [ppa], [lipsync] and the
-# [gag] toggles, which are read only from this base file. The voice slots, SFX,
-# routing maps and gag keywords are ADDITIVE content that accumulates from here
+# [gag]/[tongue] toggles, which are read only from this base file. The voice slots,
+# SFX, routing maps and gag/tongue markers are ADDITIVE content that accumulates from here
 # plus every SKSE\Plugins\AudioUtil\config\*.toml overlay; ship those in an
 # overlay, not here. A ready-to-copy overlay template lives in the sibling
 # config.example\ folder (that folder is NOT loaded — copy it into config\).
@@ -79,6 +79,29 @@ items = [
   # 'MyGagMod.esp|000800',   # a specific worn gag with no keyword to match
 ]
 
+[tongue]
+# Worn-tongue (or other item) lipsync suppression. When a speaking actor wears any tongue marker
+# below - a `keywords` keyword or a specific `items` armor form - lipsync is
+# suppressed for that line: a visible tongue needs the mouth held open, and the
+# amplitude-driven jaw-flap would clip it (the same reason a gag suppresses lipsync).
+# Detection only - unlike [gag] it does NOT reroute the voice, so there is no
+# gag_slot / default_category analogue; the line still plays, just mouth-still.
+# Both lists use 'Plugin.esp|FormID' (hex). A marker whose mod you don't run is
+# silently skipped. enable = false turns the whole feature off.
+# enable is a global -> base-only; keywords and items are ADDITIVE, so a content
+# mod ships its tongue-armor forms in a config\*.toml overlay.
+enable = true
+# keywords: match any worn item carrying one of these keywords - covers a whole
+# tongue family (e.g. SexLab Survival's tongue keyword) with one entry.
+keywords = [
+  # 'MyTongueMod.esp|000800',   # example: a tongue keyword
+]
+# items: match these specific worn tongue-armor forms. Use for tongue armors that
+# carry no keyword (the usual case) - point straight at each armor.
+items = [
+  # 'MyTongueMod.esp|000800',   # a specific worn tongue armor
+]
+
 [groups]                      # startup volumes per group, 0.0-1.0 (a consumer mod overrides at runtime via SetGroupVolume)
 pc_high = 1.0
 pc_low = 1.0
@@ -88,7 +111,7 @@ sfx = 1.0
 oneshot = 1.0
 
 # ---------------------------------------------------------------------------
-# Voice slots, SFX, [gag].keywords/[gag].items, and the voicetype/race/category routing
+# Voice slots, SFX, [gag]/[tongue] keywords/items, and the voicetype/race/category routing
 # tables are ADDITIVE content — define them in a config\*.toml overlay. See the annotated
 # template in config.example\my_mod_slots.toml and the docs for the full
 # reference and resolution rules: https://crajjjj.github.io/AudioUtil/

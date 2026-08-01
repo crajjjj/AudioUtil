@@ -9,18 +9,19 @@
 # WHAT AN OVERLAY MAY CONTAIN — additive data only:
 #   [[slot]], [sfx], [npc_overrides], [voicetype_map], [voicetype_remap],
 #   [race_map], [category_aliases.*], [category_fallbacks.*], [male_only_remap],
-#   [groups], [gag].keywords, [gag].items, and [lipsync].block_categories.  These ACCUMULATE
-#   across the base file and every overlay (union; a [[slot]] is keyed by id and
-#   whole-slot last-wins).
+#   [groups], [gag].keywords, [gag].items, [tongue].keywords, [tongue].items, and
+#   [lipsync].block_categories.  These ACCUMULATE across the base file and every
+#   overlay (union; a [[slot]] is keyed by id and whole-slot last-wins).
 #
 # WHAT AN OVERLAY MAY NOT CONTAIN — globals:
-#   [general], [ppa], the [lipsync] scalar tuning, and the [gag]
-#   enable/default_category toggles are read ONLY from the base AudioUtil.toml.
-#   If you put them here they are IGNORED with a warning in AudioUtil.log. A mod
-#   that needs custom globals ships its own base AudioUtil.toml instead (see the
-#   shipped base for those). The exceptions above — [gag].keywords, [gag].items
-#   and [lipsync].block_categories — DO merge from here even though the rest of
-#   their tables is base-only.
+#   [general], [ppa], the [lipsync] scalar tuning, and the [gag] enable/
+#   default_category + [tongue] enable toggles are read ONLY from the base
+#   AudioUtil.toml. If you put them here they are IGNORED with a warning in
+#   AudioUtil.log. A mod that needs custom globals ships its own base
+#   AudioUtil.toml instead (see the shipped base for those). The exceptions above
+#   — [gag].keywords, [gag].items, [tongue].keywords, [tongue].items and
+#   [lipsync].block_categories — DO merge from here even though the rest of their
+#   tables is base-only.
 #
 # Give every path a full 'Sound\...' Data-relative path — slots and sfx alike.
 # All keys/names are case- and space-insensitive.
@@ -95,3 +96,19 @@ Thud = ['Sound\fx\MyMod\SFX\thud1.wav']          # explicit list (may point into
 # with the base + other overlays. Matched on the requested category name.
 [lipsync]
 block_categories = ["Slurp", "Squelch"]
+
+# ---------- tongue: suppress lipsync while a tongue armor is worn ----------
+# When an actor wears a tongue armor, the mouth is held open for the visible
+# tongue — the DLL's amplitude lipsync would flap the jaw and clip it. List your
+# tongue markers here and AudioUtil keeps that actor's line mouth-still (the line
+# still plays). [tongue].enable lives in the base and is ignored here; the marker
+# lists ARE additive, so ship them in your overlay. 'Plugin.esp|FormID' (hex).
+[tongue]
+# items: one line per tongue-armor form (the usual case — tongue armors rarely
+# carry a keyword). ESL plugins: use the last 3 hex digits of the form id.
+items = [
+  # 'MyTongueMod.esp|000813',
+  # 'MyTongueMod.esp|000814',
+]
+# keywords: if your tongues share a keyword, one entry covers the whole family.
+# keywords = [ 'MyTongueMod.esp|000900' ]

@@ -2,6 +2,7 @@
 
 #include "Config.h"
 #include "GagState.h"
+#include "TongueState.h"
 
 #include <cmath>
 #include <condition_variable>
@@ -295,7 +296,7 @@ namespace LipSync
 				// face stays put.
 				if (now >= a_entry.handoverCheckAt) {
 					a_entry.handoverCheckAt = now + HANDOVER_RECHECK;
-					if (GagState::IsGagged(actor) ||
+					if (GagState::IsGagged(actor) || TongueState::IsWearingTongue(actor) ||
 						(g_blockInDialogue.load() && IsInDialogue(actor))) {
 						return true;
 					}
@@ -385,6 +386,11 @@ namespace LipSync
 		}
 		// a gagged actor's mouth belongs to the device - don't lipsync over it
 		if (GagState::IsGagged(a_actor)) {
+			return;
+		}
+		// a visible tongue (equipped tongue armor) needs the mouth held open - a
+		// lipsync jaw-flap would clip it, so stay off the mouth, same as a gag
+		if (TongueState::IsWearingTongue(a_actor)) {
 			return;
 		}
 		// in a dialogue with the player the game drives the mouth from the real

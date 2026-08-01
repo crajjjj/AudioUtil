@@ -6,6 +6,7 @@
 #include "GagState.h"
 #include "InstanceManager.h"
 #include "LipSync.h"
+#include "TongueState.h"
 #include "PPABridge.h"
 #include "PapyrusAPI.h"
 
@@ -54,6 +55,7 @@ namespace
 			Config::Load();
 			FolderCache::Rebuild();
 			GagState::Resolve(*Config::Get());
+			TongueState::Resolve(*Config::Get());
 			InstanceManager::ApplyConfigGroupVolumes();
 			LipSync::ApplyConfig();
 			PPABridge::TryConnect();

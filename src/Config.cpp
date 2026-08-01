@@ -86,6 +86,42 @@ namespace Config
 			}
 			return out;
 		}
+
+		// parse a "Plugin.esp|FormID" string array into FormRefs. Shared by the
+		// [gag] and [tongue] marker lists (each has a keywords + items array).
+		// a_section names the toml section for the warning messages.
+		void ParseFormRefs(const toml::array* a_arr, const char* a_section, const char* a_what,
+						   std::vector<FormRef>& a_out)
+		{
+			if (!a_arr) {
+				return;
+			}
+			for (const auto& entry : *a_arr) {
+				const auto text = entry.value<std::string>();
+				if (!text) {
+					continue;
+				}
+				// "Plugin.esp|7EB8" -> {plugin, localID}; the id is hex, 0x optional
+				const auto sep = text->find('|');
+				if (sep == std::string::npos) {
+					logger::warn("[{}] {} '{}' missing '|' — expected 'Plugin.esp|FormID'", a_section, a_what, *text);
+					continue;
+				}
+				std::string_view idText = std::string_view(*text).substr(sep + 1);
+				if (idText.starts_with("0x") || idText.starts_with("0X")) {
+					idText.remove_prefix(2);
+				}
+				FormRef ref;
+				ref.plugin = text->substr(0, sep);
+				const auto [ptr, ec] =
+					std::from_chars(idText.data(), idText.data() + idText.size(), ref.localID, 16);
+				if (ref.plugin.empty() || ec != std::errc{} || ptr != idText.data() + idText.size()) {
+					logger::warn("[{}] {} '{}' has an invalid form id", a_section, a_what, *text);
+					continue;
+				}
+				a_out.push_back(std::move(ref));
+			}
+		}
 	}
 
 	std::string MakeNpcKey(std::string_view a_plugin, std::uint32_t a_localID)
@@ -115,14 +151,14 @@ namespace Config
 	//     last-writer-wins per key.
 	//   - [[slot]] is keyed by id: a later file with the same id replaces the
 	//     whole slot (no per-category deep merge) and logs a warning.
-	//   - [gag].keywords, [gag].items and [race_map] accumulate; race_map is sorted once by
-	//     Load after all files are merged.
-	// Global scalar sections ([general], [ppa], [lipsync], and the [gag] scalar
-	// toggles) are OWNED BY THE BASE AudioUtil.toml only. A config\*.toml overlay
-	// that sets them is ignored with a warning — this keeps a content mod (or the
-	// user's own tuning) from silently stomping engine-wide globals. Overlays
-	// remain free to contribute all the ADDITIVE data below (slots, sfx,
-	// resolution/category maps, and [gag].keywords/[gag].items).
+	//   - [gag].keywords, [gag].items, [tongue].keywords, [tongue].items and
+	//     [race_map] accumulate; race_map is sorted once by Load after all files merge.
+	// Global scalar sections ([general], [ppa], [lipsync], and the [gag]/[tongue]
+	// enable toggles) are OWNED BY THE BASE AudioUtil.toml only. A config\*.toml
+	// overlay that sets them is ignored with a warning — this keeps a content mod
+	// (or the user's own tuning) from silently stomping engine-wide globals.
+	// Overlays remain free to contribute all the ADDITIVE data below (slots, sfx,
+	// resolution/category maps, and the [gag]/[tongue] keywords/items).
 	void MergeFile(Settings* settings, const toml::table& root, bool a_isBase)
 	{
 		if (const auto* general = root["general"].as_table()) {
@@ -195,40 +231,24 @@ namespace Config
 				logger::warn("[gag] enable/default_category in an overlay are ignored (base-only); its keywords/items still merge");
 			}
 			// both gag-marker lists share the "Plugin.esp|FormID" form: keywords
-			// match by worn keyword, items match a specific worn item form.
-			const auto parseFormRefs = [](const toml::array* a_arr, const char* a_what,
-										   std::vector<FormRef>& a_out) {
-				if (!a_arr) {
-					return;
-				}
-				for (const auto& entry : *a_arr) {
-					const auto text = entry.value<std::string>();
-					if (!text) {
-						continue;
-					}
-					// "Plugin.esp|7EB8" -> {plugin, localID}; the id is hex, 0x optional
-					const auto sep = text->find('|');
-					if (sep == std::string::npos) {
-						logger::warn("[gag] {} '{}' missing '|' — expected 'Plugin.esp|FormID'", a_what, *text);
-						continue;
-					}
-					std::string_view idText = std::string_view(*text).substr(sep + 1);
-					if (idText.starts_with("0x") || idText.starts_with("0X")) {
-						idText.remove_prefix(2);
-					}
-					FormRef ref;
-					ref.plugin = text->substr(0, sep);
-					const auto [ptr, ec] =
-						std::from_chars(idText.data(), idText.data() + idText.size(), ref.localID, 16);
-					if (ref.plugin.empty() || ec != std::errc{} || ptr != idText.data() + idText.size()) {
-						logger::warn("[gag] {} '{}' has an invalid form id", a_what, *text);
-						continue;
-					}
-					a_out.push_back(std::move(ref));
-				}
-			};
-			parseFormRefs((*gag)["keywords"].as_array(), "keyword", settings->gagKeywords);
-			parseFormRefs((*gag)["items"].as_array(), "item", settings->gagItems);
+			// match by worn keyword, items match a specific worn item form. Parsed
+			// by the shared ParseFormRefs (also used by [tongue] below).
+			ParseFormRefs((*gag)["keywords"].as_array(), "gag", "keyword", settings->gagKeywords);
+			ParseFormRefs((*gag)["items"].as_array(), "gag", "item", settings->gagItems);
+		}
+
+		if (const auto* tongue = root["tongue"].as_table()) {
+			// like [gag]: enable is a base-only global, the keyword/item marker
+			// lists are additive. Detection only — a worn tongue suppresses that
+			// actor's lipsync (see TongueState/LipSync) — so there is no voice
+			// rerouting and thus no default_category / gag_slot analogue.
+			if (a_isBase) {
+				settings->tongueEnabled = (*tongue)["enable"].value_or(settings->tongueEnabled);
+			} else if (tongue->contains("enable")) {
+				logger::warn("[tongue] enable in an overlay is ignored (base-only); its keywords/items still merge");
+			}
+			ParseFormRefs((*tongue)["keywords"].as_array(), "tongue", "keyword", settings->tongueKeywords);
+			ParseFormRefs((*tongue)["items"].as_array(), "tongue", "item", settings->tongueItems);
 		}
 
 		if (const auto* slots = root["slot"].as_array()) {

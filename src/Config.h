@@ -49,8 +49,8 @@ namespace Config
 	};
 
 	// a plugin + local form id reference, resolved to a live form at load
-	// (e.g. "Devious Devices - Assets.esm|7EB8"). Used for [gag] gag markers:
-	// both worn keywords and specific worn item forms.
+	// (e.g. "Devious Devices - Assets.esm|7EB8"). Used for the [gag] and [tongue]
+	// markers: both worn keywords and specific worn item forms.
 	struct FormRef
 	{
 		std::string   plugin;
@@ -162,6 +162,16 @@ namespace Config
 		std::string           gagDefaultCategory;  // normalized; empty = none
 		std::vector<FormRef>  gagKeywords;
 		std::vector<FormRef>  gagItems;  // specific worn item forms (ARMO/…)
+
+		// worn-tongue lipsync suppression: when a speaking actor wears any tongue
+		// marker — a worn keyword from tongueKeywords or a specific worn item form
+		// from tongueItems — lipsync is suppressed for that line (a visible tongue
+		// needs the mouth held open; a lipsync jaw-flap would clip it). Detection
+		// only, no voice rerouting. Dormant with no markers, so the SFW-neutral
+		// default is unaffected. Mirrors the [gag] marker lists (see TongueState).
+		bool                  tongueEnabled{ true };
+		std::vector<FormRef>  tongueKeywords;
+		std::vector<FormRef>  tongueItems;  // specific worn tongue-armor forms (ARMO)
 	};
 
 	// lowercase + strip non-alphanumerics: "About To Cum" == "AboutToCum" == "abouttocum"

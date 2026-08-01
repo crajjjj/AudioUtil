@@ -4,6 +4,7 @@
 #include "Config.h"
 #include "FolderCache.h"
 #include "GagState.h"
+#include "TongueState.h"
 #include "InstanceManager.h"
 #include "LipSync.h"
 #include "PPABridge.h"
@@ -266,6 +267,7 @@ namespace PapyrusAPI
 			const bool ok = Config::Load();
 			FolderCache::Rebuild();
 			GagState::Resolve(*Config::Get());
+			TongueState::Resolve(*Config::Get());
 			InstanceManager::ApplyConfigGroupVolumes();
 			LipSync::ApplyConfig();
 			PPABridge::SetEventRateMs(Config::Get()->ppaEventRateMs);
