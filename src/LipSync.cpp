@@ -448,11 +448,12 @@ namespace LipSync
 		}
 		const auto actorID = a_actor->GetFormID();
 		std::scoped_lock lock{ g_entriesLock };
-		for (auto& entry : g_entries) {
-			if (entry.actorID == actorID) {
-				entry.stopping = true;
-			}
-		}
+		// Explicit hand-back: the consumer is taking the mouth (tongue/climax face).
+		// DROP the line and leave the mouth as-is — do NOT fade to closed. Fading to
+		// 0 here snaps the jaw shut over a just-shown tongue before the consumer's
+		// expression pass reopens it. Same "drop without zeroing" as the ApplyAll
+		// hand-over guard.
+		std::erase_if(g_entries, [&](const Entry& e) { return e.actorID == actorID; });
 	}
 
 	bool IsActiveFor(RE::Actor* a_actor)
