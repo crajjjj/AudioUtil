@@ -5,8 +5,11 @@ namespace InstanceManager
 	// hand a freshly played handle over; returns the public int32 id (>0).
 	// a_path is the data-relative file that was played (the shuffle-bag pick),
 	// retained so a script can read back exactly which clip a handle played.
+	// a_follow: the actor this sound is 3D-positioned at (or nullptr for flat/2D).
+	// Used once at registration to bake a distance-attenuation factor into the
+	// instance volume when [general] voice_attenuation is on (see Config).
 	std::int32_t Register(RE::BSSoundHandle a_handle, float a_baseVolume, std::string a_group,
-		std::string a_path = {});
+		std::string a_path = {}, RE::Actor* a_follow = nullptr);
 
 	bool  IsPlaying(std::int32_t a_id);
 	bool  Stop(std::int32_t a_id);

@@ -138,6 +138,10 @@ namespace Config
 				settings->pcMaleSlot = (*general)["pc_male_slot"].value_or(settings->pcMaleSlot);
 				settings->voice3D = (*general)["voice_3d"].value_or(settings->voice3D);
 				settings->voiceNoInterrupt = (*general)["voice_no_interrupt"].value_or(settings->voiceNoInterrupt);
+				settings->voiceAttenuation = (*general)["voice_attenuation"].value_or(settings->voiceAttenuation);
+				settings->attenuationNear = (*general)["attenuation_near"].value_or(settings->attenuationNear);
+				settings->attenuationFar = (*general)["attenuation_far"].value_or(settings->attenuationFar);
+				settings->attenuationFloor = (*general)["attenuation_floor"].value_or(settings->attenuationFloor);
 
 				if (const auto level = (*general)["log_level"].value<std::string>()) {
 					const auto lvl = spdlog::level::from_str(*level);

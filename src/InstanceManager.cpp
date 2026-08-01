@@ -13,6 +13,10 @@ namespace InstanceManager
 			float             baseVolume;
 			std::string       group;
 			std::string       path;  // data-relative file this instance played
+			// distance-attenuation factor baked in at registration (1.0 = none), so a
+			// far follow-positioned sound is quieter; kept as a separate multiplier so
+			// group-volume / duck recomputes preserve it (see ApplyEffectiveVolume)
+			float             distanceFactor = 1.0f;
 			// stream startup is asynchronous: for a short window after Play() the
 			// engine still reports "not playing", which made IsPlaying()/Sweep()
 			// treat brand-new instances as finished (PlayAndWait returned instantly)
@@ -52,7 +56,43 @@ namespace InstanceManager
 				const auto& group = GetGroup(a_instance.group);
 				mult = group.volume * group.duckFactor;
 			}
-			a_instance.handle.SetVolume(std::clamp(a_instance.baseVolume * mult, 0.0f, 1.0f));
+			a_instance.handle.SetVolume(
+				std::clamp(a_instance.baseVolume * mult * a_instance.distanceFactor, 0.0f, 1.0f));
+		}
+
+		// Static distance-attenuation factor for a follow-positioned sound, computed
+		// once at registration from the player->speaker distance. Full within
+		// attenuationNear, quadratic falloff to attenuationFloor at attenuationFar.
+		// 1.0 when disabled, no follow actor, or the player can't be resolved.
+		float ComputeDistanceFactor(RE::Actor* a_follow)
+		{
+			const auto settings = Config::Get();
+			if (!settings->voiceAttenuation || !a_follow) {
+				return 1.0f;
+			}
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			if (!player) {
+				return 1.0f;
+			}
+			const auto pf = a_follow->GetPosition();
+			const auto pp = player->GetPosition();
+			const float dx = pf.x - pp.x;
+			const float dy = pf.y - pp.y;
+			const float dz = pf.z - pp.z;
+			const float d = std::sqrt(dx * dx + dy * dy + dz * dz);
+
+			const float nearD = settings->attenuationNear;
+			const float farD = settings->attenuationFar;
+			const float floor = std::clamp(settings->attenuationFloor, 0.0f, 1.0f);
+			if (farD <= nearD || d <= nearD) {
+				return 1.0f;
+			}
+			if (d >= farD) {
+				return floor;
+			}
+			const float t = (d - nearD) / (farD - nearD);  // 0..1
+			const float f = (1.0f - t) * (1.0f - t);        // quadratic - steeper than linear
+			return floor + (1.0f - floor) * f;
 		}
 
 		// caller holds g_lock — drop finished instances so the table stays small
@@ -77,13 +117,15 @@ namespace InstanceManager
 	}
 
 	std::int32_t Register(RE::BSSoundHandle a_handle, float a_baseVolume, std::string a_group,
-		std::string a_path)
+		std::string a_path, RE::Actor* a_follow)
 	{
+		const float distanceFactor = ComputeDistanceFactor(a_follow);
 		std::scoped_lock lock{ g_lock };
 		Sweep();
 		const auto id = g_nextId++;
 		auto& instance = g_instances[id] =
 			Instance{ a_handle, a_baseVolume, std::move(a_group), std::move(a_path) };
+		instance.distanceFactor = distanceFactor;
 		ApplyEffectiveVolume(instance);
 		return id;
 	}

@@ -239,7 +239,7 @@ namespace PapyrusAPI
 			if (!handle.IsValid()) {
 				return 0;
 			}
-			const auto id = InstanceManager::Register(handle, a_volume, a_group, file);
+			const auto id = InstanceManager::Register(handle, a_volume, a_group, file, a_follow);
 			if (!a_channel.empty()) {
 				// claim atomically: if no-interrupt loses the race for a channel
 				// still playing, drop this one (it's within startup grace, silent)
@@ -343,7 +343,7 @@ namespace PapyrusAPI
 			if (!handle.IsValid()) {
 				return 0;
 			}
-			const auto id = InstanceManager::Register(handle, a_volume, a_group.c_str(), path);
+			const auto id = InstanceManager::Register(handle, a_volume, a_group.c_str(), path, a_follow);
 			if (a_channel.length() > 0) {
 				InstanceManager::PlayOnChannel(a_channel.c_str(), id);
 			}
@@ -579,7 +579,7 @@ namespace PapyrusAPI
 			if (!handle.IsValid()) {
 				return 0;
 			}
-			return InstanceManager::Register(handle, 1.0f, "", a_path.c_str());
+			return InstanceManager::Register(handle, 1.0f, "", a_path.c_str(), a_follow);
 		}
 
 		// ---------- natives: TomlUtil (generic consumer-config surface) ----------

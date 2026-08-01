@@ -118,6 +118,18 @@ namespace Config
 		// speakers still overlap). SFX and PlayFile/PlayFolder are unaffected.
 		bool voiceNoInterrupt{ false };
 
+		// Distance attenuation for follow-positioned sounds (voice + sfx). Loose-file
+		// playback has no sound-descriptor rolloff curve, so a followed sound barely
+		// gets quieter with distance (positioning still works). When enabled, the
+		// per-instance volume is scaled once at play time by the listener->speaker
+		// distance: full within attenuationNear, quadratic falloff to attenuationFloor
+		// at attenuationFar (units). Off by default = no change for existing consumers.
+		// Only meaningful when a sound plays far from the player (e.g. NPC-only scenes).
+		bool  voiceAttenuation{ false };
+		float attenuationNear{ 400.0f };
+		float attenuationFar{ 3000.0f };
+		float attenuationFloor{ 0.0f };
+
 		bool          ppaEnabled{ true };
 		std::uint32_t ppaEventRateMs{ 2000 };
 
