@@ -395,6 +395,17 @@ namespace PapyrusAPI
 			return PlayFromKey(key, a_follow, a_volume, a_group.c_str(), a_channel.c_str());
 		}
 
+		// spoken-line variant of PlayFolder: the shuffle-bag pick drives
+		// a_follow's mouth like a voice call (same toggle + guards)
+		std::int32_t PlayFolderWithLipSync(RE::StaticFunctionTag*, RE::BSFixedString a_folder,
+			RE::Actor* a_follow, float a_volume, RE::BSFixedString a_group,
+			RE::BSFixedString a_channel)
+		{
+			const auto key = FolderCache::ResolveDirKey(a_folder.c_str());
+			return PlayFromKey(key, a_follow, a_volume, a_group.c_str(), a_channel.c_str(),
+				a_follow);
+		}
+
 		// ---------- natives: handles ----------
 
 		bool IsHandlePlaying(RE::StaticFunctionTag*, std::int32_t a_handle)
@@ -768,6 +779,7 @@ namespace PapyrusAPI
 		REGISTERFUNC(PlayFile, SCRIPT_NAME);
 		REGISTERFUNC(PlayFileWithLipSync, SCRIPT_NAME);
 		REGISTERFUNC(PlayFolder, SCRIPT_NAME);
+		REGISTERFUNC(PlayFolderWithLipSync, SCRIPT_NAME);
 		REGISTERFUNC(IsHandlePlaying, SCRIPT_NAME);
 		REGISTERFUNC(StopHandle, SCRIPT_NAME);
 		REGISTERFUNC(GetHandleDuration, SCRIPT_NAME);

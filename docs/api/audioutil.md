@@ -74,9 +74,10 @@ Supported formats: **wav**, **xwm**, and **fuz**. A `.fuz` voice container — e
 
 ```papyrus
 int Function PlayFolder(string dataRelativeFolder, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
+int Function PlayFolderWithLipSync(string dataRelativeFolder, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
 ```
 
-Play a random file from a loose folder (scanned on first use, then cached as a shuffle bag). Scans pick up `.wav`, `.xwm`, and `.fuz` files.
+Play a random file from a loose folder (scanned on first use, then cached as a shuffle bag). Scans pick up `.wav`, `.xwm`, and `.fuz` files. `PlayFolder` never drives the mouth; `PlayFolderWithLipSync` (API v5+) is the spoken-line variant — the picked clip lipsyncs `akFollow` like a `PlayVoice` line, with the same global toggle and guards.
 
 !!! warning "Folder scans can't see into BSAs"
     `PlayFolder` (and folder-string categories, and the `[sfx]` table) scan the loose filesystem only. For **BSA-packed audio** use `PlayFile` or an explicit `[slot.categories]` file list in the TOML — those go through the engine's resource loader, which resolves archives.

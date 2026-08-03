@@ -159,6 +159,13 @@ int Function PlayFileWithLipSync(string dataRelativePath, Actor akFollow, float 
 ;   channel            - exclusivity lane: busy channel stops the previous line; "" = none.
 int Function PlayFolder(string dataRelativeFolder, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
 
+; PlayFolder for SPOKEN lines: identical arguments, plus the picked clip drives
+; akFollow's mouth like a PlayVoice line (global [lipsync] toggle + gag/tongue/
+; dialogue guards apply; loose PCM wav and fuz - other formats play mouth-still).
+; PlayFolder itself never lipsyncs (it also serves non-vocal one-shot pools).
+; Requires API version >= 5.
+int Function PlayFolderWithLipSync(string dataRelativeFolder, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
+
 ; ===================== NATIVE — handles =====================
 
 ; True while the instance is audible. Also true during a short startup grace
