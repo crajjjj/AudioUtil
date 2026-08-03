@@ -154,7 +154,7 @@ namespace Config
 	//   - [gag].keywords, [gag].items, [tongue].keywords, [tongue].items and
 	//     [race_map] accumulate; race_map is sorted once by Load after all files merge.
 	// Global scalar sections ([general], [ppa], [lipsync], [captions], and the
-	// [gag]/[tongue] enable toggles) are OWNED BY THE BASE AudioUtil.toml only. A config\*.toml
+	// [gag]/[tongue]/[voicetype_remap] enable toggles) are OWNED BY THE BASE AudioUtil.toml only. A config\*.toml
 	// overlay that sets them is ignored with a warning — this keeps a content mod
 	// (or the user's own tuning) from silently stomping engine-wide globals.
 	// Overlays remain free to contribute all the ADDITIVE data below (slots, sfx,
@@ -326,7 +326,15 @@ namespace Config
 		}
 
 		if (const auto* remap = root["voicetype_remap"].as_table()) {
-			settings->voicetypeRemapEnabled = (*remap)["enable"].value_or(true);
+			// enable is a base-only global (like [general]/[ppa]/...): carry the
+			// prior value forward so a keyless overlay table can't reset it, and
+			// ignore+warn an overlay that tries to set it. The remap ENTRIES below
+			// stay additive across all files.
+			if (a_isBase) {
+				settings->voicetypeRemapEnabled = (*remap)["enable"].value_or(settings->voicetypeRemapEnabled);
+			} else if (remap->contains("enable")) {
+				logger::warn("[voicetype_remap] enable in an overlay is ignored (base-only); its entries still merge");
+			}
 			for (auto&& [key, value] : *remap) {
 				if (key.str() == "enable"sv) {
 					continue;
