@@ -21,13 +21,15 @@ You define your voices, sound effects, and routing in a TOML overlay that drops 
 [center][url=https://crajjjj.github.io/AudioUtil/][b]» AudioUtil Documentation «[/b][/url][/center]
 
 [size=4][b]Installation instructions[/b][/size]
-Install with a mod manager (Mod Organizer 2 / Vortex) like any SKSE plugin, or extract into your [icode]Data[/icode] folder. Then install the content mods that depend on it. AudioUtil alone adds no voices or sounds.
+Install with a mod manager (Mod Organizer 2 / Vortex) like any SKSE plugin, or extract into your [font=Courier New]Data[/font] folder. Then install the content mods that depend on it. AudioUtil alone adds no voices or sounds.
 
 [size=4][b]Main features[/b][/size]
 [list]
 [*][b]Play any WAV by path[/b] — loose files or audio packed inside BSA archives, positioned in 3D on an actor or played flat.
 [*][b]Per-NPC voice assignment[/b] — one call picks the right voice for an actor automatically, resolved by NPC pin, voice type, race, or sex, then shuffle-picks a clip so lines don't repeat.
-[*][b]Automatic lip movement[/b] — mouths move in sync with the audio, read from the clip's own loudness. No [icode].lip[/icode] baking, works on any loose voice file.
+[*][b]Automatic lip movement[/b] — mouths move in sync with the audio, read from the clip's own loudness. No [font=Courier New].lip[/font] baking, works on any loose voice file.
+[*][b]Vanilla voice lines[/b] — play any game [font=Courier New].fuz[/font] voice file straight by path (loose or inside a BSA). It's decoded and cached once, and lip movement works on it too.
+[*][b]On-screen captions[/b] — a voice clip can carry a small text sidecar, shown as a game subtitle on the speaker while it plays, with per-language text and an event for custom UI.
 [*][b]Mixing control[/b] — per-sound volume and stop, volume groups, ducking, and exclusive channels so a new line cleanly replaces the last.
 [*][b]Gag support[/b] — when a speaker wears a mouth-owning device, their voice automatically switches to a muffled set and lip movement hands off to the device.
 [*][b]TomlUtil[/b] — a bundled, general-purpose TOML config reader that [i]any[/i] Papyrus mod can use to load its own settings, whether or not it uses the audio side.
