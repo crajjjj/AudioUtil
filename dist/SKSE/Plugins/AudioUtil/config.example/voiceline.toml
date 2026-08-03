@@ -1,0 +1,31 @@
+# AudioUtil caption sidecar EXAMPLE — on-screen text for one voice line.
+#
+# THIS FILE DOES NOTHING HERE. A caption sidecar lives NEXT TO ITS WAV, with
+# the SAME base name, e.g.:
+#
+#   Sound\MyMod\F1\Tease\tease_03.wav     <- the audio
+#   Sound\MyMod\F1\Tease\tease_03.toml    <- copy of this file, edited
+#
+# While that wav plays (any Play* call with an actor), the text below is shown
+# as a regular game subtitle attributed to the speaker — bottom center, with
+# the speaker's name, like an overheard dialogue line — and removed when the
+# line ends, is stopped, or is replaced on its channel. An AudioUtil_Caption
+# mod event also fires for mods that draw their own caption UI.
+#
+# No sidecar = no caption: you opt in per file, only for lines worth reading
+# (commentary, dirty talk) — moans don't need one.
+#
+# KEYS ARE LANGUAGE CODES. Which one is shown follows [captions] language in
+# the base AudioUtil.toml: "auto" (default) maps the game's own language
+# (sLanguage ini) to a two-letter code — ENGLISH->en, FRENCH->fr, GERMAN->de,
+# ITALIAN->it, SPANISH->es, RUSSIAN->ru, POLISH->pl, CZECH->cs, JAPANESE->ja,
+# CHINESE->zh, PORTUGUESE->pt; an unmapped language matches by its lowercased
+# full name ("turkish"). A missing localization falls back to "en", so ship at
+# least the en key. Ship only the languages you have — one key is fine.
+#
+# Sidecars are LOOSE FILES only — they are not read out of a BSA (same
+# constraint as lipsync). Requires AudioUtil >= 0.9.8 (API v5).
+
+en = "Does this count as extra follower duty?"
+ru = "Это считается дополнительной службой?"
+de = "Zählt das als zusätzlicher Gefolgsdienst?"

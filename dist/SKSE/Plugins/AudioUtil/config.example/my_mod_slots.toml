@@ -14,8 +14,8 @@
 #   overlay (union; a [[slot]] is keyed by id and whole-slot last-wins).
 #
 # WHAT AN OVERLAY MAY NOT CONTAIN — globals:
-#   [general], [ppa], the [lipsync] scalar tuning, and the [gag] enable/
-#   default_category + [tongue] enable toggles are read ONLY from the base
+#   [general], [ppa], the [lipsync] scalar tuning, [captions], and the [gag]
+#   enable/default_category + [tongue] enable toggles are read ONLY from the base
 #   AudioUtil.toml. If you put them here they are IGNORED with a warning in
 #   AudioUtil.log. A mod that needs custom globals ships its own base
 #   AudioUtil.toml instead (see the shipped base for those). The exceptions above
