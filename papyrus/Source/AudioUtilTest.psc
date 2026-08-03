@@ -74,6 +74,48 @@ Function PlayPath(string path) global
     endif
 EndFunction
 
+; DebugPlayFile on any path with explicit flags/priority. RAW path - a .fuz is
+; fed to the engine as-is (no payload extraction), so this can probe the
+; engine's native fuz handling.  e.g.  autest playf "Sound\x\y.xwm" 26 128
+Function PlayFlags(string path, int flags, int priority) global
+    int h = AudioUtil.DebugPlayFile(path, Game.GetPlayer(), flags, priority)
+    Debug.Notification("playf flags=" + flags + " prio=" + priority + " handle=" + h + " dur=" + AudioUtil.GetHandleDuration(h))
+EndFunction
+
+; Auto-sweep a curated list of sound_flags values over one path, ~2.5s apart,
+; each announced via notification with its handle + duration. Run it, CLOSE THE
+; CONSOLE (the game must be unpaused for Utility.Wait / audio), listen, and note
+; which "sweep N: flags=F" notifications coincide with audible sound.
+; duration > 0 alone already means the decoder parsed the file.
+; RAW path like PlayFlags - point it at an extracted .xwm or a .fuz directly.
+Function Sweep(string path) global
+    int[] f = new int[13]
+    f[0] = 26   ; 0x1A - the shipped default
+    f[1] = 10   ; 0x0A
+    f[2] = 18   ; 0x12
+    f[3] = 2
+    f[4] = 8
+    f[5] = 16
+    f[6] = 24
+    f[7] = 27
+    f[8] = 30
+    f[9] = 0
+    f[10] = 58  ; 0x3A
+    f[11] = 90  ; 0x5A
+    f[12] = 154 ; 0x9A
+    Debug.Notification("sweep '" + path + "' - 13 combos, ~2.5s apart")
+    int i = 0
+    while i < f.length
+        int h = AudioUtil.DebugPlayFile(path, Game.GetPlayer(), f[i], 128)
+        Utility.Wait(1.0)
+        Debug.Notification("sweep " + i + ": flags=" + f[i] + " handle=" + h + " dur=" + AudioUtil.GetHandleDuration(h) + " playing=" + AudioUtil.IsHandlePlaying(h))
+        Utility.Wait(1.5)
+        AudioUtil.StopHandle(h)
+        i += 1
+    endwhile
+    Debug.Notification("sweep done")
+EndFunction
+
 ; Play a voice category from an explicit slot at the player.  e.g.  autest voice M1 Orgasm
 Function Voice(string slot, string category) global
     int n = AudioUtil.GetCategoryFileCount(slot, category)

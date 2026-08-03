@@ -4,8 +4,12 @@ namespace AudioEngine
 {
 	// build+play a loose audio file. Returns an invalid handle on failure (logged).
 	// a_follow may be null (2D / UI-style playback).
+	// a_translateFuz: swap a .fuz path for its FuzCache-extracted payload (the
+	// normal behavior). DebugPlayFile passes false so a raw .fuz can be fed
+	// straight to the engine for diagnostics.
 	RE::BSSoundHandle PlayPath(const std::string& a_dataRelPath, RE::Actor* a_follow,
-		float a_volume, std::uint32_t a_flags, std::uint32_t a_priority);
+		float a_volume, std::uint32_t a_flags, std::uint32_t a_priority,
+		bool a_translateFuz = true);
 
 	// overload using config defaults for flags/priority
 	RE::BSSoundHandle PlayPath(const std::string& a_dataRelPath, RE::Actor* a_follow, float a_volume);

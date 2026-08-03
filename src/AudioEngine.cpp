@@ -6,7 +6,8 @@
 namespace AudioEngine
 {
 	RE::BSSoundHandle PlayPath(const std::string& a_dataRelPath, RE::Actor* a_follow,
-		float a_volume, std::uint32_t a_flags, std::uint32_t a_priority)
+		float a_volume, std::uint32_t a_flags, std::uint32_t a_priority,
+		bool a_translateFuz)
 	{
 		RE::BSSoundHandle handle;
 
@@ -23,7 +24,7 @@ namespace AudioEngine
 		// foo.toml next to foo.fuz).
 		const std::string* playPath = &a_dataRelPath;
 		std::string        extracted;
-		if (FuzCache::IsFuzPath(a_dataRelPath)) {
+		if (a_translateFuz && FuzCache::IsFuzPath(a_dataRelPath)) {
 			extracted = FuzCache::Resolve(a_dataRelPath);
 			if (extracted.empty()) {
 				return handle;  // Resolve already logged why

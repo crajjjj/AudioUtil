@@ -307,7 +307,9 @@ bool Function FileExists(string path) global native
 
 ; Play a file with explicit BuildSoundDataFromFile flags/priority instead of
 ; the toml's sound_flags/sound_priority - for experimenting when a file is
-; silent or behaves oddly. Not for production use.
+; silent or behaves oddly. Plays the RAW path: unlike PlayFile, a .fuz is fed
+; to the engine as-is (no payload extraction) so its native handling can be
+; probed. Not for production use.
 int Function DebugPlayFile(string dataRelativePath, Actor akFollow, int flags, int priority) global native
 
 ; ===================== WRAPPERS =====================

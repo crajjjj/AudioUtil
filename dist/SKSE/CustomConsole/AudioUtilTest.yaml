@@ -58,6 +58,30 @@ subs:
         type: String
         required: true
         help: Data-relative wav path, e.g. Sound\fx\foo\bar.wav
+  - name: playf
+    func: PlayFlags
+    help: DebugPlayFile any path with explicit flags/priority (RAW - a .fuz is not extracted)
+    args:
+      - name: path
+        type: String
+        required: true
+        help: Data-relative path (wav/xwm/fuz)
+      - name: flags
+        type: int
+        required: true
+        help: sound_flags value, e.g. 26 (=0x1A default)
+      - name: priority
+        type: int
+        default: 128
+        help: sound priority (default 128)
+  - name: sweep
+    func: Sweep
+    help: Auto-sweep 13 sound_flags values over one path (close the console after running; listen + watch notifications)
+    args:
+      - name: path
+        type: String
+        required: true
+        help: Data-relative path (wav/xwm/fuz)
   - name: voice
     func: Voice
     help: Play a voice category from an explicit slot at the player

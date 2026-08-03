@@ -611,8 +611,10 @@ namespace PapyrusAPI
 		std::int32_t DebugPlayFile(RE::StaticFunctionTag*, RE::BSFixedString a_path,
 			RE::Actor* a_follow, std::int32_t a_flags, std::int32_t a_priority)
 		{
+			// raw path on purpose (no fuz->payload translation): lets diagnostics
+			// feed a .fuz straight to the engine to probe its native handling
 			auto handle = AudioEngine::PlayPath(a_path.c_str(), a_follow, 1.0f,
-				static_cast<std::uint32_t>(a_flags), static_cast<std::uint32_t>(a_priority));
+				static_cast<std::uint32_t>(a_flags), static_cast<std::uint32_t>(a_priority), false);
 			if (!handle.IsValid()) {
 				return 0;
 			}
