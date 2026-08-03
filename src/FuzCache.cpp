@@ -2,6 +2,7 @@
 
 #include "Config.h"
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 
@@ -335,6 +336,42 @@ namespace FuzCache
 			a_out.write(reinterpret_cast<const char*>(&a_dataSize), 4);
 		}
 
+		// Write via a unique temp file + atomic rename. Two threads extracting the
+		// same fuz at once (crowd scene: two NPCs share a voice line) otherwise both
+		// open the same cache file with trunc and interleave their writes, leaving a
+		// corrupt wav that the next session's "exists && size>44" check accepts as
+		// good — corruption that persists until the cache is cleared. Each writer
+		// now lays down its own temp file and renames; rename replaces atomically on
+		// one volume, so a reader only ever sees a complete file. No lock is held
+		// across the slow decode/write.
+		std::atomic<std::uint32_t> g_tmpSeq{ 0 };
+
+		template <class Fn>
+		bool WriteFileAtomic(const std::filesystem::path& a_final, Fn&& a_writeBody)
+		{
+			const auto tmp = std::filesystem::path(
+				a_final.string() + std::format(".tmp{:x}", g_tmpSeq.fetch_add(1)));
+			std::error_code ec;
+			{
+				std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+				if (!out) {
+					return false;
+				}
+				a_writeBody(out);
+				if (!out) {  // a write failed — drop the partial temp
+					out.close();
+					std::filesystem::remove(tmp, ec);
+					return false;
+				}
+			}  // ofstream closed here, before the rename
+			std::filesystem::rename(tmp, a_final, ec);
+			if (ec) {
+				std::filesystem::remove(tmp, ec);
+				return false;
+			}
+			return true;
+		}
+
 		// extract + persist; returns the cache file's data-relative path, "" on failure
 		std::string Extract(const std::string& a_key)
 		{
@@ -390,13 +427,12 @@ namespace FuzCache
 				std::uint16_t channels = 0;
 				std::uint32_t sampleRate = 0;
 				if (DecodeXwmaToPcm(audio, audioSize, pcm, channels, sampleRate)) {
-					std::ofstream out(wavDisk, std::ios::binary | std::ios::trunc);
-					if (out) {
+					const bool wrote = WriteFileAtomic(wavDisk, [&](std::ofstream& out) {
 						WriteWavHeader(out, static_cast<std::uint32_t>(pcm.size()), channels, sampleRate);
 						out.write(reinterpret_cast<const char*>(pcm.data()),
 							static_cast<std::streamsize>(pcm.size()));
-					}
-					if (out) {
+					});
+					if (wrote) {
 						logger::info("Fuz '{}' -> {}.wav (xWMA decoded, {} PCM bytes{})", a_key,
 							cacheBase, pcm.size(),
 							lipSize ? std::format(", lip {} bytes skipped", lipSize) : "");
@@ -415,13 +451,14 @@ namespace FuzCache
 				std::filesystem::file_size(rawDisk, ec) == audioSize) {
 				return cacheBase + ext;  // fallback from an earlier session
 			}
-			std::ofstream out(rawDisk, std::ios::binary | std::ios::trunc);
-			if (!out || !out.write(reinterpret_cast<const char*>(audio),
-							static_cast<std::streamsize>(audioSize))) {
+			const bool wrote = WriteFileAtomic(rawDisk, [&](std::ofstream& out) {
+				out.write(reinterpret_cast<const char*>(audio),
+					static_cast<std::streamsize>(audioSize));
+			});
+			if (!wrote) {
 				logger::warn("Fuz '{}': failed to write cache file {}{}", a_key, cacheBase, ext);
 				return {};
 			}
-			out.close();
 			logger::info("Fuz '{}' -> {}{} ({} bytes{})", a_key, cacheBase, ext, audioSize,
 				lipSize ? std::format(", lip {} bytes skipped", lipSize) : "");
 			return cacheBase + ext;
