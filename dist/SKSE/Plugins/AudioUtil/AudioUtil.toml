@@ -3,8 +3,8 @@
 # sound-descriptor forms or ESP. All key/name matching is case- and space-
 # insensitive ("Battle Cry" == "BattleCry" == "battlecry").
 #
-# This file holds the GLOBAL settings only — [general], [ppa], [lipsync] and the
-# [gag]/[tongue] toggles, which are read only from this base file. The voice slots,
+# This file holds the GLOBAL settings only — [general], [ppa], [lipsync],
+# [captions] and the [gag]/[tongue] toggles, which are read only from this base file. The voice slots,
 # SFX, routing maps and gag/tongue markers are ADDITIVE content that accumulates from here
 # plus every SKSE\Plugins\AudioUtil\config\*.toml overlay; ship those in an
 # overlay, not here. A ready-to-copy overlay template lives in the sibling
@@ -101,6 +101,25 @@ keywords = [
 items = [
   # 'MyTongueMod.esp|000800',   # a specific worn tongue armor
 ]
+
+[captions]
+# On-screen captions for played lines. When a wav has a same-named .toml
+# sidecar next to it (moan_03.wav + moan_03.toml) holding per-language text:
+#   en = "Does this count as extra follower duty?"
+#   ru = "Это считается дополнительной службой?"
+# the text is shown as a regular game subtitle attributed to the speaking
+# actor while the line plays (and an AudioUtil_Caption mod event is sent for
+# mods that draw their own UI). No sidecar = no caption, so this is safe to
+# leave enabled; voice packs opt in per file by shipping sidecars.
+# Sidecars are loose files only (not read out of BSAs). All keys base-only.
+enable = true
+# Which sidecar key to read. "auto" = follow the game's sLanguage ini setting
+# ("ENGLISH" -> "en", "RUSSIAN" -> "ru", ...); or set an explicit key ("en").
+# A missing localization falls back to the sidecar's "en" text.
+language = "auto"
+# false = never inject the HUD subtitle, only send the AudioUtil_Caption mod
+# event - for a consumer mod that renders captions with its own widget.
+hud = true
 
 [groups]                      # startup volumes per group, 0.0-1.0 (a consumer mod overrides at runtime via SetGroupVolume)
 pc_high = 1.0

@@ -1,6 +1,7 @@
 #include "PapyrusAPI.h"
 
 #include "AudioEngine.h"
+#include "CaptionManager.h"
 #include "Config.h"
 #include "FolderCache.h"
 #include "GagState.h"
@@ -17,7 +18,7 @@ namespace PapyrusAPI
 		constexpr auto SCRIPT_NAME = "AudioUtil";
 		constexpr auto PPA_SCRIPT_NAME = "AudioUtilPPA";
 		constexpr auto TOML_SCRIPT_NAME = "TomlUtil";
-		constexpr std::int32_t API_VERSION = 4;  // v4: added GetHandlePath
+		constexpr std::int32_t API_VERSION = 5;  // v5: captions (GetHandleCaption, [captions], AudioUtil_Caption event)
 
 		using VM = RE::BSScript::IVirtualMachine;
 
@@ -224,10 +225,14 @@ namespace PapyrusAPI
 		// ---------- shared play helper ----------
 
 		// a_mouth: actor whose lips follow the clip's amplitude (voice calls pass
-		// the speaker; sfx/folder/file playback passes nullptr)
+		// the speaker; sfx/folder/file playback passes nullptr).
+		// a_speaker: actor a caption sidecar is attributed to — the raw speaker,
+		// independent of the voice_3d follow gating and the lipsync block (a
+		// mouth-still line still shows its caption)
 		std::int32_t PlayFromKey(const std::string& a_folderKey, RE::Actor* a_follow,
 			float a_volume, const std::string& a_group, const std::string& a_channel,
-			RE::Actor* a_mouth = nullptr, bool a_noInterrupt = false)
+			RE::Actor* a_mouth = nullptr, bool a_noInterrupt = false,
+			RE::Actor* a_speaker = nullptr)
 		{
 			if (a_folderKey.empty()) {
 				return 0;
@@ -252,6 +257,7 @@ namespace PapyrusAPI
 			if (a_mouth) {
 				LipSync::Start(a_mouth, file, handle, id);
 			}
+			CaptionManager::Start(a_speaker ? a_speaker : a_follow, file, handle, id);
 			return id;
 		}
 
@@ -270,6 +276,7 @@ namespace PapyrusAPI
 			TongueState::Resolve(*Config::Get());
 			InstanceManager::ApplyConfigGroupVolumes();
 			LipSync::ApplyConfig();
+			CaptionManager::ApplyConfig();
 			PPABridge::SetEventRateMs(Config::Get()->ppaEventRateMs);
 			return ok;
 		}
@@ -302,7 +309,7 @@ namespace PapyrusAPI
 			const bool blockLip = a_blockLipSync ||
 				settings->lipsyncBlockCategories.contains(Config::Normalize(a_category.c_str()));
 			return PlayFromKey(key, follow, a_volume, a_group.c_str(), a_channel.c_str(),
-				blockLip ? nullptr : a_actor, settings->voiceNoInterrupt);
+				blockLip ? nullptr : a_actor, settings->voiceNoInterrupt, a_actor);
 		}
 
 		std::int32_t PlayVoiceFromSlot(RE::StaticFunctionTag*, RE::BSFixedString a_slot,
@@ -324,7 +331,7 @@ namespace PapyrusAPI
 			const bool blockLip = a_blockLipSync ||
 				settings->lipsyncBlockCategories.contains(Config::Normalize(a_category.c_str()));
 			return PlayFromKey(key, follow, a_volume, a_group.c_str(), a_channel.c_str(),
-				blockLip ? nullptr : a_follow, settings->voiceNoInterrupt);
+				blockLip ? nullptr : a_follow, settings->voiceNoInterrupt, a_follow);
 		}
 
 		std::int32_t PlaySFX(RE::StaticFunctionTag*, RE::BSFixedString a_name,
@@ -349,6 +356,9 @@ namespace PapyrusAPI
 			if (a_channel.length() > 0) {
 				InstanceManager::PlayOnChannel(a_channel.c_str(), id);
 			}
+			// explicit files caption too when a sidecar exists (needs an actor
+			// to attribute the subtitle to)
+			CaptionManager::Start(a_follow, path, handle, id);
 			return id;
 		}
 
@@ -532,6 +542,31 @@ namespace PapyrusAPI
 			LipSync::SetGain(a_gain);
 		}
 
+		// ---------- natives: captions ----------
+
+		// caption text of the file this handle played, resolved for the current
+		// [captions] language ("" if the wav has no sidecar / no usable key).
+		// Works regardless of enable/hud, so a consumer can render captions
+		// itself with hud = false.
+		RE::BSFixedString GetHandleCaption(RE::StaticFunctionTag*, std::int32_t a_handle)
+		{
+			if (a_handle <= 0) {
+				return "";
+			}
+			return RE::BSFixedString(
+				CaptionManager::TextForFile(InstanceManager::InstancePath(a_handle)));
+		}
+
+		void SetCaptionsEnabled(RE::StaticFunctionTag*, bool a_enabled)
+		{
+			CaptionManager::SetEnabled(a_enabled);
+		}
+
+		bool AreCaptionsEnabled(RE::StaticFunctionTag*)
+		{
+			return CaptionManager::Enabled();
+		}
+
 		// ---------- natives: PPA ----------
 
 		// bound under the separate AudioUtilPPA script: the bridge is an optional
@@ -703,6 +738,9 @@ namespace PapyrusAPI
 		REGISTERFUNC(SetLipSyncEnabled, SCRIPT_NAME);
 		REGISTERFUNC(IsLipSyncEnabled, SCRIPT_NAME);
 		REGISTERFUNC(SetLipSyncGain, SCRIPT_NAME);
+		REGISTERFUNC(GetHandleCaption, SCRIPT_NAME);
+		REGISTERFUNC(SetCaptionsEnabled, SCRIPT_NAME);
+		REGISTERFUNC(AreCaptionsEnabled, SCRIPT_NAME);
 		REGISTERFUNC(GetSlotForActor, SCRIPT_NAME);
 		REGISTERFUNC(GetSlotVariation, SCRIPT_NAME);
 		REGISTERFUNC(GetCategoryFileCount, SCRIPT_NAME);

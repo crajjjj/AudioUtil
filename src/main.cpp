@@ -1,6 +1,7 @@
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/msvc_sink.h>
 
+#include "CaptionManager.h"
 #include "Config.h"
 #include "FolderCache.h"
 #include "GagState.h"
@@ -58,12 +59,14 @@ namespace
 			TongueState::Resolve(*Config::Get());
 			InstanceManager::ApplyConfigGroupVolumes();
 			LipSync::ApplyConfig();
+			CaptionManager::ApplyConfig();
 			PPABridge::TryConnect();
 			break;
 		case MessagingInterface::kPreLoadGame:
 		case MessagingInterface::kNewGame:
 			InstanceManager::StopAll();
 			LipSync::Reset();
+			CaptionManager::Reset();
 			break;
 		default:
 			break;

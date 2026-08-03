@@ -1,5 +1,6 @@
 #include "InstanceManager.h"
 
+#include "CaptionManager.h"
 #include "Config.h"
 #include "LipSync.h"
 
@@ -154,6 +155,7 @@ namespace InstanceManager
 		}
 		if (found) {
 			LipSync::OnInstanceStopped(a_id);
+			CaptionManager::OnInstanceStopped(a_id);
 		}
 		return ok;
 	}
@@ -230,6 +232,7 @@ namespace InstanceManager
 		}
 		for (const auto id : stopped) {
 			LipSync::OnInstanceStopped(id);
+			CaptionManager::OnInstanceStopped(id);
 		}
 	}
 
@@ -249,6 +252,7 @@ namespace InstanceManager
 		}
 		for (const auto id : stopped) {
 			LipSync::OnInstanceStopped(id);
+			CaptionManager::OnInstanceStopped(id);
 		}
 	}
 

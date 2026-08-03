@@ -224,6 +224,41 @@ bool Function IsLipSyncEnabled() global native
 ; Mouth-open strength, 0.0-2.0 (1.0 = envelope as-is). For a consumer mod's runtime control.
 Function SetLipSyncGain(float gain) global native
 
+; ===================== NATIVE — captions =====================
+; On-screen captions for played lines (requires API version >= 5). When a wav
+; has a same-named .toml sidecar next to it, e.g.
+;   Sound\SLOVE\F1\Moan\moan_03.wav
+;   Sound\SLOVE\F1\Moan\moan_03.toml     containing:
+;     en = "Does this count as extra follower duty?"
+;     ru = "Это считается дополнительной службой?"
+; then, while the line plays, the text for the configured [captions] language
+; is shown as a regular game subtitle attributed to the speaking actor (bottom
+; center, with the speaker's name — like an overheard dialogue line), and a
+; mod event is sent for consumers that want their own presentation:
+;
+;   RegisterForModEvent("AudioUtil_Caption", "OnAudioUtilCaption")
+;   Event OnAudioUtilCaption(string eventName, string text, float handle, Form sender)
+;     ; text = caption, handle = the Play* instance handle, sender = speaker
+;   EndEvent
+;
+; Works for every Play* that has an actor to attribute the line to (PlayVoice /
+; PlayVoiceFromSlot / PlaySFX / PlayFile / PlayFolder with a non-None actor).
+; The caption disappears when the line ends, is stopped, or is replaced on its
+; channel. Sidecars are loose files only (not read out of BSAs). Configure in
+; AudioUtil.toml [captions] (enable / language / hud).
+
+; Caption text of the file this handle played, resolved for the current
+; [captions] language ("" if the wav ships no sidecar or no usable key).
+; Independent of enable/hud, so a mod can fetch the text and render it itself
+; (set [captions] hud = false to suppress the built-in subtitle display).
+; Like GetHandlePath, read it right after the Play* call returns.
+string Function GetHandleCaption(int handle) global native
+
+; Master switch (runtime; the toml value is restored on ReloadConfig).
+; Turning it off also clears any caption currently on screen.
+Function SetCaptionsEnabled(bool enable) global native
+bool Function AreCaptionsEnabled() global native
+
 ; ===================== NATIVE — introspection =====================
 
 ; Which slot id PlayVoice would resolve for this actor right now ("M4",

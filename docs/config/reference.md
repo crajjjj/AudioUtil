@@ -7,7 +7,7 @@ Paths written `'Sound\...'` are **Data-relative**. Single-quoted TOML literal st
 ## `[general]`
 
 !!! warning "Base-only section"
-    `[general]` (along with `[ppa]`, the `[lipsync]` scalar tuning, and the `[gag]` `enable`/`default_category` toggles) is a **global** section, read **only from the base `AudioUtil.toml`**. If a `config\*.toml` overlay sets any of these, it is ignored with a warning in `AudioUtil.log`. The **additive** exceptions inside those tables — `[lipsync] block_categories` and `[gag] keywords`/`items` — *do* merge from every file. See [the merge rules](index.md).
+    `[general]` (along with `[ppa]`, the `[lipsync]` scalar tuning, `[captions]`, and the `[gag]` `enable`/`default_category` toggles) is a **global** section, read **only from the base `AudioUtil.toml`**. If a `config\*.toml` overlay sets any of these, it is ignored with a warning in `AudioUtil.log`. The **additive** exceptions inside those tables — `[lipsync] block_categories` and `[gag] keywords`/`items` — *do* merge from every file. See [the merge rules](index.md).
 
 ```toml
 [general]
@@ -77,6 +77,31 @@ block_categories = ["Slurp"]  # never drive the mouth (additive — merges acros
 Runtime overrides: [`SetLipSyncEnabled`](../api/audioutil.md#setlipsyncenabled-islipsyncenabled) / [`SetLipSyncGain`](../api/audioutil.md#setlipsyncgain). `ReloadConfig` restores these TOML values.
 
 Lipsync is **suppressed automatically for a gagged actor** — when the speaker wears a marker configured in [`[gag]`](#gag), the device owns the mouth and the DLL won't drive it (checked when the line starts and re-checked on a 500 ms throttle, so a gag equipped mid-line hands the mouth over). No mouth-open threshold to tune.
+
+## `[captions]`
+
+On-screen captions for played lines. When a wav has a **same-named `.toml` sidecar** next to it (`moan_03.wav` + `moan_03.toml`) holding per-language text, the text for the configured language is shown as a **regular game subtitle** attributed to the speaking actor while the line plays (and an `AudioUtil_Caption` mod event is sent — see [the API page](../api/audioutil.md#captions)). No sidecar = no caption, so leaving this enabled is safe; voice packs opt in per file by shipping sidecars. Sidecars are **loose files only** (not read out of BSAs).
+
+```toml
+# Sound\SLOVE\F1\Moan\moan_03.toml — sidecar for moan_03.wav
+en = "Does this count as extra follower duty?"
+ru = "Это считается дополнительной службой?"
+```
+
+```toml
+[captions]
+enable = true
+language = "auto"             # sidecar key to read; "auto" = follow the game's sLanguage ini
+hud = true                    # false = only send the mod event (consumer draws its own UI)
+```
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `enable` | bool | `true` | Captions master switch (base-only, like all scalars here). |
+| `language` | string | `"auto"` | Which sidecar key to read. `"auto"` maps the game's `sLanguage` ini setting to a two-letter code (`ENGLISH` → `en`, `RUSSIAN` → `ru`, `GERMAN` → `de`, …; an unmapped language matches by its lowercased full name). Any other value is used verbatim (lowercased), so packs may invent their own keys. A missing localization falls back to the sidecar's `en` text. |
+| `hud` | bool | `true` | `false` = never inject the HUD subtitle, only send the `AudioUtil_Caption` mod event — for a consumer mod that renders captions with its own widget (pair with [`GetHandleCaption`](../api/audioutil.md#gethandlecaption)). |
+
+Runtime override: [`SetCaptionsEnabled`](../api/audioutil.md#setcaptionsenabled-arecaptionsenabled). `ReloadConfig` restores the TOML value (and re-resolves the language + re-reads edited sidecars).
 
 ## `[gag]`
 

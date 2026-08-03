@@ -144,7 +144,7 @@ namespace Config
 	// Merge one parsed TOML file into an accumulating Settings. Called once per
 	// config file in load order (base first, then config\*.toml sorted), so the
 	// merge rules are:
-	//   - scalar globals ([general]/[ppa]/[lipsync]/[gag] toggles) are
+	//   - scalar globals ([general]/[ppa]/[lipsync]/[gag]/[captions] toggles) are
 	//     last-writer-wins: value_or(settings->x) carries the prior file's value
 	//     forward, and a later file only overrides keys it actually specifies.
 	//   - maps ([npc_overrides], [voicetype_map], [sfx], aliases, ...) union,
@@ -153,8 +153,8 @@ namespace Config
 	//     whole slot (no per-category deep merge) and logs a warning.
 	//   - [gag].keywords, [gag].items, [tongue].keywords, [tongue].items and
 	//     [race_map] accumulate; race_map is sorted once by Load after all files merge.
-	// Global scalar sections ([general], [ppa], [lipsync], and the [gag]/[tongue]
-	// enable toggles) are OWNED BY THE BASE AudioUtil.toml only. A config\*.toml
+	// Global scalar sections ([general], [ppa], [lipsync], [captions], and the
+	// [gag]/[tongue] enable toggles) are OWNED BY THE BASE AudioUtil.toml only. A config\*.toml
 	// overlay that sets them is ignored with a warning — this keeps a content mod
 	// (or the user's own tuning) from silently stomping engine-wide globals.
 	// Overlays remain free to contribute all the ADDITIVE data below (slots, sfx,
@@ -249,6 +249,19 @@ namespace Config
 			}
 			ParseFormRefs((*tongue)["keywords"].as_array(), "tongue", "keyword", settings->tongueKeywords);
 			ParseFormRefs((*tongue)["items"].as_array(), "tongue", "item", settings->tongueItems);
+		}
+
+		if (const auto* captions = root["captions"].as_table()) {
+			// pure scalars, so base-only like [general]/[ppa] — the display
+			// language and HUD behavior are the USER's install-wide choices,
+			// not something a content overlay should flip
+			if (!a_isBase) {
+				logger::warn("[captions] in an overlay is ignored — globals come only from the base AudioUtil.toml");
+			} else {
+				settings->captionsEnabled = (*captions)["enable"].value_or(settings->captionsEnabled);
+				settings->captionsLanguage = (*captions)["language"].value_or(settings->captionsLanguage);
+				settings->captionsHud = (*captions)["hud"].value_or(settings->captionsHud);
+			}
 		}
 
 		if (const auto* slots = root["slot"].as_array()) {

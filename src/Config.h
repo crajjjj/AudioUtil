@@ -163,6 +163,21 @@ namespace Config
 		std::vector<FormRef>  gagKeywords;
 		std::vector<FormRef>  gagItems;  // specific worn item forms (ARMO/…)
 
+		// on-screen captions: when a played wav has a same-named .toml sidecar
+		// next to it (line01.wav + line01.toml) holding per-language text
+		// (en = "...", ru = "..."), the resolved text is shown as a game
+		// subtitle attributed to the speaker while the line plays, and an
+		// "AudioUtil_Caption" mod event is sent (see CaptionManager). Loose
+		// files only — a sidecar can't be read out of a BSA.
+		bool        captionsEnabled{ true };
+		// sidecar key to read: "auto" resolves the game's sLanguage ini setting
+		// to a two-letter code ("ENGLISH" -> "en"); any other value is used
+		// verbatim (lowercased), so a pack may invent its own keys
+		std::string captionsLanguage{ "auto" };
+		// false = don't inject the HUD subtitle, only send the mod event — for
+		// a consumer that draws captions with its own UI
+		bool        captionsHud{ true };
+
 		// worn-tongue lipsync suppression: when a speaking actor wears any tongue
 		// marker — a worn keyword from tongueKeywords or a specific worn item form
 		// from tongueItems — lipsync is suppressed for that line (a visible tongue

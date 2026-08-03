@@ -12,7 +12,7 @@ All name and key matching (categories, slots, groups, SFX names) is **case- and 
 int Function GetAPIVersion() global native
 ```
 
-API version of the loaded DLL, for compatibility checks. `0` = DLL not installed. Increases only when signatures/behavior change incompatibly. Currently `1`.
+API version of the loaded DLL, for compatibility checks. `0` = DLL not installed. Increases only when signatures/behavior change incompatibly. Currently `5` (v2 added `GetSlotVariation`, v3 `GetResolvingSlot`, v4 `GetHandlePath`, v5 captions).
 
 ### `ReloadConfig`
 
@@ -102,6 +102,14 @@ float Function GetHandleDuration(int handle) global native
 
 Clip length in seconds. May return `0.0` while the stream is still being prepared — see [`WaitForHandle`](#wrappers) for how it copes with that.
 
+### `GetHandlePath`
+
+```papyrus
+string Function GetHandlePath(int handle) global native
+```
+
+The **data-relative path of the file this handle actually played** — the exact wav the shuffle bag picked (e.g. `Sound\SLOVE\F1\Moan\moan_03.wav`). Works for every `Play*`. Returns the full Data-relative path with `\` separators; `""` for a dead/unknown handle. Read it right after the `Play*` call returns — the path is retained only while the instance is alive. Requires API version **>= 4**.
+
 ### `SetHandleVolume`
 
 ```papyrus
@@ -187,6 +195,51 @@ Mouth-open strength, `0.0`–`2.0` (`1.0` = envelope as-is). For a consumer mod'
 
 !!! tip "Owning an actor's face across many lines"
     There is no standing per-actor lipsync block. If your mod takes over an actor's face (an ahegao / expression overlay), pass **`blockLipSync = true`** on each [`PlayVoice`](#playvoice) for that actor while the face is up — decide it per call from your own face-ownership state. Because it's decided per line rather than latched, there's no state to leak or to be cleared on load, and two systems that both play lines for the same actor can't clobber each other's block. For a whole category that should never lipsync (oral SFX, climax pools), list it in [`[lipsync] block_categories`](../config/reference.md#lipsync) instead.
+
+## Captions
+
+On-screen captions for played lines (API version **>= 5**). When a wav has a **same-named `.toml` sidecar** next to it:
+
+```
+Sound\SLOVE\F1\Moan\moan_03.wav
+Sound\SLOVE\F1\Moan\moan_03.toml
+```
+
+```toml
+en = "Does this count as extra follower duty?"
+ru = "Это считается дополнительной службой?"
+```
+
+then, while the line plays, the text for the configured [`[captions]`](../config/reference.md#captions) language is shown as a **regular game subtitle** attributed to the speaking actor — bottom center, with the speaker's name, exactly like an overheard dialogue line — and removed when the line ends, is stopped, or is replaced on its channel. No sidecar = no caption; packs opt in per file. Sidecars are **loose files only** (not read out of BSAs, same constraint as lipsync).
+
+Works for every `Play*` that has an actor to attribute the line to (`PlayVoice` / `PlayVoiceFromSlot` / `PlaySFX` / `PlayFile` / `PlayFolder` with a non-`None` actor).
+
+A **mod event** is also sent for consumers that want their own presentation (with `[captions] hud = false` to suppress the built-in subtitle):
+
+```papyrus
+RegisterForModEvent("AudioUtil_Caption", "OnAudioUtilCaption")
+
+Event OnAudioUtilCaption(string eventName, string text, float handle, Form sender)
+    ; text = caption text, handle = the Play* instance handle, sender = the speaking actor
+EndEvent
+```
+
+### `GetHandleCaption`
+
+```papyrus
+string Function GetHandleCaption(int handle) global native
+```
+
+Caption text of the file this handle played, resolved for the current `[captions]` language (`""` if the wav ships no sidecar or no usable key). Independent of `enable`/`hud`, so a mod can fetch the text and render it itself. Like [`GetHandlePath`](#gethandlepath), read it right after the `Play*` call returns.
+
+### `SetCaptionsEnabled` / `AreCaptionsEnabled`
+
+```papyrus
+Function SetCaptionsEnabled(bool enable) global native
+bool Function AreCaptionsEnabled() global native
+```
+
+Master switch (runtime; the TOML value is restored on `ReloadConfig`). Turning it off also clears any caption currently on screen.
 
 ## Introspection
 
