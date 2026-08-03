@@ -65,13 +65,15 @@ int Function PlayFile(string dataRelativePath, Actor akFollow, float volume = 1.
 
 Play one specific file. Path is relative to `Data\` (`'Sound\fx\MyMod\a.wav'`) and may resolve to a **loose file or to audio packed inside a BSA** — the engine's resource loader handles both (loose wins over archive).
 
+Supported formats: **wav**, **xwm**, and **fuz**. A `.fuz` voice container — e.g. any vanilla dialogue line, `Sound\Voice\Skyrim.esm\MaleNord\…​.fuz`, straight out of the voice BSAs — has its audio payload extracted once into `Sound\AudioUtilFuzCache\` and plays from there on every later call (the cache folder persists across sessions and can be deleted freely). [Captions](#captions) still key off the `.fuz` path (`foo.fuz` + `foo.toml` sidecar), but **lipsync skips fuz** — the payload is compressed xWMA and the envelope reader needs loose PCM wav.
+
 ### `PlayFolder`
 
 ```papyrus
 int Function PlayFolder(string dataRelativeFolder, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
 ```
 
-Play a random file from a loose folder (scanned on first use, then cached as a shuffle bag).
+Play a random file from a loose folder (scanned on first use, then cached as a shuffle bag). Scans pick up `.wav`, `.xwm`, and `.fuz` files.
 
 !!! warning "Folder scans can't see into BSAs"
     `PlayFolder` (and folder-string categories, and the `[sfx]` table) scan the loose filesystem only. For **BSA-packed audio** use `PlayFile` or an explicit `[slot.categories]` file list in the TOML — those go through the engine's resource loader, which resolves archives.

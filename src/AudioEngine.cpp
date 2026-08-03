@@ -1,6 +1,7 @@
 #include "AudioEngine.h"
 
 #include "Config.h"
+#include "FuzCache.h"
 
 namespace AudioEngine
 {
@@ -15,8 +16,23 @@ namespace AudioEngine
 			return handle;
 		}
 
+		// .fuz (voice container) can't be fed to the generic decoder - swap in
+		// the cached xWMA/wav payload FuzCache extracts. Only this build step
+		// uses the translated path: callers keep registering/lipsyncing/
+		// captioning against the ORIGINAL path (a .fuz caption sidecar is
+		// foo.toml next to foo.fuz).
+		const std::string* playPath = &a_dataRelPath;
+		std::string        extracted;
+		if (FuzCache::IsFuzPath(a_dataRelPath)) {
+			extracted = FuzCache::Resolve(a_dataRelPath);
+			if (extracted.empty()) {
+				return handle;  // Resolve already logged why
+			}
+			playPath = &extracted;
+		}
+
 		RE::BSResource::ID id;
-		id.GenerateFromPath(a_dataRelPath.c_str());
+		id.GenerateFromPath(playPath->c_str());
 		manager->BuildSoundDataFromFile(handle, id, a_flags, a_priority);
 
 		if (!handle.IsValid()) {

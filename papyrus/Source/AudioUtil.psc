@@ -120,7 +120,13 @@ int Function PlaySFX(string sfxName, Actor akFollow, float volume = 1.0, string 
 ; Arguments:
 ;   dataRelativePath - file path relative to Data\ ('Sound\fx\MyMod\a.wav'). May be
 ;                      a loose file OR audio packed in a BSA - the engine resolves
-;                      both (loose wins over archive).
+;                      both (loose wins over archive). wav, xwm, and fuz all play:
+;                      a .fuz voice container (e.g. any vanilla dialogue line,
+;                      'Sound\Voice\Skyrim.esm\MaleNord\...fuz') has its audio
+;                      payload extracted once into Sound\AudioUtilFuzCache\ and
+;                      played from there - captions still key off the .fuz path
+;                      (foo.fuz + foo.toml), but lipsync skips fuz (compressed
+;                      xwm audio - the envelope reader needs loose PCM wav).
 ;   akFollow         - 3D position for the sound. None = play flat/2D.
 ;   volume           - per-line gain, 1.0 = full. Effective = volume x group x duck.
 ;   group            - volume/duck bucket; "" = ungrouped.
@@ -132,9 +138,11 @@ int Function PlayFile(string dataRelativePath, Actor akFollow, float volume = 1.
 ; CONCEPTS); 0 if the folder had no audio.
 ;
 ; Arguments:
-;   dataRelativeFolder - folder relative to Data\ to pick a wav from. Scanning
-;                        cannot see into BSAs - for archived audio use PlayFile or
-;                        a [slot.categories] file list in the toml.
+;   dataRelativeFolder - folder relative to Data\ to pick a file from (wav, xwm,
+;                        or fuz). Scanning cannot see into BSAs - for archived
+;                        audio use PlayFile or a [slot.categories] file list in
+;                        the toml (both of which DO resolve BSA-packed files,
+;                        including fuz).
 ;   akFollow           - 3D position for the sound. None = play flat/2D.
 ;   volume             - per-line gain, 1.0 = full. Effective = volume x group x duck.
 ;   group              - volume/duck bucket; "" = ungrouped.

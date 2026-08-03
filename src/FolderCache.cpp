@@ -28,8 +28,11 @@ namespace FolderCache
 
 		bool IsAudioFile(const std::filesystem::path& a_path)
 		{
+			// .fuz voice containers count too: AudioEngine::PlayPath transparently
+			// plays their extracted xWMA/wav payload (see FuzCache)
 			const auto ext = a_path.extension().string();
-			return _stricmp(ext.c_str(), ".wav") == 0 || _stricmp(ext.c_str(), ".xwm") == 0;
+			return _stricmp(ext.c_str(), ".wav") == 0 || _stricmp(ext.c_str(), ".xwm") == 0 ||
+			       _stricmp(ext.c_str(), ".fuz") == 0;
 		}
 
 		std::string DataRelative(const std::filesystem::path& a_abs, const std::filesystem::path& a_dataRoot)
