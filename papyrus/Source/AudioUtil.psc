@@ -132,6 +132,9 @@ int Function PlaySFX(string sfxName, Actor akFollow, float volume = 1.0, string 
 ;   volume           - per-line gain, 1.0 = full. Effective = volume x group x duck.
 ;   group            - volume/duck bucket; "" = ungrouped.
 ;   channel          - exclusivity lane: busy channel stops the previous line; "" = none.
+; Lipsyncs akFollow by default, like a voice line - for loose PCM wav and fuz
+; (other formats play mouth-still). Playing a non-vocal one-shot at an actor?
+; Call StopLipSync(akFollow) right after to keep the mouth out of it.
 int Function PlayFile(string dataRelativePath, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
 
 ; Play a random file from a loose folder (scanned on first use, then cached as a
@@ -221,6 +224,16 @@ Function StopChannel(string channel) global native
 ; True while AudioUtil is driving this actor's mouth (a voice line with a
 ; readable envelope is playing and lipsync is enabled).
 bool Function IsLipSyncActive(Actor akActor) global native
+
+; Opt an already-playing instance into lipsync: drive akActor's mouth from the
+; clip's loudness, exactly like a PlayVoice line. PlayFile already lipsyncs by
+; default; this is for PlayFolder (which doesn't) or for re-attaching a mouth
+; that was stopped:
+;   int h = AudioUtil.PlayFolder("Sound\\...\\Lines", akSpeaker)
+;   AudioUtil.StartLipSync(akSpeaker, h)
+; Works for loose PCM wav and fuz (via the decoded cache); xwm/BSA-packed wav
+; play fine but can't drive the mouth. No-op on a dead/unknown handle.
+Function StartLipSync(Actor akActor, int handle) global native
 
 ; Fade this actor's mouth closed now; the audio itself keeps playing.
 Function StopLipSync(Actor akActor) global native

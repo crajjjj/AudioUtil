@@ -63,6 +63,8 @@ Play a named SFX. `sfxName` resolves **first as a category of the sfx slot** (`S
 int Function PlayFile(string dataRelativePath, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
 ```
 
+`PlayFile` **lipsyncs `akFollow` by default**, exactly like a `PlayVoice` line — for loose PCM wav and fuz; other formats play mouth-still. It honors the global `[lipsync]` toggle and all the automatic guards (gag, worn tongue, in-dialogue). Playing a **non-vocal one-shot** (squelch, impact) at an actor? Call [`StopLipSync(akFollow)`](#startlipsync-stoplipsync) right after the play call to keep the mouth out of it.
+
 Play one specific file. Path is relative to `Data\` (`'Sound\fx\MyMod\a.wav'`) and may resolve to a **loose file or to audio packed inside a BSA** — the engine's resource loader handles both (loose wins over archive).
 
 Supported formats: **wav**, **xwm**, and **fuz**. A `.fuz` voice container — e.g. any vanilla dialogue line, `Sound\Voice\Skyrim.esm\MaleNord\…​.fuz`, straight out of the voice BSAs — has its xWMA audio **decoded once to PCM** (via the OS's own WMA decoder, no bundled codecs) into `Sound\AudioUtilFuzCache\` and plays from there on every later call (the cache persists across sessions and can be deleted freely — it rebuilds on demand). Because the cached copy is plain PCM wav, fuz lines get the full treatment: [captions](#captions) keyed off the `.fuz` path (`foo.fuz` + `foo.toml` sidecar) **and [amplitude lipsync](#lipsync)**, same as a loose wav. If the decode ever fails, the raw xwm payload is cached instead — the line still plays, just mouth-still.
@@ -155,7 +157,7 @@ Function StopChannel(string channel) global native
 
 ## Lipsync
 
-`PlayVoice` / `PlayVoiceFromSlot` automatically move the speaking actor's mouth in sync with the clip's loudness: the DLL reads the wav's amplitude envelope and drives the MFG `Aah` / `BigAah` phonemes per frame. Works for **loose PCM wav files** and **fuz** (whose audio is decoded to PCM in the fuz cache, so even BSA-packed vanilla lines lipsync); raw xwm or BSA-packed wav plays normally but skips the mouth. Configure defaults in the TOML `[lipsync]` table.
+`PlayVoice` / `PlayVoiceFromSlot` / `PlayFile` automatically move the speaking actor's mouth in sync with the clip's loudness: the DLL reads the wav's amplitude envelope and drives the MFG `Aah` / `BigAah` phonemes per frame. Works for **loose PCM wav files** and **fuz** (whose audio is decoded to PCM in the fuz cache, so even BSA-packed vanilla lines lipsync); raw xwm or BSA-packed wav plays normally but skips the mouth. Configure defaults in the TOML `[lipsync]` table.
 
 Lipsync is also suppressed automatically for a **gagged** actor (one wearing a device configured in the TOML [`[gag]`](../config/reference.md#gag) table) — the device owns the mouth, so the DLL won't fight it. It's likewise suppressed while an actor is **in a dialogue with the player** (the game's dialogue/voice system drives that mouth), toggleable via [`[lipsync] block_in_dialogue`](../config/reference.md#lipsync) (default on). No Papyrus call needed for either.
 
@@ -170,13 +172,14 @@ bool Function IsLipSyncActive(Actor akActor) global native
 
 `True` while AudioUtil is driving this actor's mouth (a voice line with a readable envelope is playing and lipsync is enabled).
 
-### `StopLipSync`
+### `StartLipSync` / `StopLipSync`
 
 ```papyrus
+Function StartLipSync(Actor akActor, int handle) global native
 Function StopLipSync(Actor akActor) global native
 ```
 
-Fade this actor's mouth closed now; the audio itself keeps playing.
+`StartLipSync` opts an **already-playing instance** into lipsync — drives `akActor`'s mouth from the clip's loudness like a `PlayVoice` line. `PlayVoice`/`PlayVoiceFromSlot`/`PlayFile` already lipsync on their own; this is for [`PlayFolder`](#playfolder) (which doesn't) or for re-attaching a mouth that was stopped. Loose PCM wav and fuz only; no-op on a dead/unknown handle. `StopLipSync` releases the actor's mouth; the audio itself keeps playing.
 
 ### `SetLipSyncEnabled` / `IsLipSyncEnabled`
 

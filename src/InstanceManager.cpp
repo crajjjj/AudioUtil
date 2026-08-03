@@ -186,6 +186,13 @@ namespace InstanceManager
 		return instance ? instance->path : std::string{};
 	}
 
+	RE::BSSoundHandle InstanceHandle(std::int32_t a_id)
+	{
+		std::scoped_lock lock{ g_lock };
+		auto* instance = Find(a_id);
+		return instance ? instance->handle : RE::BSSoundHandle{};
+	}
+
 	void SetGroupVolume(const std::string& a_group, float a_volume)
 	{
 		std::scoped_lock lock{ g_lock };

@@ -19,6 +19,10 @@ namespace InstanceManager
 	// data-relative path of the file this handle played ("" if the id is unknown)
 	std::string InstancePath(std::int32_t a_id);
 
+	// the engine sound handle behind an instance id (invalid if unknown) — for
+	// wiring a follow-up system (e.g. StartLipSync) to an already-playing sound
+	RE::BSSoundHandle InstanceHandle(std::int32_t a_id);
+
 	void SetGroupVolume(const std::string& a_group, float a_volume);
 	void DuckGroup(const std::string& a_group, float a_factor);
 	void UnduckGroup(const std::string& a_group);

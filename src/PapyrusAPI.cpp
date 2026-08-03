@@ -361,6 +361,13 @@ namespace PapyrusAPI
 			// explicit files caption too when a sidecar exists (needs an actor
 			// to attribute the subtitle to)
 			CaptionManager::Start(a_follow, path, handle, id);
+			// explicit files lipsync by default, like a voice line (PCM wav or
+			// fuz only - other formats silently skip). A caller playing a
+			// non-vocal one-shot at an actor opts out with StopLipSync(actor)
+			// right after the call.
+			if (a_follow) {
+				LipSync::Start(a_follow, path, handle, id);
+			}
 			return id;
 		}
 
@@ -520,6 +527,24 @@ namespace PapyrusAPI
 		bool IsLipSyncActive(RE::StaticFunctionTag*, RE::Actor* a_actor)
 		{
 			return a_actor && LipSync::IsActiveFor(a_actor);
+		}
+
+		// Opt a playing instance into lipsync after the fact: drive akActor's
+		// mouth from the clip's loudness, exactly like a PlayVoice line. For
+		// PlayFile/PlayFolder callers whose file IS a spoken line (their play
+		// calls never lipsync on their own - they also serve non-vocal
+		// one-shots). Works for loose PCM wav and fuz (decoded cache). No-op
+		// for a dead/unknown handle or unreadable audio.
+		void StartLipSync(RE::StaticFunctionTag*, RE::Actor* a_actor, std::int32_t a_handle)
+		{
+			if (!a_actor || a_handle <= 0) {
+				return;
+			}
+			const auto handle = InstanceManager::InstanceHandle(a_handle);
+			if (!handle.IsValid()) {
+				return;
+			}
+			LipSync::Start(a_actor, InstanceManager::InstancePath(a_handle), handle, a_handle);
 		}
 
 		void StopLipSync(RE::StaticFunctionTag*, RE::Actor* a_actor)
@@ -738,6 +763,7 @@ namespace PapyrusAPI
 		REGISTERFUNC(StopAllAudio, SCRIPT_NAME);
 		REGISTERFUNC(StopChannel, SCRIPT_NAME);
 		REGISTERFUNC(IsLipSyncActive, SCRIPT_NAME);
+		REGISTERFUNC(StartLipSync, SCRIPT_NAME);
 		REGISTERFUNC(StopLipSync, SCRIPT_NAME);
 		REGISTERFUNC(SetLipSyncEnabled, SCRIPT_NAME);
 		REGISTERFUNC(IsLipSyncEnabled, SCRIPT_NAME);
