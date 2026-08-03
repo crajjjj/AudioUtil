@@ -344,9 +344,11 @@ namespace PapyrusAPI
 			return PlayFromKey(key, a_follow, a_volume, a_group.c_str(), a_channel.c_str());
 		}
 
-		std::int32_t PlayFile(RE::StaticFunctionTag*, RE::BSFixedString a_path,
-			RE::Actor* a_follow, float a_volume, RE::BSFixedString a_group,
-			RE::BSFixedString a_channel)
+		// shared body of PlayFile / PlayFileWithLipSync: the two natives differ
+		// only in whether the file is treated as a spoken line (mouth driven)
+		std::int32_t PlayFileImpl(RE::BSFixedString a_path, RE::Actor* a_follow,
+			float a_volume, RE::BSFixedString a_group, RE::BSFixedString a_channel,
+			bool a_lipSync)
 		{
 			std::string path = a_path.c_str();
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -361,14 +363,28 @@ namespace PapyrusAPI
 			// explicit files caption too when a sidecar exists (needs an actor
 			// to attribute the subtitle to)
 			CaptionManager::Start(a_follow, path, handle, id);
-			// explicit files lipsync by default, like a voice line (PCM wav or
-			// fuz only - other formats silently skip). A caller playing a
-			// non-vocal one-shot at an actor opts out with StopLipSync(actor)
-			// right after the call.
-			if (a_follow) {
+			if (a_lipSync && a_follow) {
 				LipSync::Start(a_follow, path, handle, id);
 			}
 			return id;
+		}
+
+		// original semantics, untouched: never drives the mouth (PlayFile also
+		// serves non-vocal one-shots, and existing consumers rely on that)
+		std::int32_t PlayFile(RE::StaticFunctionTag*, RE::BSFixedString a_path,
+			RE::Actor* a_follow, float a_volume, RE::BSFixedString a_group,
+			RE::BSFixedString a_channel)
+		{
+			return PlayFileImpl(a_path, a_follow, a_volume, a_group, a_channel, false);
+		}
+
+		// spoken-line variant: same as PlayFile plus voice-call lipsync (global
+		// [lipsync] toggle + gag/tongue/dialogue guards apply; PCM wav or fuz)
+		std::int32_t PlayFileWithLipSync(RE::StaticFunctionTag*, RE::BSFixedString a_path,
+			RE::Actor* a_follow, float a_volume, RE::BSFixedString a_group,
+			RE::BSFixedString a_channel)
+		{
+			return PlayFileImpl(a_path, a_follow, a_volume, a_group, a_channel, true);
 		}
 
 		std::int32_t PlayFolder(RE::StaticFunctionTag*, RE::BSFixedString a_folder,
@@ -750,6 +766,7 @@ namespace PapyrusAPI
 		REGISTERFUNC(PlayVoiceFromSlot, SCRIPT_NAME);
 		REGISTERFUNC(PlaySFX, SCRIPT_NAME);
 		REGISTERFUNC(PlayFile, SCRIPT_NAME);
+		REGISTERFUNC(PlayFileWithLipSync, SCRIPT_NAME);
 		REGISTERFUNC(PlayFolder, SCRIPT_NAME);
 		REGISTERFUNC(IsHandlePlaying, SCRIPT_NAME);
 		REGISTERFUNC(StopHandle, SCRIPT_NAME);

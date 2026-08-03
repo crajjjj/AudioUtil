@@ -132,10 +132,16 @@ int Function PlaySFX(string sfxName, Actor akFollow, float volume = 1.0, string 
 ;   volume           - per-line gain, 1.0 = full. Effective = volume x group x duck.
 ;   group            - volume/duck bucket; "" = ungrouped.
 ;   channel          - exclusivity lane: busy channel stops the previous line; "" = none.
-; Lipsyncs akFollow by default, like a voice line - for loose PCM wav and fuz
-; (other formats play mouth-still). Playing a non-vocal one-shot at an actor?
-; Call StopLipSync(akFollow) right after to keep the mouth out of it.
+; Never drives the mouth (PlayFile also serves non-vocal one-shots - squelches,
+; impacts). For a spoken line use PlayFileWithLipSync below.
 int Function PlayFile(string dataRelativePath, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
+
+; PlayFile for a SPOKEN line: identical arguments and behavior, plus akFollow's
+; mouth is driven from the clip's loudness like a PlayVoice line. Honors the
+; global [lipsync] toggle and the automatic guards (gag, worn tongue, dialogue
+; with the player). Works for loose PCM wav and fuz (via the decoded cache);
+; other formats play normally, mouth-still. Requires API version >= 5.
+int Function PlayFileWithLipSync(string dataRelativePath, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
 
 ; Play a random file from a loose folder (scanned on first use, then cached as a
 ; shuffle bag - no repeats until the deck empties). Returns a handle (see
