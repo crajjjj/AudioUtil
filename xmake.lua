@@ -61,6 +61,7 @@ target(PROJECT_NAME)
     add_files("src/**.cpp")
     add_headerfiles("src/**.h")
     add_includedirs("src", "include")
+    add_syslinks("ole32") -- CoCreateInstance for the WMA decoder DMO (FuzCache xWMA->PCM)
     set_pcxxheader("src/PCH.h")
 
     -- Exports

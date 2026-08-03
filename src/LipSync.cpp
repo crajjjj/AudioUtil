@@ -1,6 +1,7 @@
 #include "LipSync.h"
 
 #include "Config.h"
+#include "FuzCache.h"
 #include "GagState.h"
 #include "TongueState.h"
 
@@ -398,7 +399,17 @@ namespace LipSync
 		if (g_blockInDialogue.load() && IsInDialogue(a_actor)) {
 			return;
 		}
-		const auto envelope = GetEnvelope(a_dataRelPath);
+		// a .fuz plays via its FuzCache-extracted file; when that is the decoded
+		// PCM wav, the envelope reads from it and fuz lines lipsync like wavs.
+		// (A raw-xwm fallback fails the PCM parse below and skips, as before.)
+		std::string envelopeSource = a_dataRelPath;
+		if (FuzCache::IsFuzPath(envelopeSource)) {
+			envelopeSource = FuzCache::Resolve(envelopeSource);
+			if (envelopeSource.empty()) {
+				return;
+			}
+		}
+		const auto envelope = GetEnvelope(envelopeSource);
 		if (!envelope || envelope->durationSec < 0.05f) {
 			return;
 		}

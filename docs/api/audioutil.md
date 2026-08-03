@@ -65,7 +65,7 @@ int Function PlayFile(string dataRelativePath, Actor akFollow, float volume = 1.
 
 Play one specific file. Path is relative to `Data\` (`'Sound\fx\MyMod\a.wav'`) and may resolve to a **loose file or to audio packed inside a BSA** — the engine's resource loader handles both (loose wins over archive).
 
-Supported formats: **wav**, **xwm**, and **fuz**. A `.fuz` voice container — e.g. any vanilla dialogue line, `Sound\Voice\Skyrim.esm\MaleNord\…​.fuz`, straight out of the voice BSAs — has its audio payload extracted once into `Sound\AudioUtilFuzCache\` and plays from there on every later call (the cache folder persists across sessions and can be deleted freely). [Captions](#captions) still key off the `.fuz` path (`foo.fuz` + `foo.toml` sidecar), but **lipsync skips fuz** — the payload is compressed xWMA and the envelope reader needs loose PCM wav.
+Supported formats: **wav**, **xwm**, and **fuz**. A `.fuz` voice container — e.g. any vanilla dialogue line, `Sound\Voice\Skyrim.esm\MaleNord\…​.fuz`, straight out of the voice BSAs — has its xWMA audio **decoded once to PCM** (via the OS's own WMA decoder, no bundled codecs) into `Sound\AudioUtilFuzCache\` and plays from there on every later call (the cache persists across sessions and can be deleted freely — it rebuilds on demand). Because the cached copy is plain PCM wav, fuz lines get the full treatment: [captions](#captions) keyed off the `.fuz` path (`foo.fuz` + `foo.toml` sidecar) **and [amplitude lipsync](#lipsync)**, same as a loose wav. If the decode ever fails, the raw xwm payload is cached instead — the line still plays, just mouth-still.
 
 ### `PlayFolder`
 
@@ -155,7 +155,7 @@ Function StopChannel(string channel) global native
 
 ## Lipsync
 
-`PlayVoice` / `PlayVoiceFromSlot` automatically move the speaking actor's mouth in sync with the clip's loudness: the DLL reads the wav's amplitude envelope and drives the MFG `Aah` / `BigAah` phonemes per frame. Works for **loose PCM wav files**; xwm or BSA-packed audio plays normally but skips the mouth. Configure defaults in the TOML `[lipsync]` table.
+`PlayVoice` / `PlayVoiceFromSlot` automatically move the speaking actor's mouth in sync with the clip's loudness: the DLL reads the wav's amplitude envelope and drives the MFG `Aah` / `BigAah` phonemes per frame. Works for **loose PCM wav files** and **fuz** (whose audio is decoded to PCM in the fuz cache, so even BSA-packed vanilla lines lipsync); raw xwm or BSA-packed wav plays normally but skips the mouth. Configure defaults in the TOML `[lipsync]` table.
 
 Lipsync is also suppressed automatically for a **gagged** actor (one wearing a device configured in the TOML [`[gag]`](../config/reference.md#gag) table) — the device owns the mouth, so the DLL won't fight it. It's likewise suppressed while an actor is **in a dialogue with the player** (the game's dialogue/voice system drives that mouth), toggleable via [`[lipsync] block_in_dialogue`](../config/reference.md#lipsync) (default on). No Papyrus call needed for either.
 

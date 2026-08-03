@@ -123,10 +123,11 @@ int Function PlaySFX(string sfxName, Actor akFollow, float volume = 1.0, string 
 ;                      both (loose wins over archive). wav, xwm, and fuz all play:
 ;                      a .fuz voice container (e.g. any vanilla dialogue line,
 ;                      'Sound\Voice\Skyrim.esm\MaleNord\...fuz') has its audio
-;                      payload extracted once into Sound\AudioUtilFuzCache\ and
-;                      played from there - captions still key off the .fuz path
-;                      (foo.fuz + foo.toml), but lipsync skips fuz (compressed
-;                      xwm audio - the envelope reader needs loose PCM wav).
+;                      decoded once to PCM (via the OS WMA decoder) into
+;                      Sound\AudioUtilFuzCache\ and plays from there - so fuz
+;                      lines get captions (foo.fuz + foo.toml sidecar) AND
+;                      amplitude lipsync, same as a loose wav. (Raw .xwm files
+;                      still skip lipsync - only fuz get the decode treatment.)
 ;   akFollow         - 3D position for the sound. None = play flat/2D.
 ;   volume           - per-line gain, 1.0 = full. Effective = volume x group x duck.
 ;   group            - volume/duck bucket; "" = ungrouped.
