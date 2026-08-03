@@ -129,15 +129,25 @@ namespace CaptionManager
 		// game thread only; takes the manager's spin lock itself
 		void Inject(RE::SubtitleManager* a_manager, const Entry& a_entry)
 		{
+			// real player->speaker distance (at inject time), so overlapping
+			// captions resolve by the engine's own "closest speaker wins" rule —
+			// in a scene that's normally the actor the player is looking at.
+			// The player's own lines get 0: the PC wins ties over partners.
+			float distance = 0.0f;
+			const auto speakerPtr = a_entry.speaker.get();
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			if (speakerPtr && player && speakerPtr.get() != player) {
+				distance = player->GetPosition().GetDistance(speakerPtr->GetPosition());
+			}
+
 			RE::BSSpinLockGuard guard{ a_manager->lock };
 			RE::SubtitleInfo info;
 			info.speaker = a_entry.speaker;
 			info.pad04 = 0;
 			info.subtitle = a_entry.text.c_str();
-			// 0 distance + forceDisplay: always eligible, wins the "closest
-			// speaker" pick, and shows even with general subtitles off in the
-			// player's settings (the pack shipping captions is the opt-in)
-			info.targetDistance = 0.0f;
+			info.targetDistance = distance;
+			// forceDisplay: always eligible, shows even with general subtitles
+			// off in the player's settings (the pack shipping captions is the opt-in)
 			info.forceDisplay = true;
 			a_manager->subtitles.push_back(info);
 		}
