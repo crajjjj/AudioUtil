@@ -4,6 +4,7 @@
 #include "CaptionManager.h"
 #include "Config.h"
 #include "FolderCache.h"
+#include "FuzCache.h"
 #include "GagState.h"
 #include "TongueState.h"
 #include "InstanceManager.h"
@@ -277,6 +278,7 @@ namespace PapyrusAPI
 			InstanceManager::ApplyConfigGroupVolumes();
 			LipSync::ApplyConfig();
 			CaptionManager::ApplyConfig();
+			FuzCache::EnforceCacheCap();
 			PPABridge::SetEventRateMs(Config::Get()->ppaEventRateMs);
 			return ok;
 		}

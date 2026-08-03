@@ -34,6 +34,7 @@ voice_no_interrupt = false    # skip a new line while its channel is still playi
 | `pc_male_slot` | slot id | `""` | Same, for a male PC. |
 | `voice_3d` | bool | `true` | `true` = 3D-position each voice at the speaker (distance attenuation). `false` = play flat/2D at full volume so every speaker is equally audible. Lipsync is unaffected either way. |
 | `voice_no_interrupt` | bool | `false` | `true` = when a `PlayVoice` names a channel still playing a line, skip the new line instead of cutting the old one off (per channel — different speakers still overlap). SFX and `PlayFile`/`PlayFolder` are unaffected. |
+| `fuz_cache_max_mb` | int | `256` | Size cap for `Sound\AudioUtilFuzCache\` (each played `.fuz` decodes its audio there once, as PCM wav — see [`PlayFile`](../api/audioutil.md#playfile)). Checked once per launch and on `ReloadConfig`; oldest files deleted first. ~88 KB per second of audio, so the default holds on the order of a thousand voice lines. `0` = unlimited. Deleting the folder by hand is always safe — it rebuilds on demand. |
 
 ## `[ppa]`
 

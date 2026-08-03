@@ -28,6 +28,12 @@ voice_attenuation = false     # true = scale far follow-sounds down by distance
 attenuation_near = 400.0      # full volume within this distance
 attenuation_far = 3000.0      # volume reaches the floor at/beyond this distance
 attenuation_floor = 0.0       # minimum volume factor for far sounds (0.0 = silent)
+# .fuz playback decodes each fuz's audio once into Sound\AudioUtilFuzCache\
+# (as PCM wav: reliable playback + lipsync). The cache persists across
+# sessions; this caps its size in MB - checked once per launch, oldest files
+# deleted first (~88 KB per second of audio, so 256 holds ~a thousand lines).
+# 0 = unlimited. Deleting the folder by hand is always safe.
+fuz_cache_max_mb = 256
 # sfx_slot = "SFX0"           # [[slot]] PlaySFX resolves before the [sfx] table ("" = table only)
 default_female_slot = ""      # slot for unrouted female actors ("" = none; an overlay sets it)
 default_male_slot = ""         # slot for unrouted male actors and creatures ("" = none)

@@ -178,6 +178,7 @@ namespace Config
 				settings->attenuationNear = (*general)["attenuation_near"].value_or(settings->attenuationNear);
 				settings->attenuationFar = (*general)["attenuation_far"].value_or(settings->attenuationFar);
 				settings->attenuationFloor = (*general)["attenuation_floor"].value_or(settings->attenuationFloor);
+				settings->fuzCacheMaxMB = (*general)["fuz_cache_max_mb"].value_or(settings->fuzCacheMaxMB);
 
 				if (const auto level = (*general)["log_level"].value<std::string>()) {
 					const auto lvl = spdlog::level::from_str(*level);

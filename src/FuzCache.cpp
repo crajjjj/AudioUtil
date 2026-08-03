@@ -1,5 +1,7 @@
 #include "FuzCache.h"
 
+#include "Config.h"
+
 #include <filesystem>
 #include <fstream>
 
@@ -430,6 +432,61 @@ namespace FuzCache
 	{
 		return a_path.size() > 4 &&
 		       _strnicmp(a_path.data() + a_path.size() - 4, ".fuz", 4) == 0;
+	}
+
+	void EnforceCacheCap()
+	{
+		const auto capMB = Config::Get()->fuzCacheMaxMB;
+		if (capMB == 0) {
+			return;
+		}
+		const auto dir = std::filesystem::current_path() / "Data" / CACHE_DIR_REL;
+		std::error_code ec;
+		if (!std::filesystem::exists(dir, ec)) {
+			return;
+		}
+
+		struct File
+		{
+			std::filesystem::path           path;
+			std::uintmax_t                  size;
+			std::filesystem::file_time_type written;
+		};
+		std::vector<File> files;
+		std::uintmax_t    total = 0;
+		for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+			if (!entry.is_regular_file(ec)) {
+				continue;
+			}
+			const auto size = entry.file_size(ec);
+			files.push_back({ entry.path(), size, entry.last_write_time(ec) });
+			total += size;
+		}
+		const std::uintmax_t cap = static_cast<std::uintmax_t>(capMB) * 1024 * 1024;
+		if (total <= cap) {
+			return;
+		}
+
+		// oldest first — effectively FIFO (cache files are written once)
+		std::sort(files.begin(), files.end(),
+			[](const File& a_lhs, const File& a_rhs) { return a_lhs.written < a_rhs.written; });
+		std::size_t evicted = 0;
+		for (const auto& file : files) {
+			if (total <= cap) {
+				break;
+			}
+			if (std::filesystem::remove(file.path, ec)) {
+				total -= file.size;
+				++evicted;
+			}
+		}
+		logger::info("Fuz cache over {} MB cap: evicted {} oldest file(s), {} MB kept",
+			capMB, evicted, total / (1024 * 1024));
+
+		// evicted paths may be in this session's resolve map - drop it so they
+		// re-extract on demand instead of pointing at deleted files
+		std::scoped_lock lock{ g_lock };
+		g_resolved.clear();
 	}
 
 	std::string Resolve(const std::string& a_fuzDataRelPath)

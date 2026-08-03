@@ -4,6 +4,7 @@
 #include "CaptionManager.h"
 #include "Config.h"
 #include "FolderCache.h"
+#include "FuzCache.h"
 #include "GagState.h"
 #include "InstanceManager.h"
 #include "LipSync.h"
@@ -60,6 +61,7 @@ namespace
 			InstanceManager::ApplyConfigGroupVolumes();
 			LipSync::ApplyConfig();
 			CaptionManager::ApplyConfig();
+			FuzCache::EnforceCacheCap();
 			PPABridge::TryConnect();
 			break;
 		case MessagingInterface::kPreLoadGame:

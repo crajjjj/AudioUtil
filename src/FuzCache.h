@@ -14,4 +14,11 @@ namespace FuzCache
 
 	// true if the path names a .fuz file (case-insensitive extension check)
 	bool IsFuzPath(std::string_view a_path);
+
+	// Enforce [general] fuz_cache_max_mb on the cache folder: while the total
+	// size exceeds the cap, the oldest files (by write time) are deleted. Also
+	// drops the in-session resolve map so evicted paths re-extract on demand.
+	// No-op when the cap is 0 (unlimited) or the folder doesn't exist.
+	// Called on kDataLoaded and ReloadConfig.
+	void EnforceCacheCap();
 }

@@ -106,6 +106,11 @@ namespace Config
 		std::uint32_t soundFlags{ 0x1A };
 		std::uint32_t soundPriority{ 128 };
 
+		// Sound\AudioUtilFuzCache\ size cap in MB, enforced once per launch
+		// (oldest files deleted first). ~88 KB per second of decoded audio, so
+		// the default holds on the order of a thousand voice lines. 0 = unlimited.
+		std::uint32_t fuzCacheMaxMB{ 256 };
+
 		// 3D-position voices at the speaker (distance attenuation) vs play them
 		// flat/2D at full volume. Off makes every speaker equally audible - the
 		// player's voice is otherwise at the listener while partners attenuate
