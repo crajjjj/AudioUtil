@@ -240,6 +240,12 @@ namespace LipSync
 		std::atomic<bool>  g_driveModifiers{ false };
 		std::atomic<bool>  g_pseudoPhonemes{ false };
 		std::atomic<float> g_leadSec{ 0.0f };  // mouth timing lead ([lipsync] lead_ms)
+		// pseudo-synthesis tuning ([lipsync] pseudo_* keys; lipsim calibrates them)
+		std::atomic<float>         g_pseudoVoicedFloor{ 0.05f };
+		std::atomic<float>         g_pseudoValleyRatio{ 0.6f };
+		std::atomic<std::uint32_t> g_pseudoMinSylFrames{ 3 };
+		std::atomic<std::uint32_t> g_pseudoGapFrames{ 5 };
+		std::atomic<float>         g_pseudoClosure{ 0.85f };
 		std::atomic<float> g_gain{ 1.0f };
 		std::atomic<float> g_attackTau{ 0.03f };
 		std::atomic<float> g_releaseTau{ 0.09f };
@@ -299,8 +305,15 @@ namespace LipSync
 				return nullptr;
 			}
 
+			// tuning snapshot ([lipsync] pseudo_* keys)
+			const float         voicedFloor = g_pseudoVoicedFloor.load();
+			const float         valleyRatio = g_pseudoValleyRatio.load();
+			const std::uint32_t minSylFrames = g_pseudoMinSylFrames.load();
+			const std::uint32_t gapFrames = g_pseudoGapFrames.load();
+			const float         closure = g_pseudoClosure.load();
+
 			std::vector<float> level(frames);
-			const float voiced = std::max(g_minLevel.load(), 0.05f);
+			const float voiced = std::max(g_minLevel.load(), voicedFloor);
 			for (std::uint32_t f = 0; f < frames; ++f) {
 				const float sample = a_env.Sample(static_cast<float>(f) / LipData::FPS);
 				level[f] = sample >= voiced ? sample : 0.0f;  // min_level baked in
@@ -325,7 +338,7 @@ namespace LipSync
 					for (std::uint32_t i = runStart + 1; i + 1 < f; ++i) {
 						peak = std::max(peak, level[i]);
 						if (level[i] <= level[i - 1] && level[i] <= level[i + 1] &&
-							level[i] < 0.6f * peak && i - segStart >= 3) {
+							level[i] < valleyRatio * peak && i - segStart >= minSylFrames) {
 							syllables.push_back({ segStart, i });
 							segStart = i;
 							peak = level[i];
@@ -377,10 +390,10 @@ namespace LipSync
 				}
 
 				// lips close briefly before a syllable that follows a real gap
-				// (>=5 frames ≈ 165 ms of silence)
-				if (syl.start >= 2 && syl.start - prevEnd >= 5) {
-					anim->values[kPhonemeBMP][syl.start - 2] = 0.55f;
-					anim->values[kPhonemeBMP][syl.start - 1] = 0.85f;
+				// (gapFrames of silence; default 5 ≈ 165 ms)
+				if (syl.start >= 2 && syl.start - prevEnd >= gapFrames) {
+					anim->values[kPhonemeBMP][syl.start - 2] = closure * 0.65f;
+					anim->values[kPhonemeBMP][syl.start - 1] = closure;
 				}
 				prevEnd = syl.end;
 			}
@@ -771,6 +784,11 @@ namespace LipSync
 		g_driveModifiers.store(settings->lipsyncDriveModifiers);
 		g_pseudoPhonemes.store(settings->lipsyncPseudoPhonemes);
 		g_leadSec.store(static_cast<float>(settings->lipsyncLeadMs) / 1000.0f);
+		g_pseudoVoicedFloor.store(settings->lipsyncPseudoVoicedFloor);
+		g_pseudoValleyRatio.store(settings->lipsyncPseudoValleyRatio);
+		g_pseudoMinSylFrames.store(settings->lipsyncPseudoMinSylFrames);
+		g_pseudoGapFrames.store(settings->lipsyncPseudoGapFrames);
+		g_pseudoClosure.store(settings->lipsyncPseudoClosure);
 		LipData::ClearCache();
 		SetEnabled(settings->lipsyncEnabled);
 	}

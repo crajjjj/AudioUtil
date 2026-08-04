@@ -19,3 +19,9 @@ dist/**
 !dist/SKSE/CustomConsole/*.yaml
 *.ppj
 __pycache__/
+*.head.json
+tools/lipsim/*.json
+tools/lipsim/*.exe
+# local test audio dropped into the lipsim folder (may be vanilla game assets)
+tools/lipsim/*.fuz
+tools/lipsim/*.wav

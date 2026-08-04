@@ -9,12 +9,16 @@ Part of [AudioUtil](https://crajjjj.github.io/AudioUtil/) (GPLv3).
 
 ## Quick start
 
-- **Double-click `LipSim.bat`** (needs Python 3.11+). It starts a tiny local
-  server and opens the page — this is the full experience, including sound
-  for `.fuz` files.
-- No Python? Open `lipsim.html` directly in a browser. Everything works
-  except `.fuz` **sound** (their lip curves still visualize; the page will
-  try ffmpeg.wasm from a CDN, which browsers block for `file://` pages).
+- **Double-click `LipSim.exe`** — fully self-contained, no Python or anything
+  else required. It starts a local server and opens the page, with sound for
+  `.fuz` files (decoded via the CK's xwmaencode when installed, else
+  ffmpeg.wasm from a CDN). Any `.head.json` / preset `.json` placed next to
+  the exe auto-loads on start.
+- With Python 3.11+ you can instead run `LipSim.bat` / `lipsim_server.py`
+  (same experience) — that's also what the `fuz2wav.py` / `tri2head.py`
+  command-line tools need.
+- Bare minimum: open `lipsim.html` directly in a browser. Everything works
+  except `.fuz` **sound** (their lip curves still visualize).
 
 ## What you can do
 
@@ -36,6 +40,23 @@ Part of [AudioUtil](https://crajjjj.github.io/AudioUtil/) (GPLv3).
   in-game. Every value is editable (sliders + per-channel N/A), **new**
   clones the current preset under a new name, and **download json** saves
   the whole modified file — replace the original with it.
+
+## 3D head face (the real thing)
+
+The most faithful mode: renders an actual Skyrim head mesh with the game's
+own morph data. One-time conversion from your install:
+
+    python tri2head.py "<path>\femalehead.tri" --dds "<path>\femalehead.dds" -o female.head.json
+
+The `.tri` is `meshes\actors\character\character assets\femalehead.tri`
+(vanilla from the BSA, or your facial-animation mod's loose replacement —
+e.g. Expressive Facial Animation); the `.dds` is your skin mod's
+`textures\actors\character\female\femalehead.dds`. Drop the resulting
+`.head.json` into lipsim: the head renders in WebGL and every phoneme,
+modifier, and expression plays its **actual game morph** — not an
+approximation. Drag the face to rotate; "flip tex" if the skin looks wrong.
+(BC7 textures need `pip install texture2ddecoder`. Eyes/teeth are separate
+meshes and not included in v1 — the mouth opens onto a dark cavity.)
 
 ## Photo face (Skyrim-realistic preview)
 

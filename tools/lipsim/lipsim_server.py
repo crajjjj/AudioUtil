@@ -15,8 +15,10 @@ override the game root with --game-path or SKYRIM_GAME_PATH.
 """
 
 import argparse
+import json
 import os
 import subprocess
+import sys
 import tempfile
 import threading
 import webbrowser
@@ -24,7 +26,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 DEFAULT_GAME_PATH = r"C:\SteamLibrary\steamapps\common\Skyrim Special Edition"
-ROOT = Path(__file__).resolve().parent
+# frozen (PyInstaller LipSim.exe): static assets ship inside the bundle, while
+# user files (head/preset jsons to preload) sit next to the exe
+FROZEN = getattr(sys, "frozen", False)
+BUNDLE = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
 XWMAENCODE: Path | None = None
 
 MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript",
@@ -44,12 +50,20 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        name = self.path.split("?")[0].lstrip("/") or "lipsim.html"
-        file = (ROOT / name).resolve()
-        # serve only files directly inside the lipsim folder
-        if file.parent != ROOT or not file.is_file():
-            self._send(404, b"not found")
+        from urllib.parse import unquote
+        name = unquote(self.path.split("?")[0]).lstrip("/") or "lipsim.html"
+        if name == "preload":
+            # jsons living beside the server auto-load into the page on open
+            files = sorted(p.name for p in ROOT.glob("*.json"))
+            self._send(200, json.dumps({"files": files}).encode(), "application/json")
             return
+        # user files beside the server/exe first, then bundled static assets
+        file = (ROOT / name).resolve()
+        if file.parent != ROOT or not file.is_file():
+            file = (BUNDLE / name).resolve()
+            if file.parent != BUNDLE or not file.is_file():
+                self._send(404, b"not found")
+                return
         self._send(200, file.read_bytes(), MIME.get(file.suffix.lower(), "application/octet-stream"))
 
     def do_POST(self):
@@ -98,7 +112,20 @@ def main() -> None:
         print(f"warning: {exe} not found — /decode disabled, the page falls back to ffmpeg.wasm")
 
     url = f"http://127.0.0.1:{args.port}/lipsim.html"
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+
+    # exclusive bind: silently sharing the port with an older instance leaves
+    # the OLD server answering while looking like this one is running
+    class ExclusiveServer(ThreadingHTTPServer):
+        allow_reuse_address = False
+
+    try:
+        server = ExclusiveServer(("127.0.0.1", args.port), Handler)
+    except OSError:
+        print(f"port {args.port} is already in use — another LipSim is running "
+              f"(just use its window / {url}), or pass --port to run a second one")
+        if not args.no_browser:
+            webbrowser.open(url)
+        return
     print(f"lipsim at {url}  (Ctrl+C to stop)")
     if not args.no_browser:
         threading.Timer(0.3, webbrowser.open, [url]).start()

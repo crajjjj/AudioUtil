@@ -114,6 +114,11 @@ dialogue phoneme track with a `0.033f`/frame clock via the engine's lip-sampling
   the embedded lip visualizes and the xWMA audio is decoded in-page by a lazily
   CDN-loaded ffmpeg.wasm (one-time ~10 MB download; offline fallback:
   `tools/lipsim/fuz2wav.py` cracks a fuz into wav+lip via the CK's xwmaencode).
+- **`tools/lipsim/tri2head.py`** — converts a head `.tri` (FaceGen FRTRI003: base mesh +
+  UVs + the 45 named MFG morph deltas the engine animates; format verified byte-exact)
+  plus a skin `.dds` (BC1/3/7) into a `.head.json` that lipsim renders in WebGL — real
+  game morphs, no approximation. The NIF turned out unnecessary: the tri carries the
+  full renderable geometry.
 - **`tools/lipgen/make_lips.py`** wraps the whole pipeline for a voicepack folder: every
   wav gets a same-stem `.lip` via LipGenerator, taking the spoken text from the wav's
   AudioUtil caption sidecar (`--lang`, `--default-text` for uncaptioned pools); `--fuz`
@@ -189,7 +194,10 @@ applies are baked into the synthesized curves, because the output is a normal
 `LipData::Anim` played through the verbatim lip-mode path.
 
 Config (`[lipsync]`, base-only): `use_lip_files` (default true), `drive_modifiers`
-(default false), `pseudo_phonemes` (default false). Runtime A/B toggles
+(default false), `pseudo_phonemes` (default false), plus the pseudo tuning keys
+`pseudo_voiced_floor` / `pseudo_valley_ratio` / `pseudo_min_syl_frames` /
+`pseudo_gap_frames` / `pseudo_closure` (calibrate in `tools/lipsim`, paste, `au
+reload` — no rebuild). Runtime A/B toggles
 `autest lipfiles on|off|status` and `autest pseudolip on|off|status` (affect new lines;
 backed by test-script-only natives `Set/GetLipFilesMode`, `Set/GetPseudoLipMode`). No
 public Papyrus additions — lip detection is automatic per played path.

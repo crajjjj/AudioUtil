@@ -2,7 +2,7 @@ set_xmakever("2.9.5")
 
 -- Globals
 PROJECT_NAME = "AudioUtil"
-PROJECT_VERSION = "0.9.9"
+PROJECT_VERSION = "0.9.10"
 PROJECT_AUTHOR = "crajjjj"
 
 -- Project
@@ -122,13 +122,34 @@ target("lipsim")
     set_default(false)
     on_build(function (target)
         import("core.project.project")
+        import("lib.detect.find_tool")
         local proj = os.projectdir()
+        local lipsim = path.join(proj, "tools", "lipsim")
+        -- LipSim.exe embeds lipsim.html, so rebuild it whenever we package
+        -- (needs pyinstaller: pip install pyinstaller). Skipped if absent.
+        local pyinstaller = find_tool("pyinstaller")
+        if pyinstaller then
+            local work = path.join(os.tmpdir(), "lipsim-pybuild")
+            os.execv(pyinstaller.program, { "--onefile", "--name", "LipSim",
+                "--add-data", path.join(lipsim, "lipsim.html") .. ";.",
+                "--distpath", lipsim, "--workpath", work, "--specpath", work,
+                "--log-level", "WARN",
+                path.join(lipsim, "lipsim_server.py") })
+        else
+            print("lipsim: pyinstaller not found — packaging without a fresh LipSim.exe")
+        end
         local staging = path.join(os.tmpdir(), "lipsim-pack")
         os.rm(staging)
         os.mkdir(staging)
+        -- head bundles (generated locally by tri2head.py from installed game/mod
+        -- assets) ship when present so the tool opens with heads preloaded
         for _, f in ipairs({ "lipsim.html", "lipsim_server.py", "fuz2wav.py",
-                             "LipSim.bat", "README.md" }) do
-            os.cp(path.join(proj, "tools", "lipsim", f), staging)
+                             "tri2head.py", "LipSim.bat", "README.md", "LipSim.exe",
+                             "female.head.json", "male.head.json" }) do
+            local src = path.join(lipsim, f)
+            if os.isfile(src) then
+                os.cp(src, staging)
+            end
         end
         local rel = path.join(proj, "Release")
         if not os.isdir(rel) then

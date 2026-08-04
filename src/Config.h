@@ -184,6 +184,13 @@ namespace Config
 		// start-detection + mix-ahead latency when the mouth visibly trails
 		// the sound. Calibrate live: autest liplead <ms>
 		std::int32_t  lipsyncLeadMs{ 0 };
+		// pseudo-synthesis tuning (SynthesizePseudoLip). Calibrate visually in
+		// tools/lipsim ("copy constants"), paste here, `au reload` — no rebuild.
+		float         lipsyncPseudoVoicedFloor{ 0.05f };  // voiced when envelope >= max(min_level, this)
+		float         lipsyncPseudoValleyRatio{ 0.6f };   // split syllables at valleys below this * running peak
+		std::uint32_t lipsyncPseudoMinSylFrames{ 3 };     // minimum syllable length (30 fps frames)
+		std::uint32_t lipsyncPseudoGapFrames{ 5 };        // silence frames (30 fps) that earn a BMP lip closure
+		float         lipsyncPseudoClosure{ 0.85f };      // closure peak weight (lead-in frame = 0.65x this)
 		// requested categories that never drive lipsync — the line plays mouth-still.
 		// For pools that aren't vocalization (oral sfx: slurping) or where another
 		// system owns the mouth (a climax/ahegao face). Matched on the REQUESTED

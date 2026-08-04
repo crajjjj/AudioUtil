@@ -215,11 +215,28 @@ namespace Config
 				settings->lipsyncPseudoPhonemes = (*lipsync)["pseudo_phonemes"].value_or(settings->lipsyncPseudoPhonemes);
 				settings->lipsyncLeadMs = std::clamp(
 					(*lipsync)["lead_ms"].value_or(settings->lipsyncLeadMs), -300, 300);
+				settings->lipsyncPseudoVoicedFloor = std::clamp(
+					(*lipsync)["pseudo_voiced_floor"].value_or(settings->lipsyncPseudoVoicedFloor), 0.0f, 0.5f);
+				settings->lipsyncPseudoValleyRatio = std::clamp(
+					(*lipsync)["pseudo_valley_ratio"].value_or(settings->lipsyncPseudoValleyRatio), 0.1f, 0.95f);
+				settings->lipsyncPseudoMinSylFrames = static_cast<std::uint32_t>(std::clamp(
+					(*lipsync)["pseudo_min_syl_frames"].value_or(
+						static_cast<std::int64_t>(settings->lipsyncPseudoMinSylFrames)),
+					std::int64_t{ 1 }, std::int64_t{ 30 }));
+				settings->lipsyncPseudoGapFrames = static_cast<std::uint32_t>(std::clamp(
+					(*lipsync)["pseudo_gap_frames"].value_or(
+						static_cast<std::int64_t>(settings->lipsyncPseudoGapFrames)),
+					std::int64_t{ 1 }, std::int64_t{ 60 }));
+				settings->lipsyncPseudoClosure = std::clamp(
+					(*lipsync)["pseudo_closure"].value_or(settings->lipsyncPseudoClosure), 0.0f, 1.0f);
 			} else if (lipsync->contains("enable") || lipsync->contains("gain") ||
 					   lipsync->contains("attack_ms") || lipsync->contains("release_ms") ||
 					   lipsync->contains("min_level") || lipsync->contains("block_in_dialogue") ||
 					   lipsync->contains("use_lip_files") || lipsync->contains("drive_modifiers") ||
-					   lipsync->contains("pseudo_phonemes") || lipsync->contains("lead_ms")) {
+					   lipsync->contains("pseudo_phonemes") || lipsync->contains("lead_ms") ||
+					   lipsync->contains("pseudo_voiced_floor") || lipsync->contains("pseudo_valley_ratio") ||
+					   lipsync->contains("pseudo_min_syl_frames") || lipsync->contains("pseudo_gap_frames") ||
+					   lipsync->contains("pseudo_closure")) {
 				logger::warn("[lipsync] scalar settings in an overlay are ignored (base-only); block_categories still merge");
 			}
 			if (const auto* blocked = (*lipsync)["block_categories"].as_array()) {

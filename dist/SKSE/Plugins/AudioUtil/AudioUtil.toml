@@ -79,6 +79,15 @@ pseudo_phonemes = true       # lines WITHOUT lip data: synthesize phoneme curves
 lead_ms = 0                   # mouth timing lead in ms (-300..300), all lipsync modes. Leave at 0 unless
                               # the mouth visibly TRAILS the sound - then raise it to sample the mouth
                               # curves ahead of the playback clock. Calibrate live: `autest liplead 80`
+# Pseudo-synthesis tuning (only used while pseudo_phonemes is on). Calibrate
+# visually in tools\lipsim (drop a wav, drag the sliders, "copy constants"),
+# paste the values here, `au reload` - affects newly started lines, no rebuild.
+pseudo_voiced_floor = 0.05    # voiced when envelope >= max(min_level, this); raise to ignore breath noise
+pseudo_valley_ratio = 0.6     # split syllables at dips below this fraction of the running peak
+                              # (higher = choppier, more vowel changes; lower = long merged syllables)
+pseudo_min_syl_frames = 3     # minimum syllable length in 30 fps frames (raise to kill flicker)
+pseudo_gap_frames = 5         # silence frames that earn a BMP lip closure before the next syllable (5 = 165 ms)
+pseudo_closure = 0.85         # closure strength 0-1 (how firmly the lips shut between moans)
 # block_categories = ["Slurp"]   # categories that never drive the mouth (additive: overlays may add their own)
 
 [gag]
