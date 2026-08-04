@@ -2,7 +2,7 @@ set_xmakever("2.9.5")
 
 -- Globals
 PROJECT_NAME = "AudioUtil"
-PROJECT_VERSION = "0.9.8"
+PROJECT_VERSION = "0.9.9"
 PROJECT_AUTHOR = "crajjjj"
 
 -- Project
@@ -64,8 +64,8 @@ target(PROJECT_NAME)
     add_syslinks("ole32") -- CoCreateInstance for the WMA decoder DMO (FuzCache xWMA->PCM)
     set_pcxxheader("src/PCH.h")
 
-    -- Exports
-    add_ldflags("/DEF:exports.def", { force = true })
+    -- Exports (shared targets link via shflags; ldflags would be silently ignored)
+    add_shflags("/DEF:exports.def", { force = true })
 
     -- flags
     add_cxxflags(

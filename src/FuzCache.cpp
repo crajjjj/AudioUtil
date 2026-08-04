@@ -471,6 +471,24 @@ namespace FuzCache
 		       _strnicmp(a_path.data() + a_path.size() - 4, ".fuz", 4) == 0;
 	}
 
+	std::vector<std::uint8_t> ReadResourceBytes(const std::string& a_dataRelPath)
+	{
+		return ReadResource(NormalizeKey(a_dataRelPath));
+	}
+
+	std::vector<std::uint8_t> ReadLipBlock(const std::string& a_fuzDataRelPath)
+	{
+		auto data = ReadResource(NormalizeKey(a_fuzDataRelPath));
+		if (data.size() < FUZ_HEADER_SIZE || std::memcmp(data.data(), "FUZE", 4) != 0) {
+			return {};
+		}
+		const auto lipSize = ReadU32LE(data.data() + 8);
+		if (lipSize < 24 || FUZ_HEADER_SIZE + static_cast<std::size_t>(lipSize) > data.size()) {
+			return {};
+		}
+		return { data.begin() + FUZ_HEADER_SIZE, data.begin() + FUZ_HEADER_SIZE + lipSize };
+	}
+
 	void EnforceCacheCap()
 	{
 		const auto capMB = Config::Get()->fuzCacheMaxMB;

@@ -208,9 +208,14 @@ namespace Config
 				settings->lipsyncReleaseMs = (*lipsync)["release_ms"].value_or(settings->lipsyncReleaseMs);
 				settings->lipsyncMinLevel = (*lipsync)["min_level"].value_or(settings->lipsyncMinLevel);
 				settings->lipsyncBlockInDialogue = (*lipsync)["block_in_dialogue"].value_or(settings->lipsyncBlockInDialogue);
+				settings->lipsyncUseLipFiles = (*lipsync)["use_lip_files"].value_or(settings->lipsyncUseLipFiles);
+				settings->lipsyncDriveModifiers = (*lipsync)["drive_modifiers"].value_or(settings->lipsyncDriveModifiers);
+				settings->lipsyncPseudoPhonemes = (*lipsync)["pseudo_phonemes"].value_or(settings->lipsyncPseudoPhonemes);
 			} else if (lipsync->contains("enable") || lipsync->contains("gain") ||
 					   lipsync->contains("attack_ms") || lipsync->contains("release_ms") ||
-					   lipsync->contains("min_level") || lipsync->contains("block_in_dialogue")) {
+					   lipsync->contains("min_level") || lipsync->contains("block_in_dialogue") ||
+					   lipsync->contains("use_lip_files") || lipsync->contains("drive_modifiers") ||
+					   lipsync->contains("pseudo_phonemes")) {
 				logger::warn("[lipsync] scalar settings in an overlay are ignored (base-only); block_categories still merge");
 			}
 			if (const auto* blocked = (*lipsync)["block_categories"].as_array()) {

@@ -15,6 +15,14 @@ namespace FuzCache
 	// true if the path names a .fuz file (case-insensitive extension check)
 	bool IsFuzPath(std::string_view a_path);
 
+	// Read a whole data-relative resource through the engine's loader (loose or
+	// BSA-packed). Empty on failure. Uncached - callers cache what they parse.
+	std::vector<std::uint8_t> ReadResourceBytes(const std::string& a_dataRelPath);
+
+	// The embedded LIP block of a .fuz (the bytes Resolve() skips). Empty if
+	// the fuz is unreadable, malformed, or carries no lip.
+	std::vector<std::uint8_t> ReadLipBlock(const std::string& a_fuzDataRelPath);
+
 	// Enforce [general] fuz_cache_max_mb on the cache folder: while the total
 	// size exceeds the cap, the oldest files (by write time) are deleted. Also
 	// drops the in-session resolve map so evicted paths re-extract on demand.

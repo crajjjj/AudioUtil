@@ -45,12 +45,23 @@ enable = false                # optional third-party PPA plugin bridge, off by d
 event_rate_ms = 2000          # min interval per receiver for AudioUtilPPA_Update events (floored at 1000)
 
 [lipsync]
-enable = true                 # amplitude-envelope mouth movement (loose PCM wav only)
+enable = true                 # mouth movement for played voices (loose PCM wav; fuz via its decoded audio)
 gain = 1.0                    # 0.0-2.0 mouth-open strength
 attack_ms = 30                # how fast the mouth opens toward a louder level
 release_ms = 90               # how fast it closes on quiet / clip end
 min_level = 0.04              # envelope levels below this keep the mouth closed
 block_in_dialogue = true      # don't lipsync an actor while they're in a dialogue with the player (the game drives that mouth)
+use_lip_files = true          # real phoneme lipsync when a line has lip data (a same-stem .lip file, or a
+                              # .fuz's embedded lip block): the authored per-phoneme curves drive the mouth
+                              # instead of the amplitude envelope. Lines without lip data keep the envelope.
+                              # Runtime A/B toggle: console `autest lipfiles on|off`
+drive_modifiers = false       # let .lip data also drive blinks/brows/eye direction (the 16 MFG modifier
+                              # channels a lip carries). Off by default - expression mods own those channels.
+pseudo_phonemes = false       # lines WITHOUT lip data: synthesize phoneme curves from the amplitude
+                              # envelope - per-syllable vowel variety (Aah\Oh\Ooh\Eh) plus brief lip
+                              # closures after silence gaps - instead of the plain Aah jaw-flap.
+                              # Deterministic per file (a given wav always mouths the same way).
+                              # Runtime A\B toggle: console `autest pseudolip on|off`
 # block_categories = ["Slurp"]   # categories that never drive the mouth (additive: overlays may add their own)
 
 [gag]

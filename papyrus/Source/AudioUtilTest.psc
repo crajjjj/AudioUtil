@@ -135,3 +135,64 @@ Function Sfx(string name) global
     int h = AudioUtil.PlaySFX(name, Game.GetPlayer())
     Debug.Notification("sfx " + name + " handle=" + h)
 EndFunction
+
+; --- lip-calibration capture (debug-only natives, registered on this script) ---
+; Records the DIALOGUE SPEAKER's 16 MFG phoneme channels at ~30 Hz — i.e. what
+; the engine's own .lip playback writes to the face — into a timestamped CSV
+; under Data\SKSE\Plugins\AudioUtil\. Used offline to map .lip grid slots to
+; MFG phonemes.  Usage:  autest lipcap start   ...talk to NPCs...   autest lipcap stop
+bool Function StartLipCapture() global native
+string Function StopLipCapture() global native
+bool Function IsLipCapturing() global native
+Function SetLipFilesMode(bool abEnabled) global native
+bool Function GetLipFilesMode() global native
+Function SetPseudoLipMode(bool abEnabled) global native
+bool Function GetPseudoLipMode() global native
+
+; Toggle .lip-driven phoneme lipsync at runtime (vs the amplitude envelope).
+; Affects newly started lines.  Usage:  autest lipfiles on|off|status
+Function LipFiles(string mode) global
+    if mode == "on"
+        SetLipFilesMode(true)
+        Debug.Notification("lipsync: .lip phoneme mode ON (lines with lip data use authored curves)")
+    elseif mode == "off"
+        SetLipFilesMode(false)
+        Debug.Notification("lipsync: .lip phoneme mode OFF (amplitude envelope for everything)")
+    else
+        Debug.Notification("lipsync: .lip phoneme mode = " + GetLipFilesMode())
+    endif
+EndFunction
+
+; Toggle pseudo-phoneme synthesis for lines WITHOUT lip data (vowel variety +
+; lip closures from the envelope, vs the plain Aah jaw-flap).
+; Affects newly started lines.  Usage:  autest pseudolip on|off|status
+Function PseudoLip(string mode) global
+    if mode == "on"
+        SetPseudoLipMode(true)
+        Debug.Notification("lipsync: pseudo-phoneme mode ON (envelope lines get vowels + closures)")
+    elseif mode == "off"
+        SetPseudoLipMode(false)
+        Debug.Notification("lipsync: pseudo-phoneme mode OFF (plain envelope jaw-flap)")
+    else
+        Debug.Notification("lipsync: pseudo-phoneme mode = " + GetPseudoLipMode())
+    endif
+EndFunction
+
+Function LipCap(string mode) global
+    if mode == "start"
+        if StartLipCapture()
+            Debug.Notification("lipcap: recording - talk to NPCs, then 'autest lipcap stop'")
+        else
+            Debug.Notification("lipcap: already recording")
+        endif
+    elseif mode == "stop"
+        string file = StopLipCapture()
+        if file != ""
+            Debug.Notification("lipcap: saved Data\\" + file)
+        else
+            Debug.Notification("lipcap: nothing captured (was it running? did anyone talk?)")
+        endif
+    else
+        Debug.Notification("lipcap: running=" + IsLipCapturing() + " (use start|stop)")
+    endif
+EndFunction

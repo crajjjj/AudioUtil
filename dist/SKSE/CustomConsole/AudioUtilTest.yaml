@@ -110,3 +110,27 @@ subs:
         type: String
         required: true
         help: SFX/category name, e.g. MediumClap
+  - name: lipcap
+    func: LipCap
+    help: Record the dialogue speaker's 16 engine-driven MFG phoneme channels to CSV (lip-map calibration)
+    args:
+      - name: mode
+        type: String
+        required: true
+        help: start | stop | status
+  - name: lipfiles
+    func: LipFiles
+    help: Toggle .lip-driven phoneme lipsync (authored curves) vs the amplitude envelope; affects new lines
+    args:
+      - name: mode
+        type: String
+        required: true
+        help: on | off | status
+  - name: pseudolip
+    func: PseudoLip
+    help: Toggle pseudo-phoneme synthesis (vowel variety + lip closures) for lines without lip data; affects new lines
+    args:
+      - name: mode
+        type: String
+        required: true
+        help: on | off | status

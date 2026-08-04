@@ -18,3 +18,4 @@ dist/**
 !dist/SKSE/CustomConsole/
 !dist/SKSE/CustomConsole/*.yaml
 *.ppj
+__pycache__/

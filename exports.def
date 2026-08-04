@@ -1,3 +1,7 @@
 LIBRARY	"AudioUtil"
 EXPORTS
 SKSEPlugin_Load
+AudioUtil_GetVersion
+AudioUtil_GetInterfaceVersion
+AudioUtil_PlayFile
+AudioUtil_PlayFileWithLipSync

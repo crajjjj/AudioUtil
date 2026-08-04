@@ -37,11 +37,12 @@ theme:
 
 nav:
   - Home: index.md
-  - Papyrus API:
+  - Modder API:
     - Overview & Concepts: api/index.md
     - AudioUtil (core player): api/audioutil.md
     - AudioUtilPPA (penetration bridge): api/ppa.md
     - TomlUtil (config reader): api/tomlutil.md
+    - C++ API (SKSE plugins): api/cpp-api.md
   - TOML Configuration:
     - Overview: config/index.md
     - Voice & Category Resolution: config/resolution.md

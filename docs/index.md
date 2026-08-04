@@ -24,6 +24,10 @@ Point it at a folder of `.wav` files and call `AudioUtil.PlayVoice(actor, "Categ
 
     The functions you call from `.psc`. Start with [Overview & Concepts](api/index.md) for the handle / volume / group / channel model, then the per-script references.
 
+- :material-language-cpp: **[C++ API (SKSE plugins)](api/cpp-api.md)**
+
+    Native inter-plugin exports mirroring the `PlayFile` natives — resolved at runtime via `GetProcAddress`, no link-time dependency.
+
 - :material-file-cog: **[TOML Configuration](config/index.md)**
 
     How a consumer mod's `AudioUtil.toml` maps voice slots, categories, and SFX. See [Voice & Category Resolution](config/resolution.md) for the lookup order and the full [Config Reference](config/reference.md).

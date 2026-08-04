@@ -19,6 +19,18 @@ namespace LipSync
 	bool Enabled();
 	void SetGain(float a_gain);
 
+	// runtime toggle for .lip-driven phoneme mode ([lipsync] use_lip_files;
+	// console: `autest lipfiles`). Off = amplitude envelope for everything.
+	// Affects new lines only - already-playing entries keep their mode.
+	void SetLipFilesEnabled(bool a_enabled);
+	bool LipFilesEnabled();
+
+	// runtime toggle for envelope->pseudo-phoneme synthesis on lines WITHOUT
+	// lip data ([lipsync] pseudo_phonemes; console: `autest pseudolip`).
+	// Affects new lines only.
+	void SetPseudoLipEnabled(bool a_enabled);
+	bool PseudoLipEnabled();
+
 	// pull [lipsync] settings from Config (call after Load/Reload)
 	void ApplyConfig();
 

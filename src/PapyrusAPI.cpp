@@ -8,6 +8,7 @@
 #include "GagState.h"
 #include "TongueState.h"
 #include "InstanceManager.h"
+#include "LipCapture.h"
 #include "LipSync.h"
 #include "PPABridge.h"
 #include "TomlStore.h"
@@ -19,6 +20,7 @@ namespace PapyrusAPI
 		constexpr auto SCRIPT_NAME = "AudioUtil";
 		constexpr auto PPA_SCRIPT_NAME = "AudioUtilPPA";
 		constexpr auto TOML_SCRIPT_NAME = "TomlUtil";
+		constexpr auto TEST_SCRIPT_NAME = "AudioUtilTest";  // debug/calibration natives only
 		constexpr std::int32_t API_VERSION = 5;  // v5: captions (GetHandleCaption, [captions], AudioUtil_Caption event)
 
 		using VM = RE::BSScript::IVirtualMachine;
@@ -344,38 +346,14 @@ namespace PapyrusAPI
 			return PlayFromKey(key, a_follow, a_volume, a_group.c_str(), a_channel.c_str());
 		}
 
-		// shared body of PlayFile / PlayFileWithLipSync: the two natives differ
-		// only in whether the file is treated as a spoken line (mouth driven)
-		std::int32_t PlayFileImpl(RE::BSFixedString a_path, RE::Actor* a_follow,
-			float a_volume, RE::BSFixedString a_group, RE::BSFixedString a_channel,
-			bool a_lipSync)
-		{
-			std::string path = a_path.c_str();
-			std::replace(path.begin(), path.end(), '/', '\\');
-			auto handle = AudioEngine::PlayPath(path, a_follow, a_volume);
-			if (!handle.IsValid()) {
-				return 0;
-			}
-			const auto id = InstanceManager::Register(handle, a_volume, a_group.c_str(), path, a_follow);
-			if (a_channel.length() > 0) {
-				InstanceManager::PlayOnChannel(a_channel.c_str(), id);
-			}
-			// explicit files caption too when a sidecar exists (needs an actor
-			// to attribute the subtitle to)
-			CaptionManager::Start(a_follow, path, handle, id);
-			if (a_lipSync && a_follow) {
-				LipSync::Start(a_follow, path, handle, id);
-			}
-			return id;
-		}
-
 		// original semantics, untouched: never drives the mouth (PlayFile also
 		// serves non-vocal one-shots, and existing consumers rely on that)
 		std::int32_t PlayFile(RE::StaticFunctionTag*, RE::BSFixedString a_path,
 			RE::Actor* a_follow, float a_volume, RE::BSFixedString a_group,
 			RE::BSFixedString a_channel)
 		{
-			return PlayFileImpl(a_path, a_follow, a_volume, a_group, a_channel, false);
+			return PlayFileByPath(a_path.c_str(), a_follow, a_volume,
+				a_group.c_str(), a_channel.c_str(), false);
 		}
 
 		// spoken-line variant: same as PlayFile plus voice-call lipsync (global
@@ -384,7 +362,8 @@ namespace PapyrusAPI
 			RE::Actor* a_follow, float a_volume, RE::BSFixedString a_group,
 			RE::BSFixedString a_channel)
 		{
-			return PlayFileImpl(a_path, a_follow, a_volume, a_group, a_channel, true);
+			return PlayFileByPath(a_path.c_str(), a_follow, a_volume,
+				a_group.c_str(), a_channel.c_str(), true);
 		}
 
 		std::int32_t PlayFolder(RE::StaticFunctionTag*, RE::BSFixedString a_folder,
@@ -675,6 +654,45 @@ namespace PapyrusAPI
 			return InstanceManager::Register(handle, 1.0f, "", a_path.c_str(), a_follow);
 		}
 
+		// lip-calibration capture (see LipCapture.h) — registered on the TEST
+		// script class so the public AudioUtil API surface stays untouched
+		bool StartLipCapture(RE::StaticFunctionTag*)
+		{
+			return LipCapture::Start();
+		}
+
+		RE::BSFixedString StopLipCapture(RE::StaticFunctionTag*)
+		{
+			return LipCapture::Stop();
+		}
+
+		bool IsLipCapturing(RE::StaticFunctionTag*)
+		{
+			return LipCapture::IsActive();
+		}
+
+		// runtime toggle for .lip-driven phoneme lipsync (A/B against envelope)
+		void SetLipFilesMode(RE::StaticFunctionTag*, bool a_enabled)
+		{
+			LipSync::SetLipFilesEnabled(a_enabled);
+		}
+
+		bool GetLipFilesMode(RE::StaticFunctionTag*)
+		{
+			return LipSync::LipFilesEnabled();
+		}
+
+		// runtime toggle for envelope->pseudo-phoneme synthesis (lines without lip data)
+		void SetPseudoLipMode(RE::StaticFunctionTag*, bool a_enabled)
+		{
+			LipSync::SetPseudoLipEnabled(a_enabled);
+		}
+
+		bool GetPseudoLipMode(RE::StaticFunctionTag*)
+		{
+			return LipSync::PseudoLipEnabled();
+		}
+
 		// ---------- natives: TomlUtil (generic consumer-config surface) ----------
 		// Registered under its own script class so any mod can read TOML files
 		// through AudioUtil's DLL without touching the audio API.
@@ -769,6 +787,31 @@ namespace PapyrusAPI
 		}
 	}
 
+	// shared body of PlayFile / PlayFileWithLipSync (the two natives differ only
+	// in whether the file is treated as a spoken line); public so the C exports
+	// in AudioUtilAPI.cpp run the exact same code path as the Papyrus natives
+	std::int32_t PlayFileByPath(const char* a_dataRelPath, RE::Actor* a_follow,
+		float a_volume, const char* a_group, const char* a_channel, bool a_lipSync)
+	{
+		std::string path = a_dataRelPath;
+		std::replace(path.begin(), path.end(), '/', '\\');
+		auto handle = AudioEngine::PlayPath(path, a_follow, a_volume);
+		if (!handle.IsValid()) {
+			return 0;
+		}
+		const auto id = InstanceManager::Register(handle, a_volume, a_group, path, a_follow);
+		if (*a_channel) {
+			InstanceManager::PlayOnChannel(a_channel, id);
+		}
+		// explicit files caption too when a sidecar exists (needs an actor
+		// to attribute the subtitle to)
+		CaptionManager::Start(a_follow, path, handle, id);
+		if (a_lipSync && a_follow) {
+			LipSync::Start(a_follow, path, handle, id);
+		}
+		return id;
+	}
+
 	bool RegisterFuncs(VM* a_vm)
 	{
 		REGISTERFUNC(GetAPIVersion, SCRIPT_NAME);
@@ -807,6 +850,13 @@ namespace PapyrusAPI
 		REGISTERFUNC(GetResolvingSlot, SCRIPT_NAME);
 		REGISTERFUNC(FileExists, SCRIPT_NAME);
 		REGISTERFUNC(DebugPlayFile, SCRIPT_NAME);
+		REGISTERFUNC(StartLipCapture, TEST_SCRIPT_NAME);
+		REGISTERFUNC(StopLipCapture, TEST_SCRIPT_NAME);
+		REGISTERFUNC(IsLipCapturing, TEST_SCRIPT_NAME);
+		REGISTERFUNC(SetLipFilesMode, TEST_SCRIPT_NAME);
+		REGISTERFUNC(GetLipFilesMode, TEST_SCRIPT_NAME);
+		REGISTERFUNC(SetPseudoLipMode, TEST_SCRIPT_NAME);
+		REGISTERFUNC(GetPseudoLipMode, TEST_SCRIPT_NAME);
 		REGISTERFUNC(IsConnected, PPA_SCRIPT_NAME);
 		REGISTERFUNC(SetEventRate, PPA_SCRIPT_NAME);
 		REGISTERFUNC(GetContext, PPA_SCRIPT_NAME);

@@ -149,6 +149,18 @@ namespace Config
 		// AudioUtil stays off it (default true). Checked at Start and re-checked
 		// mid-line, like the gag guard.
 		bool          lipsyncBlockInDialogue{ true };
+		// real phoneme lipsync from .lip data (same-stem .lip / fuz-embedded):
+		// when a played line has one, its authored curves drive the mouth
+		// instead of the amplitude envelope (runtime toggle: autest lipfiles)
+		bool          lipsyncUseLipFiles{ true };
+		// also drive the 16 MFG modifier channels (blinks/brows/gaze) a .lip
+		// carries — off by default: expression mods own those channels
+		bool          lipsyncDriveModifiers{ false };
+		// lines WITHOUT lip data: synthesize pseudo-phoneme curves from the
+		// amplitude envelope (per-syllable vowel variety + lip closures after
+		// silence gaps) instead of the plain Aah jaw-flap (runtime toggle:
+		// autest pseudolip). Deterministic per file path.
+		bool          lipsyncPseudoPhonemes{ false };
 		// requested categories that never drive lipsync — the line plays mouth-still.
 		// For pools that aren't vocalization (oral sfx: slurping) or where another
 		// system owns the mouth (a climax/ahegao face). Matched on the REQUESTED

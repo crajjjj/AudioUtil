@@ -10,6 +10,9 @@ AudioUtil exposes three `Hidden` script namespaces, all backed by the one DLL. Y
 
 The source scripts (`Scripts\Source\AudioUtil.psc` etc.) ship with the mod and carry the same documentation inline.
 
+!!! info "Calling from another SKSE plugin (C++)?"
+    The `PlayFile` / `PlayFileWithLipSync` natives are also exported as a native C++ inter-plugin API — same code path, no Papyrus round-trip, resolved at runtime with `GetProcAddress` (no link-time dependency). See [C++ API (SKSE plugins)](cpp-api.md).
+
 ## Is the DLL installed?
 
 `GetAPIVersion()` returns `0` when the DLL is missing, so it doubles as a presence probe. Both `AudioUtil` and `TomlUtil` expose their own version; they are independent counters.

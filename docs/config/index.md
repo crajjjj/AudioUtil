@@ -30,7 +30,7 @@ Use a stable, unique filename prefix so an add-on's files sort together and neve
 
 ## Normalization
 
-Every key and name (slot ids, categories, group names, SFX names, voicetype names, race hints) is **normalized**: lowercased with all non-alphanumerics stripped. So `"Battle Cry"`, `"BattleCry"`, and `"battlecry"` are the same key, and `"About To Cum"` == `"AboutToCum"`. You never have to worry about spacing or case matching between your Papyrus calls and your TOML.
+Every key and name (slot ids, categories, group names, SFX names, voicetype names, race hints) is **normalized**: lowercased with all non-alphanumerics stripped. So `"Battle Cry"`, `"BattleCry"`, and `"battlecry"` are the same key, and `"Level Up"` == `"LevelUp"`. You never have to worry about spacing or case matching between your Papyrus calls and your TOML.
 
 ## The shape of the file
 
