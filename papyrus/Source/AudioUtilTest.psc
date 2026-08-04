@@ -74,6 +74,19 @@ Function PlayPath(string path) global
     endif
 EndFunction
 
+; Shuffle-bag play a whole folder as a pool (no-repeat until the deck empties),
+; spoken variant so the picked clip drives the player's mouth. Data-relative
+; folder path, e.g.  autest playfolder "Sound\TMSDynamicDialogue\VoiceBella\Base"
+; Re-run to hear the next pick.
+Function PlayFolderPath(string folder) global
+    int h = AudioUtil.PlayFolderWithLipSync(folder, Game.GetPlayer())
+    if h > 0
+        Debug.Notification("playfolder '" + folder + "' -> " + AudioUtil.GetHandlePath(h) + " handle=" + h + " dur=" + AudioUtil.GetHandleDuration(h))
+    else
+        Debug.Notification("playfolder '" + folder + "' FAILED (0) - empty/missing folder? see AudioUtil.log")
+    endif
+EndFunction
+
 ; DebugPlayFile on any path with explicit flags/priority. RAW path - a .fuz is
 ; fed to the engine as-is (no payload extraction), so this can probe the
 ; engine's native fuz handling.  e.g.  autest playf "Sound\x\y.xwm" 26 128
@@ -144,10 +157,15 @@ EndFunction
 bool Function StartLipCapture() global native
 string Function StopLipCapture() global native
 bool Function IsLipCapturing() global native
+int Function PrewarmFolder(string asFolder) global native
+bool Function BOverwriteFile(string asDst, string asSrc) global native
+string Function BCacheFile(int aiIndex) global native
 Function SetLipFilesMode(bool abEnabled) global native
 bool Function GetLipFilesMode() global native
 Function SetPseudoLipMode(bool abEnabled) global native
 bool Function GetPseudoLipMode() global native
+Function SetLipLeadMs(int aiMs) global native
+int Function GetLipLeadMs() global native
 
 ; Toggle .lip-driven phoneme lipsync at runtime (vs the amplitude envelope).
 ; Affects newly started lines.  Usage:  autest lipfiles on|off|status
@@ -176,6 +194,72 @@ Function PseudoLip(string mode) global
     else
         Debug.Notification("lipsync: pseudo-phoneme mode = " + GetPseudoLipMode())
     endif
+EndFunction
+
+; Calibrate the mouth timing lead in ms (positive = mouth earlier, compensates
+; the mouth trailing the sound). Applies IMMEDIATELY, including lines already
+; playing, so tune it live against a looping voice.
+; Usage:  autest liplead 80   |   autest liplead status
+Function LipLead(string arg) global
+    if arg == "status" || arg == ""
+        Debug.Notification("lipsync: lead = " + GetLipLeadMs() + " ms")
+    else
+        SetLipLeadMs(arg as int)
+        Debug.Notification("lipsync: lead set to " + GetLipLeadMs() + " ms (config default needs [lipsync] lead_ms)")
+    endif
+EndFunction
+
+; Decode-only prewarm of a fuz folder. Under MO2 a cache wav written mid-session
+; is invisible to the engine until the next launch, so a first-time fuz plays
+; silent. Run this once over a fuz folder, RESTART the game, then folder/file
+; play of those lines works first try.  autest warmfolder "Sound\...\Base"
+Function WarmFolder(string folder) global
+    int n = PrewarmFolder(folder)
+    Debug.Notification("warmfolder: " + n + " fuz decoded in '" + folder + "' - now RESTART Skyrim, then play")
+EndFunction
+
+; B-experiment: overwrite dst wav's bytes with src's, to learn whether the engine
+; re-reads a file per play or caches decoded audio by resource id.
+;   autest play <dst>            ; hear dst's line
+;   autest boverwrite <dst> <src>
+;   autest play <dst>            ; src's line = re-read (B viable); dst's = cached
+Function BOverwrite(string dst, string src) global
+    if BOverwriteFile(dst, src)
+        Debug.Notification("boverwrite OK - now: autest play '" + dst + "' - CHANGED=re-read (B viable), SAME=cached")
+    else
+        Debug.Notification("boverwrite FAILED - see AudioUtil.log")
+    endif
+EndFunction
+
+; No-arg B-experiment (Skyrim's console caps input length, so no long paths).
+; Uses the first two wavs in the fuz cache: A = [0], B = [1].
+;   autest bbase   ; plays A - note what A says (its filename shows in the notice)
+;   autest bswap   ; overwrites A's bytes with B, replays A:
+;                  ;   hear B's line = engine re-reads  -> B VIABLE
+;                  ;   hear A's line = cached/USVFS      -> B DEAD
+Function BBase() global
+    string a = BCacheFile(0)
+    if a == ""
+        Debug.Notification("bbase: no cache wavs (play/warm a fuz first)")
+        return
+    endif
+    AudioUtil.PlayFile(a, Game.GetPlayer())
+    Debug.Notification("bbase: A = " + a + " (close console, listen)")
+EndFunction
+
+Function BSwap() global
+    string a = BCacheFile(0)
+    string b = BCacheFile(1)
+    if a == "" || b == ""
+        Debug.Notification("bswap: need 2 cache wavs (warm more fuz first)")
+        return
+    endif
+    if !BOverwriteFile(a, b)
+        Debug.Notification("bswap: overwrite FAILED - see AudioUtil.log")
+        return
+    endif
+    AudioUtil.PlayFile(a, Game.GetPlayer())
+    Debug.Notification("bswap: replayed A after writing B=" + b + " -> hear B=re-read(B OK), A=cached")
 EndFunction
 
 Function LipCap(string mode) global

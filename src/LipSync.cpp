@@ -239,6 +239,7 @@ namespace LipSync
 		std::atomic<bool>  g_useLipFiles{ true };
 		std::atomic<bool>  g_driveModifiers{ false };
 		std::atomic<bool>  g_pseudoPhonemes{ false };
+		std::atomic<float> g_leadSec{ 0.0f };  // mouth timing lead ([lipsync] lead_ms)
 		std::atomic<float> g_gain{ 1.0f };
 		std::atomic<float> g_attackTau{ 0.03f };
 		std::atomic<float> g_releaseTau{ 0.09f };
@@ -494,13 +495,17 @@ namespace LipSync
 					}
 				} else {
 					const float t = std::chrono::duration<float>(now - a_entry.audibleAt).count();
+					// lead: sample the curves slightly ahead of the playback clock
+					// to compensate start-detection + mix-ahead latency (the audio
+					// itself still ends at durationSec, so stop timing is unshifted)
+					const float tMouth = t + g_leadSec.load();
 					if (t >= a_entry.env->durationSec) {
 						a_entry.stopping = true;
 					} else if (a_entry.lip) {
-						a_entry.lipT = t;
+						a_entry.lipT = tMouth;
 						target = 1.0f;
 					} else {
-						target = a_entry.env->Sample(t) * gain;
+						target = a_entry.env->Sample(tMouth) * gain;
 						if (target < minLevel) {
 							target = 0.0f;
 						}
@@ -744,6 +749,16 @@ namespace LipSync
 		return g_pseudoPhonemes.load();
 	}
 
+	void SetLeadMs(std::int32_t a_ms)
+	{
+		g_leadSec.store(static_cast<float>(std::clamp(a_ms, -300, 300)) / 1000.0f);
+	}
+
+	std::int32_t LeadMs()
+	{
+		return static_cast<std::int32_t>(std::lround(g_leadSec.load() * 1000.0f));
+	}
+
 	void ApplyConfig()
 	{
 		const auto settings = Config::Get();
@@ -755,6 +770,7 @@ namespace LipSync
 		g_useLipFiles.store(settings->lipsyncUseLipFiles);
 		g_driveModifiers.store(settings->lipsyncDriveModifiers);
 		g_pseudoPhonemes.store(settings->lipsyncPseudoPhonemes);
+		g_leadSec.store(static_cast<float>(settings->lipsyncLeadMs) / 1000.0f);
 		LipData::ClearCache();
 		SetEnabled(settings->lipsyncEnabled);
 	}

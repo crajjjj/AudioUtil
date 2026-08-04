@@ -113,6 +113,38 @@ target("papyrus")
     end)
 target_end()
 
+-- LipSim tool package: xmake build lipsim
+-- Zips tools\lipsim (simulator page + server + launcher + fuz2wav) into
+-- Release\AudioUtil-LipSim-<version>.zip — a standalone download for
+-- voicepack authors, separate from the mod archive.
+target("lipsim")
+    set_kind("phony")
+    set_default(false)
+    on_build(function (target)
+        import("core.project.project")
+        local proj = os.projectdir()
+        local staging = path.join(os.tmpdir(), "lipsim-pack")
+        os.rm(staging)
+        os.mkdir(staging)
+        for _, f in ipairs({ "lipsim.html", "lipsim_server.py", "fuz2wav.py",
+                             "LipSim.bat", "README.md" }) do
+            os.cp(path.join(proj, "tools", "lipsim", f), staging)
+        end
+        local rel = path.join(proj, "Release")
+        if not os.isdir(rel) then
+            os.mkdir(rel)
+        end
+        local out = path.join(rel,
+            "AudioUtil-LipSim-" .. (project.version() or "dev") .. ".zip")
+        os.rm(out)
+        os.execv("powershell", { "-NoProfile", "-Command",
+            string.format("Compress-Archive -Path '%s\\*' -DestinationPath '%s' -Force",
+                staging, out) })
+        os.rm(staging)
+        print("lipsim package -> " .. out)
+    end)
+target_end()
+
 -- Release package: xmake build release
 -- Same as `papyrus` but rebuilds the DLL first so the ppj's <ZipFiles> archive
 -- (Release\AudioUtil.zip) always carries a fresh DLL.

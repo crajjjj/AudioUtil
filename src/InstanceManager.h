@@ -8,8 +8,15 @@ namespace InstanceManager
 	// a_follow: the actor this sound is 3D-positioned at (or nullptr for flat/2D).
 	// Used once at registration to bake a distance-attenuation factor into the
 	// instance volume when [general] voice_attenuation is on (see Config).
+	// a_fuzSlot: FuzSlots placeholder index backing this instance's audio (-1 if
+	// none). Released back to the pool when the instance stops (Sweep) or is Stopped.
 	std::int32_t Register(RE::BSSoundHandle a_handle, float a_baseVolume, std::string a_group,
-		std::string a_path = {}, RE::Actor* a_follow = nullptr);
+		std::string a_path = {}, RE::Actor* a_follow = nullptr, int a_fuzSlot = -1);
+
+	// drop finished instances now, releasing their fuz slots back to the pool.
+	// Registering also sweeps, but a slot is acquired before that — call this just
+	// before a new play so slots freed by lines that already stopped are reusable.
+	void  SweepNow();
 
 	bool  IsPlaying(std::int32_t a_id);
 	bool  Stop(std::int32_t a_id);

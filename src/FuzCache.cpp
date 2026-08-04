@@ -1,6 +1,7 @@
 #include "FuzCache.h"
 
 #include "Config.h"
+#include "FuzSlots.h"
 
 #include <atomic>
 #include <filesystem>
@@ -511,6 +512,12 @@ namespace FuzCache
 		std::uintmax_t    total = 0;
 		for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
 			if (!entry.is_regular_file(ec)) {
+				continue;
+			}
+			// FuzSlots placeholder wavs live here but must never be evicted — they have
+			// to exist at launch for in-session fuz playback, and their size is transient
+			// (they hold whatever line is currently playing). Prefix owned by FuzSlots.
+			if (FuzSlots::IsSlotName(entry.path().filename().string())) {
 				continue;
 			}
 			const auto size = entry.file_size(ec);

@@ -1,10 +1,14 @@
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/msvc_sink.h>
 
+#include <chrono>
+#include <thread>
+
 #include "CaptionManager.h"
 #include "Config.h"
 #include "FolderCache.h"
 #include "FuzCache.h"
+#include "FuzSlots.h"
 #include "GagState.h"
 #include "InstanceManager.h"
 #include "LipSync.h"
@@ -50,6 +54,41 @@ namespace
 		log::info("Papyrus functions bound.");
 	}
 
+	// Decode-ahead the whole config's .fuz set on a detached background thread, so
+	// their cache wavs are on disk BEFORE the next launch indexes loose files.
+	// (A cache wav written mid-session can't be read back by the engine's resource
+	// loader until a relaunch — the loose-file index is frozen at game start, and
+	// MO2's USVFS never surfaces a mid-session file at all. So the first launch
+	// after new fuz is added warms silently; every launch after plays first try.)
+	// Idempotent + cheap once cached: FuzCache::Resolve short-circuits on a disk
+	// hit. Gated on [general] prewarm_fuz. Detached like LipSync's ticker.
+	void PrewarmFuzCache()
+	{
+		if (!Config::Get()->prewarmFuz) {
+			return;
+		}
+		std::thread([] {
+			const auto start = std::chrono::steady_clock::now();
+			const auto files = FolderCache::AllAudioFiles();
+			std::size_t fuz = 0;
+			std::size_t decoded = 0;
+			for (const auto& f : files) {
+				if (!FuzCache::IsFuzPath(f)) {
+					continue;
+				}
+				++fuz;
+				if (!FuzCache::Resolve(f).empty()) {
+					++decoded;
+				}
+			}
+			const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+				std::chrono::steady_clock::now() - start).count();
+			log::info("Fuz prewarm: {} of {} fuz cached (of {} audio files) in {} ms. Newly "
+					  "decoded lines become playable after the next game restart.",
+				decoded, fuz, files.size(), ms);
+		}).detach();
+	}
+
 	void OnMessage(MessagingInterface::Message* a_msg)
 	{
 		switch (a_msg->type) {
@@ -61,8 +100,10 @@ namespace
 			InstanceManager::ApplyConfigGroupVolumes();
 			LipSync::ApplyConfig();
 			CaptionManager::ApplyConfig();
+			FuzSlots::Configure(Config::Get()->fuzSlots);
 			FuzCache::EnforceCacheCap();
 			PPABridge::TryConnect();
+			PrewarmFuzCache();
 			break;
 		case MessagingInterface::kPreLoadGame:
 		case MessagingInterface::kNewGame:

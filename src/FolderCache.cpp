@@ -4,6 +4,7 @@
 #include "Config.h"
 
 #include <format>
+#include <unordered_set>
 
 namespace FolderCache
 {
@@ -604,6 +605,29 @@ namespace FolderCache
 			}
 		}
 		return key;
+	}
+
+	std::vector<std::string> ListFolder(std::string_view a_dataRelativeFolder)
+	{
+		const auto key = ResolveDirKey(a_dataRelativeFolder);  // scans on first use
+		if (key.empty()) {
+			return {};
+		}
+		std::scoped_lock lock{ g_lock };
+		const auto it = g_folders.find(key);
+		return it == g_folders.end() ? std::vector<std::string>{} : it->second.files;
+	}
+
+	std::vector<std::string> AllAudioFiles()
+	{
+		std::unordered_set<std::string> seen;
+		std::scoped_lock lock{ g_lock };
+		for (const auto& [key, folder] : g_folders) {
+			for (const auto& f : folder.files) {
+				seen.insert(f);
+			}
+		}
+		return { seen.begin(), seen.end() };
 	}
 
 	std::string PickNext(const std::string& a_folderKey)

@@ -24,7 +24,7 @@ voice_no_interrupt = false    # true = a still-playing channel skips the new lin
 # distance - matters only when a sound plays far from the player. When on, volume is
 # scaled once at play time: full within attenuation_near, quadratic falloff to
 # attenuation_floor at attenuation_far (game units). Off = unchanged (existing behavior).
-voice_attenuation = false     # true = scale far follow-sounds down by distance
+voice_attenuation = true     # true = scale far follow-sounds down by distance
 attenuation_near = 400.0      # full volume within this distance
 attenuation_far = 3000.0      # volume reaches the floor at/beyond this distance
 attenuation_floor = 0.0       # minimum volume factor for far sounds (0.0 = silent)
@@ -34,6 +34,19 @@ attenuation_floor = 0.0       # minimum volume factor for far sounds (0.0 = sile
 # deleted first (~88 KB per second of audio, so 256 holds ~a thousand lines).
 # 0 = unlimited. Deleting the folder by hand is always safe.
 fuz_cache_max_mb = 256
+# In-session fuz playback. Skyrim only loads loose files present at launch, so a fuz
+# decoded on first play (its cache wav is written mid-session) would be silent until
+# the next restart. AudioUtil sidesteps that by routing the audio through one of N
+# pre-indexed placeholder wavs, so it plays immediately and is freed when the line
+# ends. N = max fuz lines sounding at once (each takes a slot); 24 covers overlapping
+# voices. 0 disables the pool (a first-session fuz then waits for a restart).
+fuz_slots = 24
+# Background decode-ahead: at game start, decode every .fuz in the configured slots
+# to its cache wav on a worker thread. First play already works without this (see
+# fuz_slots) - prewarm only removes the brief inline-decode hitch on a line's very
+# first play by doing it ahead of time. Cheap once cached (a disk check per file).
+# Leave off for wav-only voicepacks.
+prewarm_fuz = false
 # sfx_slot = "SFX0"           # [[slot]] PlaySFX resolves before the [sfx] table ("" = table only)
 default_female_slot = ""      # slot for unrouted female actors ("" = none; an overlay sets it)
 default_male_slot = ""         # slot for unrouted male actors and creatures ("" = none)
@@ -51,17 +64,21 @@ attack_ms = 30                # how fast the mouth opens toward a louder level
 release_ms = 90               # how fast it closes on quiet / clip end
 min_level = 0.04              # envelope levels below this keep the mouth closed
 block_in_dialogue = true      # don't lipsync an actor while they're in a dialogue with the player (the game drives that mouth)
-use_lip_files = true          # real phoneme lipsync when a line has lip data (a same-stem .lip file, or a
-                              # .fuz's embedded lip block): the authored per-phoneme curves drive the mouth
-                              # instead of the amplitude envelope. Lines without lip data keep the envelope.
-                              # Runtime A/B toggle: console `autest lipfiles on|off`
+use_lip_files = false          # EXPERIMENTAL. Real phoneme lipsync when a line has lip data (a same-stem
+                              # .lip file, or a .fuz's embedded lip block): the authored per-phoneme curves
+                              # drive the mouth instead of the amplitude envelope. Lines without lip data
+                              # keep the envelope. Off by default - the envelope/pseudo-phoneme path is the
+                              # tested one. Runtime A/B toggle: console `autest lipfiles on|off`
 drive_modifiers = false       # let .lip data also drive blinks/brows/eye direction (the 16 MFG modifier
                               # channels a lip carries). Off by default - expression mods own those channels.
-pseudo_phonemes = false       # lines WITHOUT lip data: synthesize phoneme curves from the amplitude
+pseudo_phonemes = true       # lines WITHOUT lip data: synthesize phoneme curves from the amplitude
                               # envelope - per-syllable vowel variety (Aah\Oh\Ooh\Eh) plus brief lip
                               # closures after silence gaps - instead of the plain Aah jaw-flap.
                               # Deterministic per file (a given wav always mouths the same way).
                               # Runtime A\B toggle: console `autest pseudolip on|off`
+lead_ms = 0                   # mouth timing lead in ms (-300..300), all lipsync modes. Leave at 0 unless
+                              # the mouth visibly TRAILS the sound - then raise it to sample the mouth
+                              # curves ahead of the playback clock. Calibrate live: `autest liplead 80`
 # block_categories = ["Slurp"]   # categories that never drive the mouth (additive: overlays may add their own)
 
 [gag]

@@ -179,6 +179,8 @@ namespace Config
 				settings->attenuationFar = (*general)["attenuation_far"].value_or(settings->attenuationFar);
 				settings->attenuationFloor = (*general)["attenuation_floor"].value_or(settings->attenuationFloor);
 				settings->fuzCacheMaxMB = (*general)["fuz_cache_max_mb"].value_or(settings->fuzCacheMaxMB);
+				settings->prewarmFuz = (*general)["prewarm_fuz"].value_or(settings->prewarmFuz);
+				settings->fuzSlots = (*general)["fuz_slots"].value_or(settings->fuzSlots);
 
 				if (const auto level = (*general)["log_level"].value<std::string>()) {
 					const auto lvl = spdlog::level::from_str(*level);
@@ -211,11 +213,13 @@ namespace Config
 				settings->lipsyncUseLipFiles = (*lipsync)["use_lip_files"].value_or(settings->lipsyncUseLipFiles);
 				settings->lipsyncDriveModifiers = (*lipsync)["drive_modifiers"].value_or(settings->lipsyncDriveModifiers);
 				settings->lipsyncPseudoPhonemes = (*lipsync)["pseudo_phonemes"].value_or(settings->lipsyncPseudoPhonemes);
+				settings->lipsyncLeadMs = std::clamp(
+					(*lipsync)["lead_ms"].value_or(settings->lipsyncLeadMs), -300, 300);
 			} else if (lipsync->contains("enable") || lipsync->contains("gain") ||
 					   lipsync->contains("attack_ms") || lipsync->contains("release_ms") ||
 					   lipsync->contains("min_level") || lipsync->contains("block_in_dialogue") ||
 					   lipsync->contains("use_lip_files") || lipsync->contains("drive_modifiers") ||
-					   lipsync->contains("pseudo_phonemes")) {
+					   lipsync->contains("pseudo_phonemes") || lipsync->contains("lead_ms")) {
 				logger::warn("[lipsync] scalar settings in an overlay are ignored (base-only); block_categories still merge");
 			}
 			if (const auto* blocked = (*lipsync)["block_categories"].as_array()) {

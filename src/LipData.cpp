@@ -60,6 +60,17 @@ namespace LipData
 		if (version != 1 || frames == 0 || frames > MAX_FRAMES) {
 			return nullptr;
 		}
+		// preroll (i32 at 16) is the grid's negative first-frame index: the
+		// first |preroll| frames are pre-audio lead-in and grid frame |preroll|
+		// lands on audio t=0 (validated by duration fit — frames-|preroll| ≈
+		// audio length on authored lips; raw frames overshoot). Skip the
+		// lead-in, else every lip plays |preroll|/30 s late.
+		auto lead = static_cast<std::uint32_t>(
+			std::clamp(-ReadLE<std::int32_t>(d + 16), 0, 150));
+		if (lead + 1 >= frames) {
+			lead = 0;  // nonsense preroll — keep the whole grid
+		}
+		const std::uint32_t effFrames = frames - lead;
 
 		// token walk: [f32 value] [optional exact dup] [optional 00,4*skip,00
 		// marker]. Position advances 1 per float plus `skip` resting slots;
@@ -85,30 +96,30 @@ namespace LipData
 			}
 			const auto frame = static_cast<std::uint32_t>(pos / STRIDE);
 			const auto slot = static_cast<std::uint32_t>(pos % STRIDE);
-			if (frame < frames && slot < CHANNELS) {
+			if (frame >= lead && frame < frames && slot < CHANNELS) {
 				if (std::fabs(value) < 1.0e-6f) {
-					keys[slot].emplace_back(frame, 0.0f);  // sentinel/true zero
+					keys[slot].emplace_back(frame - lead, 0.0f);  // sentinel/true zero
 				} else if (value >= 0.0f && value <= 1.0001f) {
-					keys[slot].emplace_back(frame, std::min(value, 1.0f));
+					keys[slot].emplace_back(frame - lead, std::min(value, 1.0f));
 				}
 			}
 			pos += floats + skip;
 		}
 
 		auto anim = std::make_shared<Anim>();
-		anim->frames = frames;
-		anim->durationSec = static_cast<float>(frames) / FPS;
+		anim->frames = effFrames;
+		anim->durationSec = static_cast<float>(effFrames) / FPS;
 		for (std::uint32_t ch = 0; ch < CHANNELS; ++ch) {
 			auto& series = anim->values[ch];
 			const auto& src = keys[ch];
 			if (src.empty()) {
 				continue;  // resting channel stays empty (samples as 0)
 			}
-			series.assign(frames, 0.0f);
+			series.assign(effFrames, 0.0f);
 			// linear interpolation between keys, ends held (stream order is
 			// frame-ascending; a same-frame rewrite takes the later value)
 			std::size_t k = 0;
-			for (std::uint32_t f = 0; f < frames; ++f) {
+			for (std::uint32_t f = 0; f < effFrames; ++f) {
 				while (k + 1 < src.size() && src[k + 1].first <= f) {
 					++k;
 				}

@@ -31,7 +31,7 @@ A standalone `.lip` is just the LIP block.
 | 8 | u32 | num_curves | active-curve count (13 in vanilla; advisory) |
 | 12 | u16 | frameCount | frames on a uniform **30 fps** grid |
 | 14 | u16 | const14 | 3 = variant A (normal); see variant B below |
-| 16 | i32 | preroll | negative first-frame index (−9..0) |
+| 16 | i32 | preroll | negative first-frame index (−9..0 vanilla; −22 seen from LipGenerator). The first \|preroll\| grid frames are **pre-audio lead-in**: grid frame \|preroll\| lands on audio t=0, so a player must skip the lead-in or the whole lip runs \|preroll\|/30 s late. Validated by duration fit: frames−\|preroll\| ≈ audio length on authored lips (raw frames overshoot). MfgFix's engine mirror agrees — its dialogue timer runs to `(frames+\|preroll\|)·0.033` |
 | 20 | u16 | vocab | **16** = Skyrim (43 = Fallout 4) |
 | 22 | u16 | u22 | varies; semantics unknown; irrelevant for playback |
 
@@ -106,6 +106,14 @@ dialogue phoneme track with a `0.033f`/frame clock via the engine's lip-sampling
 - **LIPFuzer**: `..\LipFuzer\LIPFuzer.exe` — fuz/unfuz (`-u` extracts lip+audio).
 - Voicepack authors generate `.lip` offline with either tool (or FaceFXWrapper — same CK
   code, Compress flag hardcoded true; "compressed" IS this grid format, no zlib anywhere).
+- **`tools/lipsim/lipsim.html`** — standalone browser simulator (no server, no deps): drop a
+  `.wav`/`.lip`/`.fuz`, it plays the audio and animates a mouth + 32-channel timeline using
+  the same decoding/synthesis as the DLL (LipData parser port, pseudo-phoneme synthesis with
+  live tuning sliders, envelope mode). The place to calibrate `SynthesizePseudoLip` constants
+  without launching the game ("copy constants" exports the tuned values). Fuz plays fully:
+  the embedded lip visualizes and the xWMA audio is decoded in-page by a lazily
+  CDN-loaded ffmpeg.wasm (one-time ~10 MB download; offline fallback:
+  `tools/lipsim/fuz2wav.py` cracks a fuz into wav+lip via the CK's xwmaencode).
 - **`tools/lipgen/make_lips.py`** wraps the whole pipeline for a voicepack folder: every
   wav gets a same-stem `.lip` via LipGenerator, taking the spoken text from the wav's
   AudioUtil caption sidecar (`--lang`, `--default-text` for uncaptioned pools); `--fuz`

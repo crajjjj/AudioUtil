@@ -1,0 +1,1698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AudioUtil LipSim — .lip / wav / fuz phoneme simulator</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.45 "Segoe UI", system-ui, sans-serif; background: #16181d; color: #cfd3da; }
+  header { padding: 10px 16px; background: #1d2027; border-bottom: 1px solid #2a2e37; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0; color: #e8eaee; font-weight: 600; }
+  header .hint { color: #7d8494; }
+  main { display: flex; gap: 14px; padding: 14px 16px; align-items: flex-start; flex-wrap: wrap; }
+  .panel { background: #1d2027; border: 1px solid #2a2e37; border-radius: 8px; padding: 12px; }
+  #left { width: 380px; display: flex; flex-direction: column; gap: 12px; }
+  #right { flex: 1 1 560px; min-width: 480px; display: flex; flex-direction: column; gap: 12px; }
+  canvas { display: block; }
+  #face { background: #14161a; border-radius: 6px; width: 100%; }
+  #timeline { width: 100%; background: #14161a; border-radius: 6px; cursor: crosshair; }
+  #bars { width: 100%; background: #14161a; border-radius: 6px; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+  .row label { flex: 0 0 150px; color: #9aa1af; }
+  .row input[type=range] { flex: 1; }
+  .row .val { flex: 0 0 46px; text-align: right; color: #e8eaee; font-variant-numeric: tabular-nums; }
+  button { background: #2c313b; color: #e8eaee; border: 1px solid #3a4150; border-radius: 5px; padding: 5px 12px; cursor: pointer; font: inherit; }
+  button:hover { background: #363c48; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.primary { background: #3d5afe22; border-color: #3d5afe88; }
+  select, input[type=file] { font: inherit; color: inherit; }
+  .modes label { margin-right: 12px; cursor: pointer; }
+  .modes input { vertical-align: -2px; }
+  #status { color: #8fd18f; min-height: 18px; }
+  #warn { color: #e0b070; }
+  .small { color: #7d8494; font-size: 12px; }
+  #syls { font-size: 12px; color: #9aa1af; max-height: 66px; overflow-y: auto; word-break: break-all; }
+  .preset-list { max-height: 300px; overflow-y: auto; margin-top: 6px; padding-right: 4px; }
+  .prow { display: flex; gap: 6px; align-items: center; margin: 2px 0; }
+  .prow label { flex: 0 0 84px; color: #9aa1af; font-size: 12px; }
+  .prow input[type=range] { flex: 1; }
+  .prow .val { flex: 0 0 40px; text-align: right; font-size: 12px; color: #e8eaee; font-variant-numeric: tabular-nums; }
+  .prow .na { flex: 0 0 30px; font-size: 11px; padding: 1px 4px; }
+  .prow .na.off { opacity: 0.45; }
+  .sect { margin-top: 6px; color: #7d8494; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .fname { color: #9fc1ff; }
+  #drop { border: 2px dashed #3a4150; border-radius: 8px; padding: 8px 12px; color: #7d8494; }
+  #drop.over { border-color: #3d5afe; color: #cfd3da; }
+  nav#tabs { display: flex; gap: 6px; margin-left: auto; }
+  nav#tabs button.active { background: #3d5afe33; border-color: #3d5afe; }
+  #presetList { max-height: 460px; overflow-y: auto; margin: 6px 0; }
+  #presetList .pitem { padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; color: #9aa1af; }
+  #presetList .pitem:hover { background: #262b34; color: #e8eaee; }
+  #presetList .pitem.sel { background: #3d5afe22; color: #e8eaee; }
+  #presetView .preset-list { max-height: 520px; }
+  h3 { margin: 2px 0 8px; font-size: 13px; color: #e8eaee; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AudioUtil LipSim</h1>
+  <div id="drop">drop <b>.wav</b> / <b>.lip</b> / <b>.fuz</b> / MFG preset <b>.json</b> / face screenshot <b>.png/.jpg</b> here — or <input type="file" id="file" multiple accept=".wav,.lip,.fuz,.json,.png,.jpg,.jpeg,.webp,.bmp"><br>
+    <span class="small">a new audio/lip selection replaces the previous files — select a wav + lip (or fuz + wav) together to pair them</span></div>
+  <span class="hint">plays the audio and simulates the mouth exactly like the DLL: authored .lip curves, pseudo-phoneme synthesis, or the Aah envelope — for fuz with sound, start via <b>python lipsim_server.py</b></span>
+  <nav id="tabs"><button id="tabPlayer" class="active">Player</button><button id="tabPresets">Presets</button></nav>
+</header>
+<main id="playerView">
+  <div id="left">
+    <div class="panel">
+      <canvas id="face" width="356" height="290"></canvas>
+      <div class="row" style="margin-top:8px">
+        <button id="play" class="primary" disabled>&#9654; Play</button>
+        <button id="stopBtn" disabled>&#9632; Stop</button>
+        <label style="flex:0 0 auto"><input type="checkbox" id="loop"> loop</label>
+        <span class="val" id="clock" style="flex:1;text-align:right">0.00s</span>
+      </div>
+      <div id="status"></div>
+      <div id="warn"></div>
+      <div class="row" id="photoRow" style="display:none">
+        <button id="rerig">re-rig photo</button>
+        <button id="clearPhoto">vector face</button>
+        <span class="small">photo face drives both tabs</span>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Mode</h3>
+      <div class="modes">
+        <label><input type="radio" name="mode" value="auto" checked> auto</label>
+        <label><input type="radio" name="mode" value="lip"> authored .lip</label>
+        <label><input type="radio" name="mode" value="pseudo"> pseudo synthesis</label>
+        <label><input type="radio" name="mode" value="env"> envelope (Aah)</label>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <label>gain</label><input type="range" id="p_gain" min="0" max="2" step="0.05" value="1"><span class="val"></span>
+      </div>
+      <label class="small"><input type="checkbox" id="showMods" checked> show modifier channels (blink/brow/gaze) when the lip has them</label>
+    </div>
+    <div class="panel" id="pseudoPanel">
+      <h3>Pseudo-synthesis tuning <span class="small">(mirrors LipSync.cpp SynthesizePseudoLip)</span></h3>
+      <div class="row"><label>min_level</label><input type="range" id="p_minLevel" min="0" max="0.3" step="0.005" value="0.04"><span class="val"></span></div>
+      <div class="row"><label>voiced floor</label><input type="range" id="p_voicedFloor" min="0" max="0.3" step="0.005" value="0.05"><span class="val"></span></div>
+      <div class="row"><label>valley split ratio</label><input type="range" id="p_valley" min="0.2" max="0.95" step="0.01" value="0.6"><span class="val"></span></div>
+      <div class="row"><label>min syllable frames</label><input type="range" id="p_minSyl" min="1" max="12" step="1" value="3"><span class="val"></span></div>
+      <div class="row"><label>closure gap frames</label><input type="range" id="p_gap" min="2" max="20" step="1" value="5"><span class="val"></span></div>
+      <div class="row"><label>closure strength</label><input type="range" id="p_close" min="0" max="1" step="0.05" value="0.85"><span class="val"></span></div>
+      <div class="row"><label>attack_ms</label><input type="range" id="p_attack" min="5" max="200" step="5" value="30"><span class="val"></span></div>
+      <div class="row"><label>release_ms</label><input type="range" id="p_release" min="5" max="400" step="5" value="90"><span class="val"></span></div>
+      <div class="row"><label>seed variant</label><input type="range" id="p_variant" min="0" max="9" step="1" value="0"><span class="val"></span></div>
+      <div class="row"><button id="copyConst">copy constants</button><span class="small">for transplanting into LipSync.cpp / the toml</span></div>
+      <div id="syls"></div>
+    </div>
+  </div>
+  <div id="right">
+    <div class="panel">
+      <h3 id="tlTitle">Timeline</h3>
+      <canvas id="timeline"></canvas>
+    </div>
+    <div class="panel">
+      <h3>Live channels</h3>
+      <canvas id="bars" height="120"></canvas>
+    </div>
+  </div>
+</main>
+<main id="presetView" style="display:none">
+  <div class="panel" style="width:280px">
+    <h3>Presets <span class="small" id="presetFile">no json loaded</span></h3>
+    <div class="row">
+      <input id="presetFilter" placeholder="filter…" style="flex:1;background:#14161a;border:1px solid #3a4150;border-radius:5px;color:inherit;padding:4px 8px">
+      <span class="small" id="presetCount"></span>
+    </div>
+    <div id="presetList"></div>
+    <div class="row"><button id="presetNew">new</button><button id="presetSave" class="primary">save</button><button id="presetDownload">download json</button></div>
+    <div class="small">drop a StorageUtil preset json (e.g. SLO VE FemaleExpressions.json) anywhere on this page to load it</div>
+  </div>
+  <div class="panel" style="width:388px">
+    <canvas id="pface" width="356" height="290"></canvas>
+    <div id="presetStatus" class="small" style="margin-top:8px;min-height:16px"></div>
+  </div>
+  <div class="panel" style="flex:1;min-width:380px">
+    <h3 id="presetName">— select a preset —</h3>
+    <div id="presetSliders" class="preset-list"></div>
+  </div>
+</main>
+<script>
+"use strict";
+/* ================= LIPSIM CORE (no DOM — extractable for node tests) ================ */
+const PHONEMES = ["Aah","BigAah","BMP","ChjSh","DST","Eee","Eh","FV","I","K","N","Oh","OohQ","R","Th","W"];
+const MODIFIERS = ["BlinkL","BlinkR","BrowDnL","BrowDnR","BrowInL","BrowInR","BrowUpL","BrowUpR",
+                   "LookDn","LookL","LookR","LookUp","SquintL","SquintR","Head14","Head15"];
+const CHANNELS = 32, PHONEME_CHANNELS = 16, FPS = 30, STRIDE = 33;
+const PH = Object.fromEntries(PHONEMES.map((n, i) => [n, i]));
+
+function makeAnim(frames) {
+  const values = Array.from({ length: CHANNELS }, () => null);  // null = resting channel
+  return {
+    frames, durationSec: frames / FPS, values,
+    sample(ch, t) {
+      const s = this.values[ch];
+      if (!s || t < 0) return 0;
+      const pos = t * FPS, i = Math.floor(pos);
+      if (i + 1 >= s.length) return i < s.length ? s[i] : 0;
+      return s[i] + (s[i + 1] - s[i]) * (pos - i);
+    },
+    hasModifiers() {
+      for (let ch = PHONEME_CHANNELS; ch < CHANNELS; ch++)
+        if (this.values[ch] && this.values[ch].some(v => v > 0.01)) return true;
+      return false;
+    },
+  };
+}
+
+// Port of LipData::Parse (LipData.cpp): 24-byte header (variant B normalized by
+// dropping the extra byte at offset 14), frame-major 33-slot token grid -> dense
+// per-channel 30 fps timelines. Returns null on structural mismatch.
+function parseLip(bytes) {
+  if (!bytes || bytes.length < 24) return null;
+  let d = bytes;
+  let vocab = d[20] | (d[21] << 8);
+  if (vocab !== 16) {
+    const shifted = new Uint8Array(bytes.length - 1);
+    shifted.set(bytes.subarray(0, 14), 0);
+    shifted.set(bytes.subarray(15), 14);
+    d = shifted;
+    vocab = d[20] | (d[21] << 8);
+    if (vocab !== 16) return null;  // third (unknown) variant
+  }
+  const dv = new DataView(d.buffer, d.byteOffset, d.byteLength);
+  const version = dv.getUint32(0, true);
+  const frames = dv.getUint16(12, true);
+  if (version !== 1 || frames === 0 || frames > 60 * 30 * 30) return null;
+  // preroll: the first |preroll| grid frames are pre-audio lead-in; grid frame
+  // |preroll| lands on audio t=0 — skip the lead-in (matches LipData.cpp)
+  let lead = Math.max(0, Math.min(150, -dv.getInt32(16, true)));
+  if (lead + 1 >= frames) lead = 0;
+  const effFrames = frames - lead;
+
+  const keys = Array.from({ length: CHANNELS }, () => []);
+  let i = 24, pos = 0;
+  const size = d.length;
+  while (i + 4 <= size) {
+    const value = dv.getFloat32(i, true);
+    let floats = 1;
+    i += 4;
+    if (i + 4 <= size &&
+        d[i] === d[i-4] && d[i+1] === d[i-3] && d[i+2] === d[i-2] && d[i+3] === d[i-1]) {
+      floats = 2;  // dup: value + equal tangent
+      i += 4;
+    }
+    let skip = 0;
+    if (i + 3 <= size && d[i] === 0 && d[i+2] === 0 && d[i+1] !== 0 && d[i+1] % 4 === 0) {
+      skip = d[i+1] / 4;
+      i += 3;
+    }
+    const frame = Math.floor(pos / STRIDE), slot = pos % STRIDE;
+    if (frame >= lead && frame < frames && slot < CHANNELS) {
+      if (Math.abs(value) < 1e-6) keys[slot].push([frame - lead, 0]);
+      else if (value >= 0 && value <= 1.0001) keys[slot].push([frame - lead, Math.min(value, 1)]);
+    }
+    pos += floats + skip;
+  }
+
+  const anim = makeAnim(effFrames);
+  for (let ch = 0; ch < CHANNELS; ch++) {
+    const src = keys[ch];
+    if (!src.length) continue;
+    const series = new Float32Array(effFrames);
+    let k = 0;
+    for (let f = 0; f < effFrames; f++) {
+      while (k + 1 < src.length && src[k + 1][0] <= f) k++;
+      if (f <= src[0][0]) series[f] = src[0][1];
+      else if (k + 1 >= src.length) series[f] = src[src.length - 1][1];
+      else {
+        const [f0, v0] = src[k], [f1, v1] = src[k + 1];
+        series[f] = f1 > f0 ? v0 + (v1 - v0) * ((f - f0) / (f1 - f0)) : v1;
+      }
+    }
+    anim.values[ch] = series;
+  }
+  return anim;
+}
+
+// FUZE container: magic + u32 version + u32 lipSize + LIP block + RIFF audio
+function parseFuz(bytes) {
+  if (bytes.length < 12 || String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== "FUZE") return null;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const lipSize = dv.getUint32(8, true);
+  if (12 + lipSize > bytes.length) return null;
+  return {
+    lip: lipSize >= 24 ? bytes.subarray(12, 12 + lipSize) : null,
+    audio: bytes.subarray(12 + lipSize),
+  };
+}
+
+// 100 Hz RMS envelope from decoded PCM (mirrors LipSync ParseWav shaping)
+function buildEnvelope(channelData, sampleRate) {
+  const chans = channelData.length, n = channelData[0].length;
+  const win = Math.max(1, Math.floor(sampleRate / 100));
+  const count = Math.floor(n / win) + (n % win ? 1 : 0);
+  const levels = new Float32Array(count);
+  for (let w = 0; w < count; w++) {
+    const start = w * win, end = Math.min(n, start + win);
+    let sum = 0;
+    for (let s = start; s < end; s++) {
+      let mono = 0;
+      for (let c = 0; c < chans; c++) mono += channelData[c][s];
+      mono /= chans;
+      sum += mono * mono;
+    }
+    levels[w] = Math.sqrt(sum / (end - start));
+  }
+  let peak = 0;
+  for (const v of levels) peak = Math.max(peak, v);
+  if (peak < 1e-4) return null;  // silence
+  for (let w = 0; w < count; w++) levels[w] = Math.pow(Math.min(levels[w] / peak, 1), 0.6);
+  const windowSec = win / sampleRate;
+  return {
+    levels, windowSec, durationSec: count * windowSec,
+    sample(t) {
+      if (t < 0) return 0;
+      const pos = t / this.windowSec, i = Math.floor(pos);
+      if (i + 1 >= this.levels.length) return i < this.levels.length ? this.levels[i] : 0;
+      return this.levels[i] + (this.levels[i + 1] - this.levels[i]) * (pos - i);
+    },
+  };
+}
+
+// FNV-1a64 + splitmix64 (BigInt), same constants as LipSync.cpp
+const M64 = (1n << 64n) - 1n;
+function fnv1a64(text) {
+  let h = 0xCBF29CE484222325n;
+  for (let i = 0; i < text.length; i++) {
+    h ^= BigInt(text.charCodeAt(i) & 0xFF);
+    h = (h * 0x100000001B3n) & M64;
+  }
+  return h;
+}
+function mix64(x) {
+  x = (x + 0x9E3779B97F4A7C15n) & M64;
+  x = ((x ^ (x >> 30n)) * 0xBF58476D1CE4E5B9n) & M64;
+  x = ((x ^ (x >> 27n)) * 0x94D049BB133111EBn) & M64;
+  return x ^ (x >> 31n);
+}
+
+// Port of LipSync::SynthesizePseudoLip with tunable params p:
+// { minLevel, voicedFloor, valleyRatio, minSylFrames, gapFrames, close, attackMs, releaseMs }
+function synthesizePseudoLip(env, seedText, p) {
+  const frames = Math.floor(env.durationSec * FPS) + 1;
+  if (frames < 3) return null;
+
+  const voiced = Math.max(p.minLevel, p.voicedFloor);
+  const level = new Float32Array(frames);
+  for (let f = 0; f < frames; f++) {
+    const s = env.sample(f / FPS);
+    level[f] = s >= voiced ? s : 0;
+  }
+
+  const syllables = [];
+  let runStart = -1;
+  for (let f = 0; f <= frames; f++) {
+    const on = f < frames && level[f] > 0;
+    if (on && runStart < 0) runStart = f;
+    else if (!on && runStart >= 0) {
+      let segStart = runStart, peak = level[runStart];
+      for (let i = runStart + 1; i + 1 < f; i++) {
+        peak = Math.max(peak, level[i]);
+        if (level[i] <= level[i-1] && level[i] <= level[i+1] &&
+            level[i] < p.valleyRatio * peak && i - segStart >= p.minSylFrames) {
+          syllables.push({ start: segStart, end: i });
+          segStart = i;
+          peak = level[i];
+        }
+      }
+      syllables.push({ start: segStart, end: f });
+      runStart = -1;
+    }
+  }
+  if (!syllables.length) return null;
+
+  const anim = makeAnim(frames);
+  for (const ch of [PH.Aah, PH.BigAah, PH.BMP, PH.Eh, PH.Oh, PH.OohQ])
+    anim.values[ch] = new Float32Array(frames);
+
+  const seed = fnv1a64(seedText);
+  let prevVowel = -1, prevEnd = 0;
+  for (let s = 0; s < syllables.length; s++) {
+    const syl = syllables[s];
+    const roll = Number(mix64(seed + BigInt(s)) % 10n);
+    let vowel = roll < 4 ? PH.Aah : roll < 7 ? PH.Oh : roll < 9 ? PH.OohQ : PH.Eh;
+    if (vowel === prevVowel) {
+      vowel = vowel === PH.Aah ? PH.Oh : vowel === PH.Oh ? PH.OohQ :
+              vowel === PH.OohQ ? PH.Aah : PH.Oh;
+    }
+    prevVowel = vowel;
+    syl.vowel = vowel;
+    for (let f = syl.start; f < syl.end; f++) {
+      anim.values[vowel][f] = level[f];
+      if (vowel === PH.Aah)
+        anim.values[PH.BigAah][f] = Math.max(0, level[f] - 0.55) / 0.45 * 0.35;
+    }
+    if (syl.start >= 2 && syl.start - prevEnd >= p.gapFrames) {
+      anim.values[PH.BMP][syl.start - 2] = p.close * 0.65;
+      anim.values[PH.BMP][syl.start - 1] = p.close;
+      syl.closure = true;
+    }
+    prevEnd = syl.end;
+  }
+
+  const dt = 1 / FPS;
+  const attack = 1 - Math.exp(-dt / Math.max(0.005, p.attackMs / 1000));
+  const release = 1 - Math.exp(-dt / Math.max(0.005, p.releaseMs / 1000));
+  for (const ch of [PH.Aah, PH.BigAah, PH.Eh, PH.Oh, PH.OohQ]) {
+    let cur = 0;
+    const s = anim.values[ch];
+    for (let f = 0; f < s.length; f++) {
+      cur += (s[f] - cur) * (s[f] > cur ? attack : release);
+      s[f] = cur;
+    }
+  }
+  anim.syllables = syllables;
+  return anim;
+}
+
+// Envelope playback mode preview (ApplyAll's live smoothing baked at 30 fps):
+// Aah = smoothed level, BigAah = loud-peak spill
+function envelopeAnim(env, p) {
+  const frames = Math.floor(env.durationSec * FPS) + 1;
+  const anim = makeAnim(frames);
+  const aah = new Float32Array(frames), big = new Float32Array(frames);
+  const dt = 1 / FPS;
+  const attack = 1 - Math.exp(-dt / Math.max(0.005, p.attackMs / 1000));
+  const release = 1 - Math.exp(-dt / Math.max(0.005, p.releaseMs / 1000));
+  let cur = 0;
+  for (let f = 0; f < frames; f++) {
+    let target = env.sample(f / FPS);
+    if (target < p.minLevel) target = 0;
+    target = Math.min(target, 1);
+    cur += (target - cur) * (target > cur ? attack : release);
+    aah[f] = cur;
+    big[f] = Math.max(0, cur - 0.55) / 0.45 * 0.35;
+  }
+  anim.values[PH.Aah] = aah;
+  anim.values[PH.BigAah] = big;
+  return anim;
+}
+// ---------- MFG expression presets (PapyrusUtil StorageUtil json) ----------
+// SLO VE-style preset file: { "string": { "<name>": "<33 comma values>" } }.
+// Tokens: [0-15] the 16 MFG phonemes (0-100), [16-29] MFG modifiers 0-13
+// (0-100; the 2 head channels are not part of presets), [30] expression id
+// (0-16), [31] expression strength (0-100), [32] apply speed. "N/A" = leave
+// that channel untouched when applying (kept as null here).
+const EXPRESSIONS = ["DialogueAnger","DialogueFear","DialogueHappy","DialogueSad","DialogueSurprise",
+  "DialoguePuzzled","DialogueDisgusted","MoodNeutral","MoodAnger","MoodFear","MoodHappy","MoodSad",
+  "MoodSurprise","MoodPuzzled","MoodDisgusted","CombatAnger","CombatShout"];
+const PRESET_TOKENS = 33;
+
+function parsePresetTokens(str) {
+  const parts = String(str).split(",");
+  if (parts.length !== PRESET_TOKENS) return null;
+  const tokens = parts.map(p => {
+    p = p.trim();
+    if (p.toUpperCase() === "N/A") return null;
+    const v = parseFloat(p);
+    return Number.isFinite(v) ? v : null;
+  });
+  return tokens;
+}
+
+function formatPresetTokens(tokens) {
+  return tokens.map(v => v === null || v === undefined || Number.isNaN(v)
+    ? "N/A" : String(Math.round(v * 100) / 100)).join(",");
+}
+/* =============== END LIPSIM CORE ================ */
+
+/* ---------- state ---------- */
+const $ = id => document.getElementById(id);
+const state = {
+  audio: null,        // { name, buffer(AudioBuffer), envelope }
+  lip: null,          // { name, anim, source }
+  fuzAudioNote: "",
+  mode: "auto",
+  activeAnim: null,   // anim currently displayed/played (per mode, gain applied at sample time)
+  playing: false, offset: 0, t0: 0, srcNode: null, actx: null,
+};
+
+const params = () => ({
+  minLevel: +$("p_minLevel").value, voicedFloor: +$("p_voicedFloor").value,
+  valleyRatio: +$("p_valley").value, minSylFrames: +$("p_minSyl").value,
+  gapFrames: +$("p_gap").value, close: +$("p_close").value,
+  attackMs: +$("p_attack").value, releaseMs: +$("p_release").value,
+  gain: +$("p_gain").value, variant: +$("p_variant").value,
+});
+
+/* ---------- file loading ---------- */
+async function loadFiles(files, a_handles) {
+  if (!files.length) return;
+  // preset jsons load into their own slot; audio/lip files reset the av
+  // slots so no stale wav/lip pairing survives from earlier drops. To pair
+  // a wav with a lip (or give a fuz its sound), select the files TOGETHER.
+  // Process fuz -> lip -> audio so a wav chosen alongside a fuz wins the
+  // audio slot regardless of selection order.
+  const isJson = f => f.name.toLowerCase().endsWith(".json");
+  for (const file of [...files].filter(isJson)) {
+    try {
+      installPresets(file.name, JSON.parse(await file.text()));
+      // writable handle captured at drop time (Chromium) -> in-place save
+      state.presets.handle = a_handles?.has(file.name)
+        ? await a_handles.get(file.name).catch(() => null) : null;
+      updateSaveButton();
+      setStatus(`loaded ${file.name}: ${Object.keys(state.presets.doc.string).length} presets` +
+        (state.presets.handle ? "" : " (no direct file access — save falls back to download)"));
+    } catch (e) {
+      setStatus(`ERROR ${file.name}: ${e.message}`, true);
+    }
+  }
+  const isImg = f => /\.(png|jpe?g|webp|bmp)$/i.test(f.name);
+  for (const file of [...files].filter(isImg)) {
+    try {
+      const img = await createImageBitmap(file);
+      state.photo = { name: file.name, img, w: img.width, h: img.height,
+                      rig: null, rigging: false, clicks: [], warp: null };
+      const saved = localStorage.getItem(rigKey());
+      if (saved) {
+        state.photo.rig = JSON.parse(saved);
+        state.photo.clicks = state.photo.rig;
+        buildPhotoWarp();
+        setStatus(`loaded ${file.name} — saved face rig applied (photo face active)`);
+      } else {
+        startRig();
+      }
+      updatePhotoRow();
+    } catch (e) {
+      setStatus(`ERROR ${file.name}: ${e.message}`, true);
+    }
+  }
+  files = [...files].filter(f => !isJson(f) && !isImg(f));
+  if (!files.length) { rebuild(); return; }
+  state.audio = null;
+  state.lip = null;
+  state.fuzAudioNote = "";
+  state.audioBroken = false;
+  const rank = f => { const e = f.name.toLowerCase().split(".").pop(); return e === "fuz" ? 0 : e === "lip" ? 1 : 2; };
+  files = [...files].sort((a, b) => rank(a) - rank(b));
+  for (const file of files) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const ext = file.name.toLowerCase().split(".").pop();
+    try {
+      if (ext === "lip") {
+        const anim = parseLip(bytes);
+        if (!anim) throw new Error("unparseable .lip (third header variant?)");
+        state.lip = { name: file.name, anim, source: ".lip file" };
+      } else if (ext === "fuz") {
+        const fuz = parseFuz(bytes);
+        if (!fuz) throw new Error("not a FUZE container");
+        state.lip = null;
+        let lipNote = "no embedded lip block";
+        if (fuz.lip) {
+          const anim = parseLip(fuz.lip);
+          if (anim) state.lip = { name: file.name, anim, source: "fuz-embedded" };
+          else lipNote = `lip block present (${fuz.lip.length} bytes) but unparseable — unknown header variant?`;
+        }
+        state.fuzAudioNote = "";
+        try {
+          const buffer = await audioCtx().decodeAudioData(fuz.audio.slice().buffer);
+          setAudio(file.name, buffer);
+        } catch {
+          try {  // xWMA — decode in-page via ffmpeg.wasm (lazy CDN load)
+            setAudio(file.name, await decodeXwma(fuz.audio));
+            setStatus(`decoded xWMA audio of ${file.name} via ffmpeg.wasm`);
+          } catch (ffErr) {
+            state.fuzAudioNote = `xWMA audio not decodable here (${ffErr.message}) — run "python tools\\lipsim\\lipsim_server.py" and use the page it opens, or crack the fuz with fuz2wav.py`;
+            if (!state.lip) throw new Error(`nothing to simulate: ${lipNote}, xWMA audio undecodable (${ffErr.message}) — run lipsim_server.py instead`);
+          }
+        }
+      } else if (ext === "toml") {
+        continue;  // caption sidecar — nothing to simulate
+      } else {  // wav (or anything decodeAudioData accepts)
+        const buffer = await audioCtx().decodeAudioData(bytes.slice().buffer);
+        setAudio(file.name, buffer);
+        setStatus(`loaded ${file.name}: ${buffer.duration.toFixed(2)}s, ${buffer.sampleRate} Hz, ${buffer.numberOfChannels} ch`);
+        continue;
+      }
+      setStatus(`loaded ${file.name}`);
+    } catch (e) {
+      setStatus(`ERROR ${file.name}: ${e.message}`, true);
+    }
+  }
+  stop();
+  rebuild();
+}
+
+function setAudio(name, buffer) {
+  const chans = [];
+  for (let c = 0; c < buffer.numberOfChannels; c++) chans.push(buffer.getChannelData(c));
+  state.audio = { name, buffer, envelope: buildEnvelope(chans, buffer.sampleRate) };
+}
+
+function audioCtx() {
+  if (!state.actx) state.actx = new (window.AudioContext || window.webkitAudioContext)();
+  return state.actx;
+}
+
+/* ---------- xWMA decoding via ffmpeg.wasm (lazy, CDN, one-time ~10 MB) ---------- */
+// Browsers have no WMA codec, so fuz audio can't go through decodeAudioData.
+// ffmpeg.wasm carries ffmpeg's xwma demuxer + wmav2 decoder; we load it only
+// when a fuz actually needs it. Offline / blocked CDN degrades to the
+// fuz2wav.py hint. UMD build + blob URLs so it works from a file:// page.
+const FFMPEG_VER = "0.12.10", FFCORE_VER = "0.12.6";
+const CDN = "https://cdn.jsdelivr.net/npm";
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("script load failed: " + src));
+    document.head.appendChild(s);
+  });
+}
+
+async function toBlobURL(url, type) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`fetch ${resp.status}: ${url}`);
+  return URL.createObjectURL(new Blob([await resp.arrayBuffer()], { type }));
+}
+
+function withTimeout(promise, ms, what) {
+  return Promise.race([promise, new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`${what} timed out after ${ms / 1000}s`)), ms))]);
+}
+
+let ffmpegLoad = null;  // memoized load promise
+function getFfmpeg() {
+  ffmpegLoad ??= withTimeout((async () => {
+    if (location.protocol === "file:") {
+      // file:// pages can't spawn ffmpeg.wasm's worker — load() hangs forever
+      throw new Error("ffmpeg.wasm needs the page served over http");
+    }
+    setStatus("downloading ffmpeg.wasm for xWMA decode (one time, ~10 MB)…");
+    await loadScript(`${CDN}/@ffmpeg/ffmpeg@${FFMPEG_VER}/dist/umd/ffmpeg.js`);
+    const ff = new FFmpegWASM.FFmpeg();
+    const core = `${CDN}/@ffmpeg/core@${FFCORE_VER}/dist/umd`;
+    await ff.load({
+      coreURL: await toBlobURL(`${core}/ffmpeg-core.js`, "text/javascript"),
+      wasmURL: await toBlobURL(`${core}/ffmpeg-core.wasm`, "application/wasm"),
+      classWorkerURL: await toBlobURL(`${CDN}/@ffmpeg/ffmpeg@${FFMPEG_VER}/dist/umd/814.ffmpeg.js`, "text/javascript"),
+    });
+    return ff;
+  })(), 120000, "ffmpeg.wasm load");
+  ffmpegLoad.catch(() => { ffmpegLoad = null; });  // allow retry after a failure
+  return ffmpegLoad;
+}
+
+// decode a RIFF/XWMA blob to an AudioBuffer: lipsim_server's /decode endpoint
+// first (native CK xwmaencode — instant; exists only when served by the
+// server), then ffmpeg.wasm in-page
+async function decodeXwma(bytes) {
+  if (location.protocol !== "file:") {
+    try {
+      const resp = await fetch("decode", { method: "POST", body: bytes });
+      if (resp.ok) return await audioCtx().decodeAudioData(await resp.arrayBuffer());
+      console.warn("server /decode:", resp.status, await resp.text());
+    } catch (e) {
+      console.warn("server /decode unreachable:", e);
+    }
+  }
+  const ff = await getFfmpeg();
+  await ff.writeFile("in.xwm", bytes);
+  await withTimeout(ff.exec(["-y", "-i", "in.xwm", "out.wav"]), 60000, "ffmpeg decode");
+  const wav = await ff.readFile("out.wav");
+  await ff.deleteFile("in.xwm").catch(() => {});
+  await ff.deleteFile("out.wav").catch(() => {});
+  if (!wav || wav.length < 44) throw new Error("ffmpeg produced no output");
+  return audioCtx().decodeAudioData(wav.buffer.slice(wav.byteOffset, wav.byteOffset + wav.byteLength));
+}
+
+/* ---------- mode & rebuild ---------- */
+function activeMode() {
+  const m = state.mode;
+  if (m === "auto") return state.lip ? "lip" : state.audio?.envelope ? "pseudo" : null;
+  if (m === "lip") return state.lip ? "lip" : null;
+  if ((m === "pseudo" || m === "env") && state.audio?.envelope) return m;
+  return null;
+}
+
+function rebuild() {
+  const p = params();
+  const mode = activeMode();
+  state.activeAnim = null;
+  $("syls").textContent = "";
+  if (mode === "lip") {
+    state.activeAnim = state.lip.anim;
+  } else if (mode === "pseudo") {
+    const seed = state.audio.name.replace(/\.[^.]+$/, "") + (p.variant ? "#" + p.variant : "");
+    state.activeAnim = synthesizePseudoLip(state.audio.envelope, seed, p);
+    if (state.activeAnim) {
+      const syls = state.activeAnim.syllables;
+      $("syls").textContent = syls.length + " syllables: " + syls.map(s =>
+        `${PHONEMES[s.vowel]}${s.closure ? "*" : ""}[${(s.start/FPS).toFixed(1)}s]`).join(" ");
+    }
+  } else if (mode === "env") {
+    state.activeAnim = envelopeAnim(state.audio.envelope, p);
+  }
+  const dur = duration();
+  $("play").disabled = !(state.activeAnim || state.audio);
+  $("stopBtn").disabled = $("play").disabled;
+  const names = [];
+  if (state.audio) names.push(`audio: <span class="fname">${state.audio.name}</span>`);
+  if (state.lip) names.push(`lip: <span class="fname">${state.lip.name}</span> (${state.lip.source})`);
+  $("tlTitle").innerHTML = `Timeline — mode: <b>${mode ?? "n/a"}</b> — ${names.join(" · ") || "nothing loaded"} — ${dur.toFixed(2)}s`;
+  $("warn").textContent = state.fuzAudioNote;
+  renderTimeline();
+}
+
+function duration() {
+  return Math.max(state.activeAnim?.durationSec ?? 0, state.audio?.buffer.duration ?? 0);
+}
+
+/* ---------- transport ---------- */
+function usingAudioClock() { return state.audio && state.playing && !state.audioBroken; }
+function now() { return usingAudioClock() ? state.actx.currentTime : performance.now() / 1000; }
+function curT() { return state.playing ? now() - state.t0 : state.offset; }
+
+async function play() {
+  if (state.playing) { pause(); return; }
+  const dur = duration();
+  if (dur <= 0) return;
+  if (state.offset >= dur) state.offset = 0;
+  state.audioBroken = false;
+  if (state.audio) {
+    try {
+      const ctx = audioCtx();
+      if (ctx.state !== "running") await ctx.resume();  // autoplay policy: must be running BEFORE we anchor t0
+      if (ctx.state !== "running") throw new Error(`AudioContext stuck in '${ctx.state}'`);
+      const src = ctx.createBufferSource();
+      src.buffer = state.audio.buffer;
+      src.connect(ctx.destination);
+      src.start(0, Math.min(state.offset, state.audio.buffer.duration - 0.001));
+      src.onended = () => { if (state.srcNode === src) onEnded(); };
+      state.srcNode = src;
+      state.t0 = ctx.currentTime - state.offset;
+    } catch (e) {
+      setStatus(`audio playback failed: ${e.message} — running silent simulation`, true);
+      state.audioBroken = true;
+      state.t0 = performance.now() / 1000 - state.offset;
+    }
+  } else {
+    state.t0 = performance.now() / 1000 - state.offset;
+  }
+  state.playing = true;
+  $("play").innerHTML = "&#10073;&#10073; Pause";
+}
+
+function onEnded() {
+  if ($("loop").checked) { state.offset = 0; state.playing = false; play(); return; }
+  stop();
+}
+
+function pause() {
+  state.offset = curT();
+  killSrc();
+  state.playing = false;
+  $("play").innerHTML = "&#9654; Play";
+}
+
+function stop() {
+  killSrc();
+  state.playing = false;
+  state.offset = 0;
+  $("play").innerHTML = "&#9654; Play";
+}
+
+function killSrc() {
+  if (state.srcNode) { const s = state.srcNode; state.srcNode = null; try { s.stop(); } catch {} }
+}
+
+function seek(t) {
+  const wasPlaying = state.playing;
+  if (wasPlaying) pause();
+  state.offset = Math.max(0, Math.min(t, duration()));
+  if (wasPlaying) play();
+}
+
+/* ---------- timeline rendering ---------- */
+const tl = $("timeline"), tctx = tl.getContext("2d");
+let tlRows = [];  // [{ch, label}] rendered rows
+
+function heat(v) {
+  const c = Math.min(1, v);
+  return `rgb(${20 + 235 * c}, ${30 + 130 * c}, ${40 + 30 * c})`;
+}
+
+function renderTimeline() {
+  const anim = state.activeAnim;
+  const showMods = $("showMods").checked && anim && anim.hasModifiers();
+  tlRows = [];
+  for (let ch = 0; ch < PHONEME_CHANNELS; ch++) tlRows.push({ ch, label: PHONEMES[ch] });
+  if (showMods) for (let ch = 0; ch < 16; ch++) tlRows.push({ ch: PHONEME_CHANNELS + ch, label: MODIFIERS[ch] });
+
+  const W = tl.clientWidth || 800, rowH = 12, waveH = 56;
+  tl.width = W * devicePixelRatio;
+  tl.height = (waveH + 8 + tlRows.length * rowH + 4) * devicePixelRatio;
+  tl.style.height = tl.height / devicePixelRatio + "px";
+  tctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  tctx.clearRect(0, 0, W, tl.height);
+  const dur = duration();
+  if (dur <= 0) return;
+  const labelW = 62, plotW = W - labelW;
+
+  // waveform + envelope
+  tctx.fillStyle = "#1a1d23";
+  tctx.fillRect(labelW, 0, plotW, waveH);
+  if (state.audio) {
+    const data = state.audio.buffer.getChannelData(0);
+    tctx.strokeStyle = "#3d5a80";
+    tctx.beginPath();
+    for (let x = 0; x < plotW; x++) {
+      const s0 = Math.floor(x / plotW * (state.audio.buffer.duration / dur) * data.length);
+      const s1 = Math.floor((x + 1) / plotW * (state.audio.buffer.duration / dur) * data.length);
+      let lo = 0, hi = 0;
+      for (let s = s0; s < Math.min(s1, data.length); s += 8) { lo = Math.min(lo, data[s]); hi = Math.max(hi, data[s]); }
+      tctx.moveTo(labelW + x + 0.5, waveH / 2 - hi * waveH * 0.48);
+      tctx.lineTo(labelW + x + 0.5, waveH / 2 - lo * waveH * 0.48);
+    }
+    tctx.stroke();
+    if (state.audio.envelope) {
+      tctx.strokeStyle = "#e0b070";
+      tctx.beginPath();
+      for (let x = 0; x < plotW; x++) {
+        const v = state.audio.envelope.sample(x / plotW * dur);
+        const y = waveH - 2 - v * (waveH - 6);
+        x ? tctx.lineTo(labelW + x, y) : tctx.moveTo(labelW + x, y);
+      }
+      tctx.stroke();
+    }
+  }
+  tctx.fillStyle = "#7d8494";
+  tctx.font = "10px sans-serif";
+  tctx.fillText("wave/env", 4, waveH / 2);
+
+  // channel heatmap
+  const anim2 = anim;
+  const top = waveH + 8;
+  tlRows.forEach((row, r) => {
+    const y = top + r * rowH;
+    tctx.fillStyle = row.ch < PHONEME_CHANNELS ? "#9aa1af" : "#6f7787";
+    tctx.fillText(row.label, 4, y + 9);
+    if (!anim2 || !anim2.values[row.ch]) {
+      tctx.fillStyle = "#191c22";
+      tctx.fillRect(labelW, y, plotW, rowH - 1);
+      return;
+    }
+    for (let x = 0; x < plotW; x++) {
+      const v = anim2.sample(row.ch, x / plotW * dur);
+      tctx.fillStyle = v > 0.004 ? heat(v) : "#191c22";
+      tctx.fillRect(labelW + x, y, 1, rowH - 1);
+    }
+  });
+}
+
+tl.addEventListener("click", e => {
+  const rect = tl.getBoundingClientRect();
+  const x = e.clientX - rect.left - 62;
+  const plotW = (tl.clientWidth || 800) - 62;
+  if (x >= 0) seek(x / plotW * duration());
+});
+
+/* ---------- face + bars + playhead loop ---------- */
+const face = $("face");
+const bars = $("bars"), bctx = bars.getContext("2d");
+
+// per-phoneme mouth shape contributions
+const OPEN = { Aah: .7, BigAah: 1, ChjSh: .2, DST: .18, Eee: .22, Eh: .45, FV: .1, I: .2, K: .25, N: .1, Oh: .62, OohQ: .5, R: .22, Th: .3, W: .28, BMP: 0 };
+const WIDE = { Eee: .9, I: .7, Eh: .3, DST: .2, ChjSh: -.1 };
+const ROUND = { Oh: .55, OohQ: .95, W: .8, R: .3 };
+
+function weightsAt(t) {
+  const g = +$("p_gain").value;
+  const w = new Float32Array(CHANNELS);
+  const anim = state.activeAnim;
+  if (anim) for (let ch = 0; ch < CHANNELS; ch++)
+    if (anim.values[ch]) w[ch] = Math.min(1, anim.sample(ch, t) * (ch < PHONEME_CHANNELS ? g : 1));
+  return w;
+}
+
+// per-expression face bias at full strength (approximation for the preview
+// face — the real game applies the expression's own morph set)
+const MOODS = {
+  0:{browY:6,browIn:.6,eyeH:-.25,corner:4}, 8:{browY:6,browIn:.6,eyeH:-.25,corner:4}, 15:{browY:7,browIn:.7,eyeH:-.3,corner:4},
+  1:{browY:-7,eyeH:.35,corner:2}, 9:{browY:-7,eyeH:.35,corner:2},
+  2:{corner:-7,eyeH:-.1}, 10:{corner:-6,eyeH:-.1},
+  3:{browY:-2,corner:6}, 11:{browY:-2,corner:6},
+  4:{browY:-8,eyeH:.4,jaw:.25}, 12:{browY:-8,eyeH:.4,jaw:.2},
+  5:{browAsym:6,corner:1}, 13:{browAsym:6,corner:1},
+  6:{browY:4,corner:5,eyeH:-.15}, 14:{browY:4,corner:5,eyeH:-.15},
+  7:{}, 16:{browY:7,browIn:.7,jaw:.5},
+};
+
+// everything the face renderers need, derived from channel weights + mood
+function faceParams(w, expr) {
+  let open = 0, wide = 0, round = 0;
+  for (const [name, k] of Object.entries(OPEN)) open += w[PH[name]] * k;
+  for (const [name, k] of Object.entries(WIDE)) wide += w[PH[name]] * k;
+  for (const [name, k] of Object.entries(ROUND)) round += w[PH[name]] * k;
+  const press = w[PH.BMP];
+  const s = expr ? expr.strength : 0;
+  const mood = expr ? (MOODS[expr.id] || {}) : {};
+  const mBrowY = (mood.browY || 0) * s, mBrowIn = (mood.browIn || 0) * s;
+  const mBrowAsym = (mood.browAsym || 0) * s, mEyeH = (mood.eyeH || 0) * s;
+  const mCorner = (mood.corner || 0) * s, mJaw = (mood.jaw || 0) * s;
+  open = Math.max(0, Math.min(1.2, open + mJaw)) * (1 - press);
+  round = Math.min(1, round);
+  return { open, wide, round, press, mBrowY, mBrowIn, mBrowAsym, mEyeH, mCorner,
+    blinkL: w[16], blinkR: w[17],
+    browL: (w[22] - w[18]) * 6 - mBrowY + mBrowAsym,
+    browR: (w[23] - w[19]) * 6 - mBrowY - mBrowAsym,
+    lookX: (w[26] - w[25]) * 5, lookY: (w[27] - w[24]) * 4,
+    squintL: w[28], squintR: w[29] };
+}
+
+function drawFace(canvas, w, expr) {
+  if (state.photo?.rigging) { drawRigOverlay(canvas); return; }
+  if (state.photo?.rig) { drawPhotoFace(canvas, faceParams(w, expr)); return; }
+  const fctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  fctx.clearRect(0, 0, W, H);
+  const cx = W / 2;
+  const { open, wide, round, press, mBrowY, mBrowIn, mBrowAsym, mEyeH, mCorner } = faceParams(w, expr);
+
+  // ---- portrait: nord-ish head, jaw drops with `open` ----
+  const jawDrop = 20 * Math.min(1, open);
+  const chinY = 256 + jawDrop;
+
+  // hair mass behind the head
+  fctx.fillStyle = "#453329";
+  fctx.beginPath();
+  fctx.moveTo(cx - 84, 238);
+  fctx.quadraticCurveTo(cx - 94, 56, cx, 8);
+  fctx.quadraticCurveTo(cx + 94, 56, cx + 84, 238);
+  fctx.quadraticCurveTo(cx + 58, 252, cx + 42, 244);
+  fctx.lineTo(cx - 42, 244);
+  fctx.quadraticCurveTo(cx - 58, 252, cx - 84, 238);
+  fctx.fill();
+
+  // face skin
+  const skin = fctx.createRadialGradient(cx, 128, 30, cx, 150, 160);
+  skin.addColorStop(0, "#eed6ba");
+  skin.addColorStop(0.55, "#dcb695");
+  skin.addColorStop(1, "#bd8d63");
+  fctx.fillStyle = skin;
+  fctx.beginPath();
+  fctx.moveTo(cx - 62, 96);
+  fctx.quadraticCurveTo(cx - 62, 24, cx, 22);
+  fctx.quadraticCurveTo(cx + 62, 24, cx + 62, 96);
+  fctx.quadraticCurveTo(cx + 64, 150, cx + 52, 190);
+  fctx.quadraticCurveTo(cx + 40, 226 + jawDrop * 0.6, cx + 14, chinY);
+  fctx.quadraticCurveTo(cx, chinY + 6, cx - 14, chinY);
+  fctx.quadraticCurveTo(cx - 40, 226 + jawDrop * 0.6, cx - 52, 190);
+  fctx.quadraticCurveTo(cx - 64, 150, cx - 62, 96);
+  fctx.fill();
+
+  // hairline over the forehead
+  fctx.fillStyle = "#43332a";
+  fctx.beginPath();
+  fctx.moveTo(cx - 62, 92);
+  fctx.quadraticCurveTo(cx - 58, 42, cx - 20, 36);
+  fctx.quadraticCurveTo(cx, 48, cx + 20, 36);
+  fctx.quadraticCurveTo(cx + 58, 42, cx + 62, 92);
+  fctx.quadraticCurveTo(cx + 62, 30, cx, 20);
+  fctx.quadraticCurveTo(cx - 62, 30, cx - 62, 92);
+  fctx.fill();
+
+  // cheek blush
+  for (const side of [-1, 1]) {
+    const blush = fctx.createRadialGradient(cx + side * 42, 168, 2, cx + side * 42, 168, 22);
+    blush.addColorStop(0, "rgba(200,110,100,0.20)");
+    blush.addColorStop(1, "rgba(200,110,100,0)");
+    fctx.fillStyle = blush;
+    fctx.fillRect(cx + side * 42 - 24, 144, 48, 48);
+  }
+
+  // eyes + brows from modifiers (preset base and/or authored lip data)
+  const blinkL = w[16], blinkR = w[17];
+  const browL = (w[22] - w[18]) * 6 - mBrowY + mBrowAsym, browR = (w[23] - w[19]) * 6 - mBrowY - mBrowAsym;
+  const lookX = (w[26] - w[25]) * 5, lookY = (w[27] - w[24]) * 4;   // R-L, Up-Dn
+  const squintL = w[28], squintR = w[29];
+  const eyeY = 122;
+  for (const side of [-1, 1]) {
+    const ex = cx + side * 28, ey = eyeY;
+    const blink = side < 0 ? blinkL : blinkR;
+    const squint = side < 0 ? squintL : squintR;
+    const b = side < 0 ? browL : browR;
+
+    // brow: tapered filled shape, thicker toward the nose
+    const inX = ex - side * 18, outX = ex + side * 23;
+    fctx.fillStyle = "#54402f";
+    fctx.beginPath();
+    fctx.moveTo(inX, ey - 18 - b + mBrowIn * 7);
+    fctx.quadraticCurveTo(ex, ey - 27 - b, outX, ey - 20 - b);
+    fctx.quadraticCurveTo(ex, ey - 22 - b, inX, ey - 13.5 - b + mBrowIn * 7);
+    fctx.fill();
+
+    // almond eye
+    const openF = Math.max(0.06, (1 - blink) * (1 - 0.45 * squint) * (1 + mEyeH));
+    const eyePath = () => {
+      fctx.beginPath();
+      fctx.moveTo(ex - 16, ey);
+      fctx.quadraticCurveTo(ex, ey - 13 * openF, ex + 16, ey);
+      fctx.quadraticCurveTo(ex, ey + 9 * openF, ex - 16, ey);
+    };
+    eyePath();
+    fctx.fillStyle = "#f3efe7";
+    fctx.fill();
+    if (openF > 0.12) {
+      fctx.save();
+      eyePath();
+      fctx.clip();
+      const ix = ex + lookX, iy = ey + lookY;
+      fctx.fillStyle = "#6f95ac";
+      fctx.beginPath(); fctx.arc(ix, iy, 7, 0, Math.PI * 2); fctx.fill();
+      fctx.fillStyle = "#14161c";
+      fctx.beginPath(); fctx.arc(ix, iy, 3.1, 0, Math.PI * 2); fctx.fill();
+      fctx.fillStyle = "rgba(255,255,255,0.75)";
+      fctx.beginPath(); fctx.arc(ix - 2.2, iy - 2.2, 1.5, 0, Math.PI * 2); fctx.fill();
+      fctx.restore();
+    }
+    // lash line + lower lid
+    fctx.strokeStyle = "#2e211a"; fctx.lineWidth = 2;
+    fctx.beginPath();
+    fctx.moveTo(ex - 16, ey);
+    fctx.quadraticCurveTo(ex, ey - 13 * openF - 1, ex + 16, ey);
+    fctx.stroke();
+    fctx.strokeStyle = "rgba(120,80,60,0.5)"; fctx.lineWidth = 1;
+    fctx.beginPath();
+    fctx.moveTo(ex - 13, ey + 3);
+    fctx.quadraticCurveTo(ex, ey + 9 * openF + 1.5, ex + 13, ey + 3);
+    fctx.stroke();
+  }
+
+  // nose
+  fctx.strokeStyle = "rgba(140,95,65,0.55)"; fctx.lineWidth = 1.5;
+  fctx.beginPath(); fctx.moveTo(cx - 5, 132); fctx.quadraticCurveTo(cx - 7, 156, cx - 9, 167); fctx.stroke();
+  fctx.beginPath(); fctx.moveTo(cx + 5, 132); fctx.quadraticCurveTo(cx + 7, 156, cx + 9, 167); fctx.stroke();
+  fctx.beginPath(); fctx.moveTo(cx - 9, 167); fctx.quadraticCurveTo(cx, 175, cx + 9, 167); fctx.stroke();
+  fctx.fillStyle = "rgba(60,35,25,0.55)";
+  fctx.beginPath(); fctx.ellipse(cx - 6.5, 170, 2.4, 1.5, 0, 0, Math.PI * 2); fctx.fill();
+  fctx.beginPath(); fctx.ellipse(cx + 6.5, 170, 2.4, 1.5, 0, 0, Math.PI * 2); fctx.fill();
+
+  // ---- mouth ----
+  const mw = 34 * (1 + 0.30 * wide) * (1 - 0.45 * round) * (1 + 0.08 * press);
+  const opening = 34 * open;                                    // interior gap
+  const lipTh = (1 + 0.35 * round) * (1 - 0.35 * press);
+  const uY = 206;                                               // mouth line (upper jaw is fixed)
+  const lY = uY + opening;
+  const cxL = cx - mw, cxR = cx + mw;
+  const cyL = uY + mCorner, cyR = uY + mCorner;                 // corner curl: − = smile
+
+  const cavity = () => {
+    fctx.beginPath();
+    fctx.moveTo(cxL, cyL);
+    fctx.quadraticCurveTo(cx, uY - 2, cxR, cyR);
+    fctx.quadraticCurveTo(cx, lY + 8, cxL, cyL);
+  };
+  if (opening > 1.5) {
+    cavity();
+    fctx.fillStyle = "#26100f";
+    fctx.fill();
+    fctx.save();
+    cavity();
+    fctx.clip();
+    fctx.fillStyle = "#e9e3d2";                                 // upper teeth
+    fctx.fillRect(cx - mw * 0.85, uY - 2, mw * 1.7, Math.min(11, opening * 0.45));
+    if (opening > 14) {                                         // tongue
+      fctx.fillStyle = "#a4525c";
+      fctx.beginPath();
+      fctx.ellipse(cx, lY + 6, mw * 0.62, Math.min(14, opening * 0.4), 0, Math.PI, 2 * Math.PI);
+      fctx.fill();
+    }
+    if (opening > 22) {                                         // lower teeth
+      fctx.fillStyle = "#ddd6c2";
+      fctx.fillRect(cx - mw * 0.7, lY - 6, mw * 1.4, 8);
+    }
+    fctx.restore();
+  }
+
+  // upper lip with cupid's bow
+  const upH = 8 * lipTh;
+  fctx.fillStyle = "#b4636b";
+  fctx.beginPath();
+  fctx.moveTo(cxL, cyL);
+  fctx.quadraticCurveTo(cx - mw * 0.45, uY - upH - 1 + mCorner * 0.4, cx - mw * 0.16, uY - upH);
+  fctx.quadraticCurveTo(cx, uY - upH + 2.5, cx + mw * 0.16, uY - upH);
+  fctx.quadraticCurveTo(cx + mw * 0.45, uY - upH - 1 + mCorner * 0.4, cxR, cyR);
+  fctx.quadraticCurveTo(cx, uY + 2, cxL, cyL);
+  fctx.fill();
+
+  // lower lip (rides the jaw)
+  const loH = 11 * lipTh * (1 + 0.15 * round);
+  fctx.fillStyle = "#c1707a";
+  fctx.beginPath();
+  fctx.moveTo(cxL, cyL);
+  fctx.quadraticCurveTo(cx, lY + 8, cxR, cyR);
+  fctx.quadraticCurveTo(cx + mw * 0.55, lY + loH + 7, cx, lY + loH + 9);
+  fctx.quadraticCurveTo(cx - mw * 0.55, lY + loH + 7, cxL, cyL);
+  fctx.fill();
+  fctx.fillStyle = "rgba(255,255,255,0.13)";                    // lip highlight
+  fctx.beginPath();
+  fctx.ellipse(cx, lY + loH * 0.55 + 5, mw * 0.4, 2.6, 0, 0, Math.PI * 2);
+  fctx.fill();
+
+  // philtrum + chin shadow
+  fctx.strokeStyle = "rgba(150,100,70,0.35)"; fctx.lineWidth = 1;
+  fctx.beginPath(); fctx.moveTo(cx - 2, 180); fctx.lineTo(cx - 1, uY - upH - 2); fctx.stroke();
+  if (open > 0.15) {
+    const shade = fctx.createRadialGradient(cx, lY + loH + 16, 2, cx, lY + loH + 16, 18);
+    shade.addColorStop(0, "rgba(120,70,45,0.22)");
+    shade.addColorStop(1, "rgba(120,70,45,0)");
+    fctx.fillStyle = shade;
+    fctx.fillRect(cx - 20, lY + loH + 2, 40, 28);
+  }
+}
+
+/* ---------- photo face mode ----------
+   Drop a screenshot of a character's face, click the landmarks once (stored
+   per image in localStorage), and the photo is warped live by the same
+   channel weights that drive the vector face: moving-least-squares (affine)
+   deformation over a grid, with the mouth cavity (teeth/tongue) painted
+   between the warped inner-lip curves. */
+const RIG_LABELS = [
+  "LEFT brow outer end", "LEFT brow inner end", "RIGHT brow inner end", "RIGHT brow outer end",
+  "LEFT eye outer corner", "LEFT eye upper lid (top)", "LEFT eye inner corner", "LEFT eye lower lid (bottom)",
+  "RIGHT eye inner corner", "RIGHT eye upper lid (top)", "RIGHT eye outer corner", "RIGHT eye lower lid (bottom)",
+  "nose tip",
+  "LEFT mouth corner", "RIGHT mouth corner",
+  "upper lip top (center of cupid's bow)", "lip seam (center, where the lips meet)", "lower lip bottom (center)",
+  "chin bottom", "LEFT jaw edge (level with the mouth)", "RIGHT jaw edge (level with the mouth)",
+];
+const RIG = { browLo:0, browLi:1, browRi:2, browRo:3,
+  eyeLo:4, eyeLt:5, eyeLi:6, eyeLb:7, eyeRi:8, eyeRt:9, eyeRo:10, eyeRb:11,
+  nose:12, cornL:13, cornR:14, lipTop:15, seam:16, lipBot:17, chin:18, jawL:19, jawR:20 };
+
+function rigKey() { return `lipsim-rig:${state.photo.name}:${state.photo.w}x${state.photo.h}`; }
+
+function photoFit(canvas) {
+  const scale = Math.min(canvas.width / state.photo.w, canvas.height / state.photo.h);
+  return { scale, ox: (canvas.width - state.photo.w * scale) / 2,
+           oy: (canvas.height - state.photo.h * scale) / 2 };
+}
+
+function startRig() {
+  state.photo.rigging = true;
+  state.photo.rig = null;
+  state.photo.clicks = [];
+  setStatus(`face rig 1/${RIG_LABELS.length}: click the ${RIG_LABELS[0]}`);
+  renderPresetFace();
+}
+
+function rigClick(canvas, e) {
+  const rect = canvas.getBoundingClientRect();
+  const fit = photoFit(canvas);
+  const x = ((e.clientX - rect.left) * (canvas.width / rect.width) - fit.ox) / fit.scale;
+  const y = ((e.clientY - rect.top) * (canvas.height / rect.height) - fit.oy) / fit.scale;
+  state.photo.clicks.push([x, y]);
+  const n = state.photo.clicks.length;
+  if (n < RIG_LABELS.length) {
+    setStatus(`face rig ${n + 1}/${RIG_LABELS.length}: click the ${RIG_LABELS[n]}`);
+  } else {
+    state.photo.rig = state.photo.clicks;
+    state.photo.rigging = false;
+    localStorage.setItem(rigKey(), JSON.stringify(state.photo.rig));
+    buildPhotoWarp();
+    setStatus("face rig complete — photo face active (re-rig via the button under the player face)");
+  }
+  renderPresetFace();
+}
+
+function drawRigOverlay(canvas) {
+  const c = canvas.getContext("2d");
+  const fit = photoFit(canvas);
+  c.clearRect(0, 0, canvas.width, canvas.height);
+  c.drawImage(state.photo.img, fit.ox, fit.oy, state.photo.w * fit.scale, state.photo.h * fit.scale);
+  c.fillStyle = "#ff5252";
+  for (const [x, y] of state.photo.clicks) {
+    c.beginPath();
+    c.arc(x * fit.scale + fit.ox, y * fit.scale + fit.oy, 2.5, 0, Math.PI * 2);
+    c.fill();
+  }
+  c.fillStyle = "rgba(0,0,0,0.65)";
+  c.fillRect(0, 0, canvas.width, 16);
+  c.fillStyle = "#ffd580";
+  c.font = "11px sans-serif";
+  c.fillText(`click: ${RIG_LABELS[state.photo.clicks.length] || ""}`, 6, 12);
+}
+
+// MLS affine deformation, precomputed against the source rig
+function buildPhotoWarp() {
+  const rig = state.photo.rig;
+  // control points: rig with the lip seam split into upper/lower, plus
+  // static anchors ringing the face so the warp fades out
+  const src = rig.map(p => [...p]);
+  const seam = src[RIG.seam];
+  src[RIG.seam] = [seam[0], seam[1] - 1.5];          // upper inner lip
+  src.push([seam[0], seam[1] + 1.5]);                // 21: lower inner lip
+  const xs = rig.map(p => p[0]), ys = rig.map(p => p[1]);
+  const io = Math.hypot(rig[RIG.eyeRo][0] - rig[RIG.eyeLo][0], rig[RIG.eyeRo][1] - rig[RIG.eyeLo][1]);
+  const pad = io * 0.75;
+  const bb = { x0: Math.min(...xs) - pad, x1: Math.max(...xs) + pad,
+               y0: Math.min(...ys) - pad * 1.1, y1: Math.max(...ys) + pad * 0.7 };
+  for (const t of [0, 0.5, 1]) {
+    src.push([bb.x0 + t * (bb.x1 - bb.x0), bb.y0], [bb.x0 + t * (bb.x1 - bb.x0), bb.y1]);
+    if (t === 0.5) continue;
+    src.push([bb.x0 + t * (bb.x1 - bb.x0), (bb.y0 + bb.y1) / 2]);
+  }
+  const n = src.length;
+
+  const COLS = 13, ROWS = 15;
+  const verts = [];
+  for (let r = 0; r <= ROWS; r++)
+    for (let col = 0; col <= COLS; col++)
+      verts.push([bb.x0 + col / COLS * (bb.x1 - bb.x0), bb.y0 + r / ROWS * (bb.y1 - bb.y0)]);
+
+  // per vertex: weights, p*, inverse covariance, weighted offsets
+  const pre = verts.map(v => {
+    const wts = new Float64Array(n);
+    let wsum = 0;
+    for (let i = 0; i < n; i++) {
+      const dx = v[0] - src[i][0], dy = v[1] - src[i][1];
+      wts[i] = 1 / Math.max(1e-4, dx * dx + dy * dy);
+      wsum += wts[i];
+    }
+    let px = 0, py = 0;
+    for (let i = 0; i < n; i++) { px += wts[i] * src[i][0]; py += wts[i] * src[i][1]; }
+    px /= wsum; py /= wsum;
+    let a = 0, b = 0, d = 0;
+    const hat = new Float64Array(n * 2);
+    for (let i = 0; i < n; i++) {
+      const hx = src[i][0] - px, hy = src[i][1] - py;
+      hat[i * 2] = hx; hat[i * 2 + 1] = hy;
+      a += wts[i] * hx * hx; b += wts[i] * hx * hy; d += wts[i] * hy * hy;
+    }
+    const det = a * d - b * b || 1e-9;
+    return { v, wts, wsum, px, py, hat,
+      inv: [d / det, -b / det, -b / det, a / det] };
+  });
+  state.photo.warp = { src, pre, bb, io, COLS, ROWS, nRig: rig.length };
+}
+
+// destination control points for the current face params
+function photoDst(fp) {
+  const { src } = state.photo.warp;
+  const io = state.photo.warp.io, k = io / 130;
+  const dst = src.map(p => [...p]);
+  const move = (i, dx, dy) => { dst[i][0] += dx * k; dst[i][1] += dy * k; };
+  const o = fp.open;
+  // brows
+  move(RIG.browLo, 0, -fp.browL * 1.2); move(RIG.browLi, 0, -fp.browL * 1.2 + fp.mBrowIn * 7);
+  move(RIG.browRi, 0, -fp.browR * 1.2 + fp.mBrowIn * 7); move(RIG.browRo, 0, -fp.browR * 1.2);
+  // lids: blink pulls the top lid to the bottom one, squint narrows both
+  for (const [top, bot, blink, squint] of [[RIG.eyeLt, RIG.eyeLb, fp.blinkL, fp.squintL],
+                                           [RIG.eyeRt, RIG.eyeRb, fp.blinkR, fp.squintR]]) {
+    const h = src[bot][1] - src[top][1];
+    const close = Math.max(blink, squint * 0.45);
+    dst[top][1] += h * close * 0.9 - fp.mEyeH * 5 * k;
+    dst[bot][1] -= h * squint * 0.3;
+  }
+  // mouth: corners, lips, jaw. 21 = lower inner lip (split seam)
+  const cornerDX = (fp.wide * 10 - fp.round * 14);
+  const cornerDY = fp.mCorner * 1.2 + o * 8;
+  move(RIG.cornL, -cornerDX, cornerDY); move(RIG.cornR, cornerDX, cornerDY);
+  move(RIG.lipTop, 0, fp.press * 2);
+  move(RIG.seam, 0, o * 3);            // upper inner lip barely drops
+  move(21, 0, o * 28);                 // lower inner lip rides the jaw
+  move(RIG.lipBot, 0, o * 33 - fp.press * 3);
+  move(RIG.chin, 0, o * 40);
+  move(RIG.jawL, o * 3, o * 15); move(RIG.jawR, -o * 3, o * 15);
+  return dst;
+}
+
+function drawWarpedTri(c, img, s, d0, d1, d2, s0, s1, s2) {
+  const den = s0[0] * (s1[1] - s2[1]) + s1[0] * (s2[1] - s0[1]) + s2[0] * (s0[1] - s1[1]);
+  if (!den) return;
+  c.save();
+  c.beginPath();
+  // expand the destination triangle a hair to hide seams
+  const gx = (d0[0] + d1[0] + d2[0]) / 3, gy = (d0[1] + d1[1] + d2[1]) / 3;
+  const e = p => [gx + (p[0] - gx) * 1.03, gy + (p[1] - gy) * 1.03];
+  const [e0, e1, e2] = [e(d0), e(d1), e(d2)];
+  c.moveTo(e0[0], e0[1]); c.lineTo(e1[0], e1[1]); c.lineTo(e2[0], e2[1]);
+  c.closePath();
+  c.clip();
+  const a = (d0[0] * (s1[1] - s2[1]) + d1[0] * (s2[1] - s0[1]) + d2[0] * (s0[1] - s1[1])) / den;
+  const b = (d0[1] * (s1[1] - s2[1]) + d1[1] * (s2[1] - s0[1]) + d2[1] * (s0[1] - s1[1])) / den;
+  const cc = (d0[0] * (s2[0] - s1[0]) + d1[0] * (s0[0] - s2[0]) + d2[0] * (s1[0] - s0[0])) / den;
+  const dd = (d0[1] * (s2[0] - s1[0]) + d1[1] * (s0[0] - s2[0]) + d2[1] * (s1[0] - s0[0])) / den;
+  c.transform(a, b, cc, dd, d0[0] - a * s0[0] - cc * s0[1], d0[1] - b * s0[0] - dd * s0[1]);
+  c.drawImage(img, 0, 0);
+  c.restore();
+}
+
+function drawPhotoFace(canvas, fp) {
+  const c = canvas.getContext("2d");
+  const { img } = state.photo;
+  const fit = photoFit(canvas);
+  const { pre, bb, io, COLS, ROWS } = state.photo.warp;
+  const dst = photoDst(fp);
+  const n = dst.length;
+
+  // MLS: f(v) = (v − p*)·M + q*,  M = inv(Σw p̂ᵀp̂)·(Σw p̂ᵀq̂)
+  const out = new Float64Array(pre.length * 2);
+  for (let vi = 0; vi < pre.length; vi++) {
+    const P = pre[vi];
+    let qx = 0, qy = 0;
+    for (let i = 0; i < n; i++) { qx += P.wts[i] * dst[i][0]; qy += P.wts[i] * dst[i][1]; }
+    qx /= P.wsum; qy /= P.wsum;
+    let b00 = 0, b01 = 0, b10 = 0, b11 = 0;
+    for (let i = 0; i < n; i++) {
+      const qhx = dst[i][0] - qx, qhy = dst[i][1] - qy;
+      const whx = P.wts[i] * P.hat[i * 2], why = P.wts[i] * P.hat[i * 2 + 1];
+      b00 += whx * qhx; b01 += whx * qhy; b10 += why * qhx; b11 += why * qhy;
+    }
+    const m00 = P.inv[0] * b00 + P.inv[1] * b10, m01 = P.inv[0] * b01 + P.inv[1] * b11;
+    const m10 = P.inv[2] * b00 + P.inv[3] * b10, m11 = P.inv[2] * b01 + P.inv[3] * b11;
+    const dx = P.v[0] - P.px, dy = P.v[1] - P.py;
+    out[vi * 2] = (dx * m00 + dy * m10 + qx) * fit.scale + fit.ox;
+    out[vi * 2 + 1] = (dx * m01 + dy * m11 + qy) * fit.scale + fit.oy;
+  }
+
+  c.clearRect(0, 0, canvas.width, canvas.height);
+  c.drawImage(img, fit.ox, fit.oy, state.photo.w * fit.scale, state.photo.h * fit.scale);
+
+  // mouth cavity behind the warped skin
+  const toC = p => [p[0] * fit.scale + fit.ox, p[1] * fit.scale + fit.oy];
+  const cL = toC(dst[RIG.cornL]), cR = toC(dst[RIG.cornR]);
+  const up = toC(dst[RIG.seam]), lo = toC(dst[21]);
+  const gap = lo[1] - up[1];
+
+  const grid = (r, col) => [out[(r * (COLS + 1) + col) * 2], out[(r * (COLS + 1) + col) * 2 + 1]];
+  const sgrid = (r, col) => pre[r * (COLS + 1) + col].v;
+  for (let r = 0; r < ROWS; r++) {
+    for (let col = 0; col < COLS; col++) {
+      const s00 = sgrid(r, col), s10 = sgrid(r, col + 1), s01 = sgrid(r + 1, col), s11 = sgrid(r + 1, col + 1);
+      drawWarpedTri(c, img, null, grid(r, col), grid(r, col + 1), grid(r + 1, col), s00, s10, s01);
+      drawWarpedTri(c, img, null, grid(r, col + 1), grid(r + 1, col + 1), grid(r + 1, col), s10, s11, s01);
+    }
+  }
+
+  if (gap > 3 * fit.scale) {
+    const cavity = () => {
+      c.beginPath();
+      c.moveTo(cL[0], cL[1]);
+      c.quadraticCurveTo(up[0], up[1] - gap * 0.1, cR[0], cR[1]);
+      c.quadraticCurveTo(lo[0], lo[1] + gap * 0.25, cL[0], cL[1]);
+    };
+    cavity();
+    c.fillStyle = "#1e0c0b";
+    c.fill();
+    c.save();
+    cavity();
+    c.clip();
+    const kk = io * fit.scale / 130;
+    c.fillStyle = "#e6dfc8";                       // upper teeth
+    c.fillRect(up[0] - 26 * kk, Math.min(cL[1], cR[1]) - 2, 52 * kk, Math.min(11 * kk, gap * 0.4));
+    if (gap > 15 * kk) {                           // tongue
+      c.fillStyle = "#8e4650";
+      c.beginPath();
+      c.ellipse(lo[0], lo[1] + 2, 20 * kk, Math.min(12 * kk, gap * 0.35), 0, Math.PI, 2 * Math.PI);
+      c.fill();
+    }
+    c.restore();
+  }
+}
+
+function drawBars(w) {
+  const W = bars.clientWidth || 500;
+  bars.width = W * devicePixelRatio;
+  bars.height = 120 * devicePixelRatio;
+  bars.style.height = "120px";
+  bctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  bctx.clearRect(0, 0, W, 120);
+  const n = PHONEME_CHANNELS, bw = W / n;
+  bctx.font = "9px sans-serif";
+  for (let ch = 0; ch < n; ch++) {
+    const h = w[ch] * 96;
+    bctx.fillStyle = heat(w[ch]);
+    bctx.fillRect(ch * bw + 3, 100 - h, bw - 6, h);
+    bctx.fillStyle = "#7d8494";
+    bctx.save();
+    bctx.translate(ch * bw + bw / 2, 116);
+    bctx.fillText(PHONEMES[ch], -bctx.measureText(PHONEMES[ch]).width / 2, 0);
+    bctx.restore();
+  }
+}
+
+let lastPlayheadX = -1;
+function frame() {
+  const dur = duration();
+  let t = curT();
+  if (state.playing && !usingAudioClock() && t >= dur) { onEnded(); t = curT(); }
+  // compensate audio output latency: what's HEARD right now left the context
+  // outputLatency+baseLatency ago, so sample the mouth at the heard time
+  if (usingAudioClock())
+    t = Math.max(0, t - (state.actx.baseLatency || 0) - (state.actx.outputLatency || 0));
+  $("clock").textContent = t.toFixed(2) + "s / " + dur.toFixed(2) + "s";
+  const w = weightsAt(t);
+  drawFace(face, w, null);
+  drawBars(w);
+  // playhead: redraw timeline strip cheaply via overlay line
+  if (dur > 0) {
+    const W = tl.clientWidth || 800, plotW = W - 62;
+    const x = 62 + t / dur * plotW;
+    if (Math.abs(x - lastPlayheadX) > 0.5) {
+      renderTimelineWithPlayhead(x);
+      lastPlayheadX = x;
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+// keep a cached base image of the timeline; draw playhead over it
+let tlBase = null;
+const origRenderTimeline = renderTimeline;
+renderTimeline = function () {
+  origRenderTimeline();
+  tlBase = tctx.getImageData(0, 0, tl.width, tl.height);
+};
+function renderTimelineWithPlayhead(x) {
+  if (!tlBase) return;
+  tctx.putImageData(tlBase, 0, 0);
+  tctx.save();
+  tctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  tctx.strokeStyle = "#ffffffaa";
+  tctx.beginPath();
+  tctx.moveTo(x, 0); tctx.lineTo(x, tl.height / devicePixelRatio);
+  tctx.stroke();
+  tctx.restore();
+}
+
+/* ---------- Presets tab ---------- */
+function showTab(which) {
+  $("playerView").style.display = which === "player" ? "" : "none";
+  $("presetView").style.display = which === "presets" ? "" : "none";
+  $("tabPlayer").classList.toggle("active", which === "player");
+  $("tabPresets").classList.toggle("active", which === "presets");
+  if (which === "presets") renderPresetFace();
+}
+
+function installPresets(fileName, doc) {
+  if (!doc || typeof doc.string !== "object" || Array.isArray(doc.string))
+    throw new Error('not a StorageUtil preset json (no "string" table)');
+  state.presets = { file: fileName, doc, dirty: false };
+  state.preset = null;
+  $("presetFile").textContent = fileName;
+  $("presetFilter").value = "";
+  buildPresetList();
+  const first = Object.keys(doc.string)[0];
+  if (first) selectPreset(first);
+  showTab("presets");
+}
+
+function buildPresetList() {
+  if (!state.presets) return;
+  const box = $("presetList");
+  const filter = $("presetFilter").value.trim().toLowerCase();
+  const all = Object.keys(state.presets.doc.string);
+  const names = all.filter(n => !filter || n.toLowerCase().includes(filter));
+  box.innerHTML = "";
+  for (const n of names) {
+    const item = document.createElement("div");
+    item.className = "pitem" + (state.preset && state.preset.name === n ? " sel" : "");
+    item.textContent = n;
+    item.addEventListener("click", () => selectPreset(n));
+    box.appendChild(item);
+  }
+  $("presetCount").textContent = `${names.length}/${all.length}`;
+}
+
+function presetStatus(msg, err) {
+  $("presetStatus").textContent = msg;
+  $("presetStatus").style.color = err ? "#e07070" : "#7d8494";
+}
+
+function selectPreset(name) {
+  const raw = state.presets.doc.string[name];
+  const tokens = parsePresetTokens(raw);
+  if (!tokens) {
+    presetStatus(`"${name}" is malformed (${String(raw).split(",").length} tokens, expected 33)`, true);
+    return;
+  }
+  state.preset = { name, tokens };
+  $("presetName").textContent = name;
+  for (const el of $("presetList").children) {
+    const sel = el.textContent === name;
+    el.classList.toggle("sel", sel);
+    if (sel) el.scrollIntoView({ block: "nearest" });
+  }
+  presetStatus("drag sliders — the face updates live; N/A = channel left untouched in-game");
+  refreshPresetRows();
+  renderPresetFace();
+}
+
+// write the edited tokens back into the loaded document ("save" to persist)
+function presetEdited() {
+  const p = state.preset;
+  state.presets.doc.string[p.name] = formatPresetTokens(p.tokens);
+  state.presets.dirty = true;
+  updateSaveButton();
+  presetStatus(`${p.name} — edited (unsaved changes)`);
+  renderPresetFace();
+}
+
+function updateSaveButton() {
+  $("presetSave").textContent = state.presets?.dirty ? "save *" : "save";
+}
+
+async function savePresets() {
+  if (!state.presets) return;
+  const handle = state.presets.handle;
+  if (!handle) {
+    $("presetDownload").click();
+    presetStatus("no direct file access (drag the json from Explorer in Chrome/Edge to enable in-place save) — downloaded a copy instead");
+    return;
+  }
+  try {
+    if (await handle.queryPermission({ mode: "readwrite" }) !== "granted" &&
+        await handle.requestPermission({ mode: "readwrite" }) !== "granted") {
+      throw new Error("write permission denied");
+    }
+    const writable = await handle.createWritable();
+    await writable.write(JSON.stringify(state.presets.doc, null, 3));
+    await writable.close();
+    state.presets.dirty = false;
+    updateSaveButton();
+    presetStatus(`saved ${state.presets.file} in place`);
+  } catch (e) {
+    presetStatus(`save failed (${e.message}) — downloading a copy instead`, true);
+    $("presetDownload").click();
+  }
+}
+
+// the preset tab's face: pure preset weights (no lipsync compositing)
+function renderPresetFace() {
+  const w = new Float32Array(CHANNELS);
+  const p = state.preset;
+  if (p) {
+    for (let i = 0; i < PHONEME_CHANNELS; i++) w[i] = Math.min(1, (p.tokens[i] ?? 0) / 100);
+    for (let i = 0; i < 14; i++) w[16 + i] = Math.min(1, (p.tokens[16 + i] ?? 0) / 100);
+  }
+  drawFace($("pface"), w, currentExpression());
+}
+
+// one slider row per token; built once, refreshed on preset switch
+const presetRows = [];  // {tokenIndex, slider, valEl, naBtn} — expression row handled separately
+function buildPresetRows() {
+  const box = $("presetSliders");
+  const addSection = label => {
+    const s = document.createElement("div");
+    s.className = "sect";
+    s.textContent = label;
+    box.appendChild(s);
+  };
+  const addRow = (label, index, max) => {
+    const row = document.createElement("div");
+    row.className = "prow";
+    row.innerHTML = `<label>${label}</label><input type="range" min="0" max="${max}" step="0.5">` +
+                    `<span class="val"></span><button class="na" title="toggle N/A (leave channel untouched)">N/A</button>`;
+    box.appendChild(row);
+    const slider = row.querySelector("input"), valEl = row.querySelector(".val"), naBtn = row.querySelector(".na");
+    const entry = { index, slider, valEl, naBtn };
+    slider.addEventListener("input", () => {
+      if (!state.preset) return;
+      state.preset.tokens[index] = +slider.value;
+      refreshRow(entry);
+      presetEdited();
+    });
+    naBtn.addEventListener("click", () => {
+      if (!state.preset) return;
+      state.preset.tokens[index] = state.preset.tokens[index] === null ? +slider.value : null;
+      refreshRow(entry);
+      presetEdited();
+    });
+    presetRows.push(entry);
+  };
+  addSection("phonemes");
+  PHONEMES.forEach((n, i) => addRow(n, i, 100));
+  addSection("modifiers");
+  MODIFIERS.slice(0, 14).forEach((n, i) => addRow(n, 16 + i, 100));
+  addSection("expression");
+  const exprRow = document.createElement("div");
+  exprRow.className = "prow";
+  exprRow.innerHTML = `<label>expression</label><select style="flex:1;background:#14161a;border:1px solid #3a4150;border-radius:4px;color:inherit;padding:2px">` +
+    EXPRESSIONS.map((n, i) => `<option value="${i}">${i} ${n}</option>`).join("") +
+    `</select><button class="na" title="toggle N/A">N/A</button>`;
+  box.appendChild(exprRow);
+  const exprSelect = exprRow.querySelector("select"), exprNa = exprRow.querySelector(".na");
+  exprSelect.addEventListener("change", () => {
+    if (!state.preset) return;
+    state.preset.tokens[30] = +exprSelect.value;
+    presetEdited();
+  });
+  exprNa.addEventListener("click", () => {
+    if (!state.preset) return;
+    state.preset.tokens[30] = state.preset.tokens[30] === null ? +exprSelect.value : null;
+    refreshPresetRows();
+    presetEdited();
+  });
+  addRow("strength", 31, 100);
+  addRow("speed", 32, 100);
+  state.presetExprUI = { exprSelect, exprNa };
+}
+
+function refreshRow(entry) {
+  const v = state.preset ? state.preset.tokens[entry.index] : null;
+  entry.naBtn.classList.toggle("off", v !== null);
+  entry.slider.disabled = v === null;
+  if (v !== null) entry.slider.value = v;
+  entry.valEl.textContent = v === null ? "N/A" : String(Math.round(v * 10) / 10);
+}
+
+function refreshPresetRows() {
+  if (!presetRows.length) buildPresetRows();
+  presetRows.forEach(refreshRow);
+  const { exprSelect, exprNa } = state.presetExprUI;
+  const id = state.preset ? state.preset.tokens[30] : null;
+  exprNa.classList.toggle("off", id !== null);
+  exprSelect.disabled = id === null;
+  if (id !== null) exprSelect.value = String(Math.max(0, Math.min(16, Math.round(id))));
+}
+
+// current expression for the face renderer: {id, strength 0..1} or null
+function currentExpression() {
+  const p = state.preset;
+  if (!p || p.tokens[30] === null) return null;
+  return { id: Math.max(0, Math.min(16, Math.round(p.tokens[30]))),
+           strength: (p.tokens[31] ?? 100) / 100 };
+}
+
+/* ---------- wiring ---------- */
+function setStatus(msg, err) {
+  $("status").textContent = msg;
+  $("status").style.color = err ? "#e07070" : "#8fd18f";
+}
+
+$("file").addEventListener("change", e => { loadFiles([...e.target.files]); e.target.value = ""; });
+const drop = $("drop");
+["dragover", "dragenter"].forEach(ev => document.body.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+document.body.addEventListener("dragleave", e => { e.preventDefault(); drop.classList.remove("over"); });
+document.body.addEventListener("drop", e => {
+  e.preventDefault();
+  drop.classList.remove("over");
+  // writable handles must be grabbed SYNCHRONOUSLY during the drop event;
+  // they enable the preset "save" button to write the original file in place
+  const handles = new Map();
+  for (const item of e.dataTransfer.items || []) {
+    if (item.kind === "file" && item.getAsFileSystemHandle) {
+      const name = item.getAsFile()?.name;
+      if (name && name.toLowerCase().endsWith(".json"))
+        handles.set(name, item.getAsFileSystemHandle());
+    }
+  }
+  loadFiles([...e.dataTransfer.files], handles);
+});
+
+$("play").addEventListener("click", play);
+$("stopBtn").addEventListener("click", stop);
+document.querySelectorAll('input[name=mode]').forEach(r =>
+  r.addEventListener("change", () => { state.mode = r.value; rebuild(); }));
+$("showMods").addEventListener("change", rebuild);
+
+for (const id of ["p_minLevel","p_voicedFloor","p_valley","p_minSyl","p_gap","p_close","p_attack","p_release","p_variant","p_gain"]) {
+  const el = $(id);
+  const val = el.parentElement.querySelector(".val");
+  const update = () => { if (val) val.textContent = el.value; };
+  update();
+  el.addEventListener("input", () => { update(); rebuild(); });
+}
+
+$("tabPlayer").addEventListener("click", () => showTab("player"));
+$("tabPresets").addEventListener("click", () => showTab("presets"));
+function updatePhotoRow() { $("photoRow").style.display = state.photo ? "" : "none"; }
+$("rerig").addEventListener("click", () => { if (state.photo) startRig(); });
+$("clearPhoto").addEventListener("click", () => {
+  state.photo = null;
+  updatePhotoRow();
+  renderPresetFace();
+  setStatus("vector face restored — re-drop the screenshot to use it again (its rig is remembered)");
+});
+for (const cv of [$("face"), $("pface")])
+  cv.addEventListener("click", e => { if (state.photo?.rigging) rigClick(cv, e); });
+$("presetFilter").addEventListener("input", buildPresetList);
+$("presetNew").addEventListener("click", () => {
+  if (!state.presets) return;
+  const name = (prompt("New preset name (clones the current one):") || "").trim();
+  if (!name) return;
+  if (state.presets.doc.string[name] !== undefined) {
+    presetStatus(`"${name}" already exists`, true);
+    return;
+  }
+  const tokens = state.preset ? [...state.preset.tokens] : new Array(PRESET_TOKENS).fill(0);
+  state.presets.doc.string[name] = formatPresetTokens(tokens);
+  state.presets.dirty = true;
+  $("presetFilter").value = "";
+  buildPresetList();
+  selectPreset(name);
+  presetStatus(`${name} — created (edit the sliders, then "download json")`);
+});
+$("presetDownload").addEventListener("click", () => {
+  if (!state.presets) return;
+  const blob = new Blob([JSON.stringify(state.presets.doc, null, 3)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = state.presets.file;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  state.presets.dirty = false;
+  updateSaveButton();
+  presetStatus(`downloaded ${state.presets.file} — replace the original with it`);
+});
+$("presetSave").addEventListener("click", savePresets);
+
+$("copyConst").addEventListener("click", () => {
+  const p = params();
+  const text =
+`// LipSim-tuned pseudo-synthesis constants (SynthesizePseudoLip / [lipsync])
+min_level      = ${p.minLevel}    // toml [lipsync] min_level
+attack_ms      = ${p.attackMs}    // toml
+release_ms     = ${p.releaseMs}   // toml
+gain           = ${p.gain}        // toml
+voiced floor   = ${p.voicedFloor} // C++: std::max(minLevel, ${p.voicedFloor}f)
+valley ratio   = ${p.valleyRatio} // C++: level[i] < ${p.valleyRatio}f * peak
+min syl frames = ${p.minSylFrames} // C++: i - segStart >= ${p.minSylFrames}
+closure gap    = ${p.gapFrames}   // C++: syl.start - prevEnd >= ${p.gapFrames}
+closure peak   = ${p.close}       // C++: BMP values ${(p.close*0.65).toFixed(2)} / ${p.close}`;
+  navigator.clipboard.writeText(text).then(() => setStatus("constants copied to clipboard"));
+});
+
+window.addEventListener("resize", renderTimeline);
+rebuild();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

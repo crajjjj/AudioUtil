@@ -2,6 +2,7 @@
 
 #include "CaptionManager.h"
 #include "Config.h"
+#include "FuzSlots.h"
 #include "LipSync.h"
 
 namespace InstanceManager
@@ -18,6 +19,9 @@ namespace InstanceManager
 			// far follow-positioned sound is quieter; kept as a separate multiplier so
 			// group-volume / duck recomputes preserve it (see ApplyEffectiveVolume)
 			float             distanceFactor = 1.0f;
+			// FuzSlots placeholder index backing this instance's audio (-1 = none);
+			// returned to the pool when this instance is swept or stopped
+			int               fuzSlot = -1;
 			// stream startup is asynchronous: for a short window after Play() the
 			// engine still reports "not playing", which made IsPlaying()/Sweep()
 			// treat brand-new instances as finished (PlayAndWait returned instantly)
@@ -105,7 +109,12 @@ namespace InstanceManager
 					return false;
 				}
 				auto& handle = instance.handle;
-				return !handle.IsValid() || !handle.IsPlaying();
+				const bool done = !handle.IsValid() || !handle.IsPlaying();
+				if (done && instance.fuzSlot >= 0) {
+					FuzSlots::Release(instance.fuzSlot);  // free the placeholder for reuse
+					instance.fuzSlot = -1;
+				}
+				return done;
 			});
 		}
 
@@ -117,8 +126,14 @@ namespace InstanceManager
 		}
 	}
 
+	void SweepNow()
+	{
+		std::scoped_lock lock{ g_lock };
+		Sweep();
+	}
+
 	std::int32_t Register(RE::BSSoundHandle a_handle, float a_baseVolume, std::string a_group,
-		std::string a_path, RE::Actor* a_follow)
+		std::string a_path, RE::Actor* a_follow, int a_fuzSlot)
 	{
 		const float distanceFactor = ComputeDistanceFactor(a_follow);
 		std::scoped_lock lock{ g_lock };
@@ -127,6 +142,7 @@ namespace InstanceManager
 		auto& instance = g_instances[id] =
 			Instance{ a_handle, a_baseVolume, std::move(a_group), std::move(a_path) };
 		instance.distanceFactor = distanceFactor;
+		instance.fuzSlot = a_fuzSlot;
 		ApplyEffectiveVolume(instance);
 		return id;
 	}
@@ -150,6 +166,9 @@ namespace InstanceManager
 			if (auto* instance = Find(a_id)) {
 				found = true;
 				ok = instance->handle.IsValid() && instance->handle.Stop();
+				if (instance->fuzSlot >= 0) {
+					FuzSlots::Release(instance->fuzSlot);
+				}
 				g_instances.erase(a_id);
 			}
 		}
@@ -233,6 +252,9 @@ namespace InstanceManager
 				if (instance.handle.IsValid()) {
 					instance.handle.Stop();
 				}
+				if (instance.fuzSlot >= 0) {
+					FuzSlots::Release(instance.fuzSlot);
+				}
 				stopped.push_back(a_pair.first);
 				return true;
 			});
@@ -251,6 +273,9 @@ namespace InstanceManager
 			for (auto& [id, instance] : g_instances) {
 				if (instance.handle.IsValid()) {
 					instance.handle.Stop();
+				}
+				if (instance.fuzSlot >= 0) {
+					FuzSlots::Release(instance.fuzSlot);
 				}
 				stopped.push_back(id);
 			}

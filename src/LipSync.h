@@ -31,6 +31,12 @@ namespace LipSync
 	void SetPseudoLipEnabled(bool a_enabled);
 	bool PseudoLipEnabled();
 
+	// mouth timing lead in ms ([lipsync] lead_ms; console: `autest liplead`).
+	// Positive = curves sampled ahead of the playback clock (mouth earlier);
+	// applies to lip, pseudo and envelope modes, live entries included.
+	void SetLeadMs(std::int32_t a_ms);
+	std::int32_t LeadMs();
+
 	// pull [lipsync] settings from Config (call after Load/Reload)
 	void ApplyConfig();
 

@@ -7,12 +7,17 @@ namespace AudioEngine
 	// a_translateFuz: swap a .fuz path for its FuzCache-extracted payload (the
 	// normal behavior). DebugPlayFile passes false so a raw .fuz can be fed
 	// straight to the engine for diagnostics.
+	// a_slotOut: when non-null AND the play is a fuz-derived cache wav, the audio is
+	// routed through a FuzSlots placeholder so a first-session decode is audible
+	// without a restart; *a_slotOut receives the slot index (>=0) the caller MUST
+	// release (via InstanceManager) when the instance stops, or -1 if unrouted.
 	RE::BSSoundHandle PlayPath(const std::string& a_dataRelPath, RE::Actor* a_follow,
 		float a_volume, std::uint32_t a_flags, std::uint32_t a_priority,
-		bool a_translateFuz = true);
+		bool a_translateFuz = true, int* a_slotOut = nullptr);
 
 	// overload using config defaults for flags/priority
-	RE::BSSoundHandle PlayPath(const std::string& a_dataRelPath, RE::Actor* a_follow, float a_volume);
+	RE::BSSoundHandle PlayPath(const std::string& a_dataRelPath, RE::Actor* a_follow, float a_volume,
+		int* a_slotOut = nullptr);
 
 	// does a data-relative path resolve to a real resource in the current load
 	// order? Goes through the engine's archive system, so it resolves loose files

@@ -1,10 +1,13 @@
 #include "PapyrusAPI.h"
 
+#include <fstream>
+
 #include "AudioEngine.h"
 #include "CaptionManager.h"
 #include "Config.h"
 #include "FolderCache.h"
 #include "FuzCache.h"
+#include "FuzSlots.h"
 #include "GagState.h"
 #include "TongueState.h"
 #include "InstanceManager.h"
@@ -244,11 +247,13 @@ namespace PapyrusAPI
 			if (file.empty()) {
 				return 0;
 			}
-			auto handle = AudioEngine::PlayPath(file, a_follow, a_volume);
+			InstanceManager::SweepNow();  // free slots of lines that already stopped
+			int slot = -1;
+			auto handle = AudioEngine::PlayPath(file, a_follow, a_volume, &slot);
 			if (!handle.IsValid()) {
-				return 0;
+				return 0;  // PlayPath released any acquired slot on failure
 			}
-			const auto id = InstanceManager::Register(handle, a_volume, a_group, file, a_follow);
+			const auto id = InstanceManager::Register(handle, a_volume, a_group, file, a_follow, slot);
 			if (!a_channel.empty()) {
 				// claim atomically: if no-interrupt loses the race for a channel
 				// still playing, drop this one (it's within startup grace, silent)
@@ -671,6 +676,97 @@ namespace PapyrusAPI
 			return LipCapture::IsActive();
 		}
 
+		// Decode-only prewarm: unpack every .fuz in a folder into the fuz cache
+		// (Data\Sound\AudioUtilFuzCache\) WITHOUT playing anything. Needed under
+		// MO2: a cache wav written mid-session is invisible to the engine's
+		// loose-file resource index (frozen at launch), so a first-time fuz plays
+		// silent until the next game start. Run this once over a fuz folder, then
+		// restart — every line is then in the launch-time index and plays first
+		// try. Returns the number of fuz successfully decoded/cached.
+		std::int32_t PrewarmFolder(RE::StaticFunctionTag*, RE::BSFixedString a_folder)
+		{
+			const auto start = std::chrono::steady_clock::now();
+			const auto files = FolderCache::ListFolder(a_folder.c_str());
+			std::int32_t decoded = 0;
+			std::int32_t fuz = 0;
+			for (const auto& f : files) {
+				if (!FuzCache::IsFuzPath(f)) {
+					continue;
+				}
+				++fuz;
+				if (!FuzCache::Resolve(f).empty()) {
+					++decoded;
+				}
+			}
+			const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+				std::chrono::steady_clock::now() - start).count();
+			logger::info("PrewarmFolder '{}': {} of {} fuz decoded/cached ({} files scanned) in "
+						 "{} ms ({} ms/fuz) — restart so the new cache wavs enter the resource index",
+				a_folder.c_str(), decoded, fuz, files.size(), ms, fuz ? ms / fuz : 0);
+			return decoded;
+		}
+
+		// B-experiment probe: overwrite dst's on-disk bytes with src's (both
+		// data-relative wavs). Tests whether the engine RE-READS a file on each
+		// BuildSoundDataFromFile, or caches decoded audio by resource id. Use a dst
+		// that existed at THIS session's launch (a prior-session cache wav), so it's
+		// in the resource index. Procedure:
+		//   autest play  <dst>                 -> hear dst's line (baseline)
+		//   autest boverwrite <dst> <src>      -> dst's bytes become src's line
+		//   autest play  <dst>                 -> SAME path again:
+		//     hear SRC's line  => engine re-reads    => placeholder-overwrite player VIABLE
+		//     hear DST's line  => engine caches by id => not viable
+		bool BOverwriteFile(RE::StaticFunctionTag*, RE::BSFixedString a_dst, RE::BSFixedString a_src)
+		{
+			const auto bytes = FuzCache::ReadResourceBytes(a_src.c_str());
+			if (bytes.empty()) {
+				logger::warn("boverwrite: could not read src '{}'", a_src.c_str());
+				return false;
+			}
+			std::string dst = a_dst.c_str();
+			std::replace(dst.begin(), dst.end(), '/', '\\');
+			const auto path = std::filesystem::current_path() / "Data" / dst;
+			std::error_code ec;
+			std::filesystem::create_directories(path.parent_path(), ec);
+			std::ofstream out(path, std::ios::binary | std::ios::trunc);
+			if (!out) {
+				logger::warn("boverwrite: could not open dst '{}' for write", dst);
+				return false;
+			}
+			out.write(reinterpret_cast<const char*>(bytes.data()),
+				static_cast<std::streamsize>(bytes.size()));
+			out.close();
+			logger::info("boverwrite: wrote {} bytes of '{}' over '{}'. Now `autest play \"{}\"` — "
+						 "src's line = engine re-reads (B viable); dst's line = cached (B dead).",
+				bytes.size(), a_src.c_str(), dst, dst);
+			return static_cast<bool>(out);
+		}
+
+		// Nth .wav (sorted) in the fuz cache folder, as a data-relative path, or ""
+		// — lets the short no-arg B-experiment commands name files without the
+		// caller typing a long hash path (Skyrim's console caps input length).
+		RE::BSFixedString BCacheFile(RE::StaticFunctionTag*, std::int32_t a_index)
+		{
+			namespace fs = std::filesystem;
+			const auto dir = fs::current_path() / "Data" / "Sound" / "AudioUtilFuzCache";
+			std::error_code ec;
+			std::vector<std::string> wavs;
+			if (fs::is_directory(dir, ec)) {
+				for (const auto& e : fs::directory_iterator(dir, ec)) {
+					if (e.is_regular_file(ec) &&
+						_stricmp(e.path().extension().string().c_str(), ".wav") == 0 &&
+						!FuzSlots::IsSlotName(e.path().filename().string())) {  // not the placeholders
+						wavs.push_back(e.path().filename().string());
+					}
+				}
+			}
+			std::sort(wavs.begin(), wavs.end());
+			if (a_index < 0 || a_index >= static_cast<std::int32_t>(wavs.size())) {
+				return RE::BSFixedString{ "" };
+			}
+			return RE::BSFixedString{ ("Sound\\AudioUtilFuzCache\\" + wavs[a_index]).c_str() };
+		}
+
 		// runtime toggle for .lip-driven phoneme lipsync (A/B against envelope)
 		void SetLipFilesMode(RE::StaticFunctionTag*, bool a_enabled)
 		{
@@ -691,6 +787,17 @@ namespace PapyrusAPI
 		bool GetPseudoLipMode(RE::StaticFunctionTag*)
 		{
 			return LipSync::PseudoLipEnabled();
+		}
+
+		// mouth timing lead calibration (ms, applies to live entries too)
+		void SetLipLeadMs(RE::StaticFunctionTag*, std::int32_t a_ms)
+		{
+			LipSync::SetLeadMs(a_ms);
+		}
+
+		std::int32_t GetLipLeadMs(RE::StaticFunctionTag*)
+		{
+			return LipSync::LeadMs();
 		}
 
 		// ---------- natives: TomlUtil (generic consumer-config surface) ----------
@@ -795,11 +902,13 @@ namespace PapyrusAPI
 	{
 		std::string path = a_dataRelPath;
 		std::replace(path.begin(), path.end(), '/', '\\');
-		auto handle = AudioEngine::PlayPath(path, a_follow, a_volume);
+		InstanceManager::SweepNow();  // free slots of lines that already stopped
+		int slot = -1;
+		auto handle = AudioEngine::PlayPath(path, a_follow, a_volume, &slot);
 		if (!handle.IsValid()) {
-			return 0;
+			return 0;  // PlayPath released any acquired slot on failure
 		}
-		const auto id = InstanceManager::Register(handle, a_volume, a_group, path, a_follow);
+		const auto id = InstanceManager::Register(handle, a_volume, a_group, path, a_follow, slot);
 		if (*a_channel) {
 			InstanceManager::PlayOnChannel(a_channel, id);
 		}
@@ -853,10 +962,15 @@ namespace PapyrusAPI
 		REGISTERFUNC(StartLipCapture, TEST_SCRIPT_NAME);
 		REGISTERFUNC(StopLipCapture, TEST_SCRIPT_NAME);
 		REGISTERFUNC(IsLipCapturing, TEST_SCRIPT_NAME);
+		REGISTERFUNC(PrewarmFolder, TEST_SCRIPT_NAME);
+		REGISTERFUNC(BOverwriteFile, TEST_SCRIPT_NAME);
+		REGISTERFUNC(BCacheFile, TEST_SCRIPT_NAME);
 		REGISTERFUNC(SetLipFilesMode, TEST_SCRIPT_NAME);
 		REGISTERFUNC(GetLipFilesMode, TEST_SCRIPT_NAME);
 		REGISTERFUNC(SetPseudoLipMode, TEST_SCRIPT_NAME);
 		REGISTERFUNC(GetPseudoLipMode, TEST_SCRIPT_NAME);
+		REGISTERFUNC(SetLipLeadMs, TEST_SCRIPT_NAME);
+		REGISTERFUNC(GetLipLeadMs, TEST_SCRIPT_NAME);
 		REGISTERFUNC(IsConnected, PPA_SCRIPT_NAME);
 		REGISTERFUNC(SetEventRate, PPA_SCRIPT_NAME);
 		REGISTERFUNC(GetContext, PPA_SCRIPT_NAME);
