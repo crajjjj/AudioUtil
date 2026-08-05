@@ -130,11 +130,21 @@ target("lipsim")
         local pyinstaller = find_tool("pyinstaller")
         if pyinstaller then
             local work = path.join(os.tmpdir(), "lipsim-pybuild")
-            os.execv(pyinstaller.program, { "--onefile", "--name", "LipSim",
-                "--add-data", path.join(lipsim, "lipsim.html") .. ";.",
-                "--distpath", lipsim, "--workpath", work, "--specpath", work,
-                "--log-level", "WARN",
-                path.join(lipsim, "lipsim_server.py") })
+            local args = { "--onefile", "--name", "LipSim",
+                "--add-data", path.join(lipsim, "lipsim.html") .. ";." }
+            -- ship the ffmpeg.wasm bundle inside the exe so fuz xWMA decode is
+            -- fully offline (no CDN). Skipped if the vendor dir isn't present.
+            local vendor = path.join(lipsim, "vendor")
+            if os.isdir(vendor) then
+                table.insert(args, "--add-data")
+                table.insert(args, vendor .. ";vendor")
+            end
+            table.insert(args, "--distpath"); table.insert(args, lipsim)
+            table.insert(args, "--workpath"); table.insert(args, work)
+            table.insert(args, "--specpath"); table.insert(args, work)
+            table.insert(args, "--log-level"); table.insert(args, "WARN")
+            table.insert(args, path.join(lipsim, "lipsim_server.py"))
+            os.execv(pyinstaller.program, args)
         else
             print("lipsim: pyinstaller not found — packaging without a fresh LipSim.exe")
         end
@@ -150,6 +160,13 @@ target("lipsim")
             if os.isfile(src) then
                 os.cp(src, staging)
             end
+        end
+        -- vendored ffmpeg.wasm bundle, for the Python-server path (LipSim.bat /
+        -- lipsim_server.py serve it from vendor/ next to the script; the exe has
+        -- its own copy baked in via --add-data above)
+        local vendor = path.join(lipsim, "vendor")
+        if os.isdir(vendor) then
+            os.cp(vendor, staging)
         end
         local rel = path.join(proj, "Release")
         if not os.isdir(rel) then

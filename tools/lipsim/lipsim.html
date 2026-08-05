@@ -620,13 +620,17 @@ function audioCtx() {
   return state.actx;
 }
 
-/* ---------- xWMA decoding via ffmpeg.wasm (lazy, CDN, one-time ~10 MB) ---------- */
+/* ---------- xWMA decoding via ffmpeg.wasm (lazy) ---------- */
 // Browsers have no WMA codec, so fuz audio can't go through decodeAudioData.
 // ffmpeg.wasm carries ffmpeg's xwma demuxer + wmav2 decoder; we load it only
-// when a fuz actually needs it. Offline / blocked CDN degrades to the
-// fuz2wav.py hint. UMD build + blob URLs so it works from a file:// page.
+// when a fuz actually needs it. Each asset is tried at the local `vendor/`
+// copy first (shipped inside LipSim.exe / beside lipsim_server — fully offline)
+// then the jsdelivr CDN (a bare file:// mirror without the vendor dir, ~10 MB
+// one time). Both failing degrades to the fuz2wav.py hint. UMD build + blob
+// URLs so it works from a file:// page.
 const FFMPEG_VER = "0.12.10", FFCORE_VER = "0.12.6";
 const CDN = "https://cdn.jsdelivr.net/npm";
+const VENDOR = "vendor";  // flat filenames the server exposes under /vendor/
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -638,10 +642,27 @@ function loadScript(src) {
   });
 }
 
+// try each candidate URL in order, return the first that loads
+async function loadScriptFrom(urls) {
+  let lastErr;
+  for (const url of urls) {
+    try { await loadScript(url); return; } catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
+
 async function toBlobURL(url, type) {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`fetch ${resp.status}: ${url}`);
   return URL.createObjectURL(new Blob([await resp.arrayBuffer()], { type }));
+}
+
+async function toBlobURLFrom(urls, type) {
+  let lastErr;
+  for (const url of urls) {
+    try { return await toBlobURL(url, type); } catch (e) { lastErr = e; }
+  }
+  throw lastErr;
 }
 
 function withTimeout(promise, ms, what) {
@@ -656,14 +677,15 @@ function getFfmpeg() {
       // file:// pages can't spawn ffmpeg.wasm's worker — load() hangs forever
       throw new Error("ffmpeg.wasm needs the page served over http");
     }
-    setStatus("downloading ffmpeg.wasm for xWMA decode (one time, ~10 MB)…");
-    await loadScript(`${CDN}/@ffmpeg/ffmpeg@${FFMPEG_VER}/dist/umd/ffmpeg.js`);
+    setStatus("loading ffmpeg.wasm for xWMA decode (local, else ~10 MB from CDN)…");
+    const cdnFf = `${CDN}/@ffmpeg/ffmpeg@${FFMPEG_VER}/dist/umd`;
+    const cdnCore = `${CDN}/@ffmpeg/core@${FFCORE_VER}/dist/umd`;
+    await loadScriptFrom([`${VENDOR}/ffmpeg.js`, `${cdnFf}/ffmpeg.js`]);
     const ff = new FFmpegWASM.FFmpeg();
-    const core = `${CDN}/@ffmpeg/core@${FFCORE_VER}/dist/umd`;
     await ff.load({
-      coreURL: await toBlobURL(`${core}/ffmpeg-core.js`, "text/javascript"),
-      wasmURL: await toBlobURL(`${core}/ffmpeg-core.wasm`, "application/wasm"),
-      classWorkerURL: await toBlobURL(`${CDN}/@ffmpeg/ffmpeg@${FFMPEG_VER}/dist/umd/814.ffmpeg.js`, "text/javascript"),
+      coreURL: await toBlobURLFrom([`${VENDOR}/ffmpeg-core.js`, `${cdnCore}/ffmpeg-core.js`], "text/javascript"),
+      wasmURL: await toBlobURLFrom([`${VENDOR}/ffmpeg-core.wasm`, `${cdnCore}/ffmpeg-core.wasm`], "application/wasm"),
+      classWorkerURL: await toBlobURLFrom([`${VENDOR}/814.ffmpeg.js`, `${cdnFf}/814.ffmpeg.js`], "text/javascript"),
     });
     return ff;
   })(), 120000, "ffmpeg.wasm load");

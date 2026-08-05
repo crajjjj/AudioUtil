@@ -57,14 +57,16 @@ class Handler(BaseHTTPRequestHandler):
             files = sorted(p.name for p in ROOT.glob("*.json"))
             self._send(200, json.dumps({"files": files}).encode(), "application/json")
             return
-        # user files beside the server/exe first, then bundled static assets
-        file = (ROOT / name).resolve()
-        if file.parent != ROOT or not file.is_file():
-            file = (BUNDLE / name).resolve()
-            if file.parent != BUNDLE or not file.is_file():
-                self._send(404, b"not found")
+        # user files beside the server/exe first, then bundled static assets.
+        # Allow one level of subdirectory (e.g. vendor/ffmpeg.js) but keep the
+        # resolved path strictly inside the base — no `..` traversal escapes.
+        for base in (ROOT, BUNDLE):
+            file = (base / name).resolve()
+            if (base == file.parent or base in file.parents) and file.is_file():
+                self._send(200, file.read_bytes(),
+                           MIME.get(file.suffix.lower(), "application/octet-stream"))
                 return
-        self._send(200, file.read_bytes(), MIME.get(file.suffix.lower(), "application/octet-stream"))
+        self._send(404, b"not found")
 
     def do_POST(self):
         if self.path.rstrip("/") != "/decode":

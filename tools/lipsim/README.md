@@ -9,11 +9,11 @@ Part of [AudioUtil](https://crajjjj.github.io/AudioUtil/) (GPLv3).
 
 ## Quick start
 
-- **Double-click `LipSim.exe`** — fully self-contained, no Python or anything
-  else required. It starts a local server and opens the page, with sound for
-  `.fuz` files (decoded via the CK's xwmaencode when installed, else
-  ffmpeg.wasm from a CDN). Any `.head.json` / preset `.json` placed next to
-  the exe auto-loads on start.
+- **Double-click `LipSim.exe`** — fully self-contained and fully offline, no
+  Python, no internet, nothing else required. It starts a local server and
+  opens the page, with sound for `.fuz` files (decoded via the CK's xwmaencode
+  when installed, else the ffmpeg.wasm bundle baked into the exe). Any
+  `.head.json` / preset `.json` placed next to the exe auto-loads on start.
 - With Python 3.11+ you can instead run `LipSim.bat` / `lipsim_server.py`
   (same experience) — that's also what the `fuz2wav.py` / `tri2head.py`
   command-line tools need.
@@ -77,9 +77,27 @@ order:
 1. the local server's `/decode` endpoint — runs the Creation Kit's own
    `xwmaencode.exe` (instant, offline; needs the CK audio tools installed,
    game root via `SKYRIM_GAME_PATH` or `--game-path`),
-2. ffmpeg.wasm fetched from a CDN (~10 MB once, then cached; works even
-   without the CK tools, needs internet),
+2. ffmpeg.wasm — the copy vendored under `vendor/` (served locally by
+   `lipsim_server.py`, and baked into `LipSim.exe`) so it works fully offline;
+   only if that copy is missing does the page fall back to the jsdelivr CDN
+   (~10 MB once, needs internet). ffmpeg.wasm needs the page served over http,
+   so this path is unavailable when `lipsim.html` is opened as a bare `file://`.
 3. failing both, the page tells you to run `fuz2wav.py`.
+
+### Re-fetching the vendored ffmpeg.wasm
+
+`vendor/` (~32 MB) is not committed — it's rebuilt into the release zip/exe
+from the working tree. To repopulate it from the CDN:
+
+    cd tools/lipsim && mkdir -p vendor && cd vendor
+    base=https://cdn.jsdelivr.net/npm
+    curl -fLO $base/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js
+    curl -fLO $base/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js
+    curl -fLO $base/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js
+    curl -fLO $base/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm
+
+The `xmake build lipsim` packaging step silently omits the bundle if `vendor/`
+is absent (the page then uses the CDN as before).
 
 ## fuz2wav.py
 

@@ -22,6 +22,9 @@ __pycache__/
 *.head.json
 tools/lipsim/*.json
 tools/lipsim/*.exe
+# vendored ffmpeg.wasm bundle (~32 MB, re-downloadable from the CDN) — packaged
+# into the LipSim zip/exe from the working tree, not committed
+tools/lipsim/vendor/
 # local test audio dropped into the lipsim folder (may be vanilla game assets)
 tools/lipsim/*.fuz
 tools/lipsim/*.wav
