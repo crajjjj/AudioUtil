@@ -2,7 +2,7 @@ set_xmakever("2.9.5")
 
 -- Globals
 PROJECT_NAME = "AudioUtil"
-PROJECT_VERSION = "0.9.10"
+PROJECT_VERSION = "0.9.11"
 PROJECT_AUTHOR = "crajjjj"
 
 -- Project

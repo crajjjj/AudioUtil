@@ -22,12 +22,15 @@ voice_no_interrupt = false    # true = a still-playing channel skips the new lin
 # Distance attenuation for follow-positioned sounds (voice + SFX). Loose-file playback
 # has no rolloff curve, so voice_3d positions a sound but barely lowers its volume with
 # distance - matters only when a sound plays far from the player. When on, volume is
-# scaled once at play time: full within attenuation_near, quadratic falloff to
-# attenuation_floor at attenuation_far (game units). Off = unchanged (existing behavior).
-voice_attenuation = true     # true = scale far follow-sounds down by distance
-attenuation_near = 400.0      # full volume within this distance
-attenuation_far = 3000.0      # volume reaches the floor at/beyond this distance
-attenuation_floor = 0.0       # minimum volume factor for far sounds (0.0 = silent)
+# scaled by the listener->speaker distance: full within attenuation_near, then an
+# inverse-distance rolloff (-6 dB per doubling, like the engine's own voice curves)
+# down to attenuation_floor at attenuation_far (game units, ~70/m). Re-sampled every
+# 250 ms while a line plays, so walking toward/away from a scene tracks.
+# Off = unchanged (existing behavior).
+voice_attenuation = true      # true = scale far follow-sounds down by distance
+attenuation_near = 200.0      # full volume within this distance (~3 m)
+attenuation_far = 1800.0      # volume reaches the floor at/beyond this distance (~26 m)
+attenuation_floor = 0.05      # minimum volume factor for far sounds (0.0 = silent)
 # .fuz playback decodes each fuz's audio once into Sound\AudioUtilFuzCache\
 # (as PCM wav: reliable playback + lipsync). The cache persists across
 # sessions; this caps its size in MB - checked once per launch, oldest files

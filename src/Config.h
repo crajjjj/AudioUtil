@@ -144,14 +144,16 @@ namespace Config
 		// Distance attenuation for follow-positioned sounds (voice + sfx). Loose-file
 		// playback has no sound-descriptor rolloff curve, so a followed sound barely
 		// gets quieter with distance (positioning still works). When enabled, the
-		// per-instance volume is scaled once at play time by the listener->speaker
-		// distance: full within attenuationNear, quadratic falloff to attenuationFloor
-		// at attenuationFar (units). Off by default = no change for existing consumers.
+		// per-instance volume is scaled by the listener->speaker distance: full within
+		// attenuationNear, then an inverse-distance rolloff (-6 dB per doubling)
+		// renormalized to reach attenuationFloor at attenuationFar (units, ~70/m).
+		// Re-sampled every 250 ms while a line plays, so movement tracks (see the
+		// InstanceManager ticker). Off by default = no change for existing consumers.
 		// Only meaningful when a sound plays far from the player (e.g. NPC-only scenes).
 		bool  voiceAttenuation{ false };
-		float attenuationNear{ 400.0f };
-		float attenuationFar{ 3000.0f };
-		float attenuationFloor{ 0.0f };
+		float attenuationNear{ 200.0f };
+		float attenuationFar{ 1800.0f };
+		float attenuationFloor{ 0.05f };
 
 		bool          ppaEnabled{ true };
 		std::uint32_t ppaEventRateMs{ 2000 };

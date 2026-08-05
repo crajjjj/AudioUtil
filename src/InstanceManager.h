@@ -6,8 +6,9 @@ namespace InstanceManager
 	// a_path is the data-relative file that was played (the shuffle-bag pick),
 	// retained so a script can read back exactly which clip a handle played.
 	// a_follow: the actor this sound is 3D-positioned at (or nullptr for flat/2D).
-	// Used once at registration to bake a distance-attenuation factor into the
-	// instance volume when [general] voice_attenuation is on (see Config).
+	// When [general] voice_attenuation is on, a distance-attenuation factor is
+	// seeded from the player->follow distance and re-sampled every 250 ms while
+	// the line plays, so movement tracks (see Config + the ticker in the .cpp).
 	// a_fuzSlot: FuzSlots placeholder index backing this instance's audio (-1 if
 	// none). Released back to the pool when the instance stops (Sweep) or is Stopped.
 	std::int32_t Register(RE::BSSoundHandle a_handle, float a_baseVolume, std::string a_group,

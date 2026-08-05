@@ -5,6 +5,9 @@
 #include "FuzSlots.h"
 #include "LipSync.h"
 
+#include <condition_variable>
+#include <thread>
+
 namespace InstanceManager
 {
 	namespace
@@ -15,10 +18,14 @@ namespace InstanceManager
 			float             baseVolume;
 			std::string       group;
 			std::string       path;  // data-relative file this instance played
-			// distance-attenuation factor baked in at registration (1.0 = none), so a
-			// far follow-positioned sound is quieter; kept as a separate multiplier so
-			// group-volume / duck recomputes preserve it (see ApplyEffectiveVolume)
+			// distance-attenuation factor (1.0 = none), so a far follow-positioned
+			// sound is quieter; seeded at registration and re-sampled by the ticker
+			// while the line plays; kept as a separate multiplier so group-volume /
+			// duck recomputes preserve it (see ApplyEffectiveVolume)
 			float             distanceFactor = 1.0f;
+			// the actor this sound follows (3D position) — used by the ticker to
+			// track the player->speaker distance live; empty for flat/2D sounds
+			RE::ActorHandle   follow;
 			// FuzSlots placeholder index backing this instance's audio (-1 = none);
 			// returned to the pool when this instance is swept or stopped
 			int               fuzSlot = -1;
@@ -41,11 +48,16 @@ namespace InstanceManager
 			float duckFactor = 1.0f;  // 1.0 = not ducked
 		};
 
-		std::unordered_map<std::int32_t, Instance> g_instances;
-		std::unordered_map<std::string, Group>     g_groups;
+		// g_instances / g_groups / g_lock are leaked on purpose (same reasoning as
+		// LipSync / CaptionManager): the detached attenuation ticker runs until the
+		// process dies and may touch them during static teardown at game exit.
+		std::unordered_map<std::int32_t, Instance>& g_instances =
+			*new std::unordered_map<std::int32_t, Instance>();
+		std::unordered_map<std::string, Group>& g_groups =
+			*new std::unordered_map<std::string, Group>();
 		std::unordered_map<std::string, std::int32_t> g_channels;
 		std::int32_t g_nextId = 1;
-		std::mutex   g_lock;
+		std::mutex&  g_lock = *new std::mutex();
 
 		// caller holds g_lock
 		Group& GetGroup(const std::string& a_group)
@@ -65,10 +77,13 @@ namespace InstanceManager
 				std::clamp(a_instance.baseVolume * mult * a_instance.distanceFactor, 0.0f, 1.0f));
 		}
 
-		// Static distance-attenuation factor for a follow-positioned sound, computed
-		// once at registration from the player->speaker distance. Full within
-		// attenuationNear, quadratic falloff to attenuationFloor at attenuationFar.
-		// 1.0 when disabled, no follow actor, or the player can't be resolved.
+		// Distance-attenuation factor for a follow-positioned sound, from the
+		// player->speaker distance: full within attenuationNear, then an
+		// inverse-distance rolloff (near/d, the point-source -6 dB per doubling —
+		// how the engine's own descriptor curves feel) renormalized to land exactly
+		// on attenuationFloor at attenuationFar. Seeded at Register and re-sampled
+		// by the ticker while the line plays, so movement tracks. 1.0 when
+		// disabled, no follow actor, or the player can't be resolved.
 		float ComputeDistanceFactor(RE::Actor* a_follow)
 		{
 			const auto settings = Config::Get();
@@ -95,9 +110,72 @@ namespace InstanceManager
 			if (d >= farD) {
 				return floor;
 			}
-			const float t = (d - nearD) / (farD - nearD);  // 0..1
-			const float f = (1.0f - t) * (1.0f - t);        // quadratic - steeper than linear
-			return floor + (1.0f - floor) * f;
+			const float inv = nearD / d;         // 1.0 at near .. near/far at far
+			const float invFar = nearD / farD;
+			const float t = (inv - invFar) / (1.0f - invFar);  // 1.0 at near .. 0.0 at far
+			return floor + (1.0f - floor) * t;
+		}
+
+		// ---------- live attenuation ticker ----------
+
+		// Re-samples the player->speaker distance of every follow-positioned
+		// instance while it plays, so walking toward/away from a scene mid-line
+		// changes its volume. The detached thread only paces and schedules; the
+		// position reads + volume writes run on the game thread via the SKSE task
+		// interface (one in-flight task at a time, like CaptionManager).
+		constexpr auto ATTENUATION_TICK = std::chrono::milliseconds(250);
+
+		void Sweep();  // defined below
+
+		std::once_flag    g_tickerOnce;
+		std::atomic<bool> g_updatePending{ false };
+		std::condition_variable& g_tickerCv = *new std::condition_variable();  // leaked, see g_instances
+
+		// game thread
+		void UpdateDistanceFactors()
+		{
+			const auto settings = Config::Get();
+			if (!settings->voiceAttenuation) {
+				return;
+			}
+			std::scoped_lock lock{ g_lock };
+			Sweep();  // finished lines drop out (and free their fuz slots) promptly
+			for (auto& [id, instance] : g_instances) {
+				const auto follow = instance.follow.get();
+				if (!follow) {
+					continue;
+				}
+				const float factor = ComputeDistanceFactor(follow.get());
+				if (std::abs(factor - instance.distanceFactor) > 0.004f) {
+					instance.distanceFactor = factor;
+					ApplyEffectiveVolume(instance);
+				}
+			}
+		}
+
+		void EnsureTicker()
+		{
+			std::call_once(g_tickerOnce, []() {
+				std::thread([]() {
+					for (;;) {
+						{
+							std::unique_lock lock{ g_lock };
+							g_tickerCv.wait(lock, []() { return !g_instances.empty(); });
+						}
+						if (!g_updatePending.exchange(true)) {
+							if (auto* task = SKSE::GetTaskInterface()) {
+								task->AddTask([]() {
+									UpdateDistanceFactors();
+									g_updatePending.store(false);
+								});
+							} else {
+								g_updatePending.store(false);
+							}
+						}
+						std::this_thread::sleep_for(ATTENUATION_TICK);
+					}
+				}).detach();
+			});
 		}
 
 		// caller holds g_lock — drop finished instances so the table stays small
@@ -136,14 +214,24 @@ namespace InstanceManager
 		std::string a_path, RE::Actor* a_follow, int a_fuzSlot)
 	{
 		const float distanceFactor = ComputeDistanceFactor(a_follow);
-		std::scoped_lock lock{ g_lock };
-		Sweep();
-		const auto id = g_nextId++;
-		auto& instance = g_instances[id] =
-			Instance{ a_handle, a_baseVolume, std::move(a_group), std::move(a_path) };
-		instance.distanceFactor = distanceFactor;
-		instance.fuzSlot = a_fuzSlot;
-		ApplyEffectiveVolume(instance);
+		std::int32_t id = 0;
+		{
+			std::scoped_lock lock{ g_lock };
+			Sweep();
+			id = g_nextId++;
+			auto& instance = g_instances[id] =
+				Instance{ a_handle, a_baseVolume, std::move(a_group), std::move(a_path) };
+			instance.distanceFactor = distanceFactor;
+			if (a_follow) {
+				instance.follow = a_follow->GetHandle();
+			}
+			instance.fuzSlot = a_fuzSlot;
+			ApplyEffectiveVolume(instance);
+		}
+		if (a_follow && Config::Get()->voiceAttenuation) {
+			EnsureTicker();
+			g_tickerCv.notify_one();
+		}
 		return id;
 	}
 

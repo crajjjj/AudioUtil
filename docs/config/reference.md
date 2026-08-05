@@ -20,6 +20,10 @@ pc_female_slot = ""           # reserved player slot; empty = no reservation
 pc_male_slot = ""
 voice_3d = true               # 3D-position voices at the speaker; false = flat/2D
 voice_no_interrupt = false    # skip a new line while its channel is still playing
+voice_attenuation = true      # distance-based volume falloff for follow-positioned sounds
+attenuation_near = 200.0      # full volume within this distance (~3 m)
+attenuation_far = 1800.0      # volume reaches the floor at/beyond this distance (~26 m)
+attenuation_floor = 0.05      # minimum volume factor for far sounds (0.0 = silent)
 ```
 
 | Key | Type | Default | Meaning |
@@ -34,6 +38,10 @@ voice_no_interrupt = false    # skip a new line while its channel is still playi
 | `pc_male_slot` | slot id | `""` | Same, for a male PC. |
 | `voice_3d` | bool | `true` | `true` = 3D-position each voice at the speaker (distance attenuation). `false` = play flat/2D at full volume so every speaker is equally audible. Lipsync is unaffected either way. |
 | `voice_no_interrupt` | bool | `false` | `true` = when a `PlayVoice` names a channel still playing a line, skip the new line instead of cutting the old one off (per channel — different speakers still overlap). SFX and `PlayFile`/`PlayFolder` are unaffected. |
+| `voice_attenuation` | bool | `false` | Distance-based volume falloff for follow-positioned sounds (voice + SFX). Loose-file playback has no sound-descriptor rolloff curve, so `voice_3d` positions a sound but the engine barely lowers its volume with distance — a scene across the room otherwise plays at full volume. When on, each follow-positioned instance is scaled by the player→speaker distance, **re-sampled every 250 ms** while the line plays so movement tracks. |
+| `attenuation_near` | float | `200.0` | Full volume within this distance (game units, ~70/m — so ~3 m). |
+| `attenuation_far` | float | `1800.0` | Volume reaches `attenuation_floor` at/beyond this distance (~26 m). Between `near` and `far` the curve is an inverse-distance rolloff (−6 dB per doubling, the point-source law) renormalized to land on the floor at `far`. |
+| `attenuation_floor` | float | `0.05` | Minimum volume factor for far sounds (`0.0` = silent beyond `attenuation_far`). |
 | `fuz_cache_max_mb` | int | `256` | Size cap for `Sound\AudioUtilFuzCache\` (each played `.fuz` decodes its audio there once, as PCM wav — see [`PlayFile`](../api/audioutil.md#playfile)). Checked once per launch and on `ReloadConfig`; oldest files deleted first. ~88 KB per second of audio, so the default holds on the order of a thousand voice lines. `0` = unlimited. Deleting the folder by hand is always safe — it rebuilds on demand. |
 
 ## `[ppa]`
