@@ -45,26 +45,50 @@ namespace PapyrusAPI
 		}
 
 		// a creature = an actor whose race carries no ActorTypeNPC keyword (the
-		// engine's own humanoid marker, which IsHumanoid() reads through the default
-		// object manager). In vanilla ONLY the playable humanoid races carry it —
-		// the ten player races plus their vampire/child variants, Elder, Dremora,
-		// Afflicted (verified against Skyrim.esm). Draugr, falmer, werewolves and
-		// every beast do NOT, so they all read as creatures here. That is the point:
-		// this gates the blind by-sex fallback ONLY, so a race_map'd draugr still
-		// resolves at its own step and never notices.
+		// engine's own humanoid marker). In vanilla ONLY the playable humanoid races
+		// carry it — the ten player races plus their vampire/child variants, Elder,
+		// Dremora, Afflicted (verified against Skyrim.esm). Draugr, falmer, werewolves
+		// and every beast do NOT, so they all read as creatures here. That is the
+		// point: this gates the blind by-sex fallback ONLY, so a race_map'd draugr
+		// still resolves at its own step and never notices.
+		//
+		// The keyword is read straight off the race / actor base. Do NOT reach for
+		// RE::TESObjectREFR::IsHumanoid() here (0.9.11-0.9.12 did, and it CTD'd):
+		// it funnels into CommonLib's HasKeywordWithType, which does
+		//     auto keyword = *dobj->GetObject<BGSKeyword>(keywordType);
+		// - an unguarded deref of a T** that GetObject returns as nullptr whenever
+		// the kKeywordNPC default-object slot is unset or holds a non-keyword form.
+		// That is an EXCEPTION_ACCESS_VIOLATION (`mov rdx, [rax]`, rax = 0) on every
+		// single PlayVoice call on an affected install. The keyword walk below
+		// answers the same question and never touches the default-object table.
 		bool IsCreature(RE::Actor* a_actor)
 		{
-			if (a_actor->IsHumanoid()) {
-				return false;
-			}
-			// defensive second look straight at the race, in case the reference-level
-			// keyword walk misses it
+			constexpr auto ACTOR_TYPE_NPC = "ActorTypeNPC"sv;
 			if (const auto* race = a_actor->GetRace()) {
-				if (race->HasKeywordString("ActorTypeNPC"sv)) {
+				if (race->HasKeywordString(ACTOR_TYPE_NPC)) {
+					return false;
+				}
+			}
+			// second look at the actor base: a mod-added humanoid can carry the
+			// keyword on the NPC record rather than on its race
+			if (const auto* base = a_actor->GetActorBase()) {
+				if (base->HasKeywordString(ACTOR_TYPE_NPC)) {
 					return false;
 				}
 			}
 			return true;
+		}
+
+		// TESForm::GetFormEditorID() is the GAME's virtual (CommonLib only declares
+		// the override) — it hands back the record's raw BSFixedString pointer, which
+		// is NULL when the record carries no EDID. CommonLib's null->"" fallback lives
+		// only in its own BSFixedString wrapper, so it does not apply here. Feeding
+		// that straight to Normalize() builds a std::string_view over nullptr —
+		// strlen(0), the same access violation as the IsHumanoid() case above. Every
+		// editor-id read goes through this.
+		std::string_view SafeEditorID(const char* a_editorID)
+		{
+			return a_editorID ? std::string_view{ a_editorID } : std::string_view{};
 		}
 
 		// load-order-stable per-NPC id for spreading actors across candidate slots
@@ -150,7 +174,7 @@ namespace PapyrusAPI
 			// 2. voicetype remap -> map
 			std::string voicetype;
 			if (const auto* vt = base->GetVoiceType()) {
-				voicetype = Config::Normalize(vt->GetFormEditorID());
+				voicetype = Config::Normalize(SafeEditorID(vt->GetFormEditorID()));
 			}
 			if (!voicetype.empty()) {
 				if (a_settings.voicetypeRemapEnabled) {
@@ -173,7 +197,7 @@ namespace PapyrusAPI
 			if (!a_settings.raceMap.empty()) {
 				std::string raceID;
 				if (const auto* race = a_actor->GetRace()) {
-					raceID = Config::Normalize(race->GetFormEditorID());
+					raceID = Config::Normalize(SafeEditorID(race->GetFormEditorID()));
 				}
 				if (!raceID.empty()) {
 					// a race-mapped slot qualifies if it matches the actor's sex OR is
@@ -210,9 +234,14 @@ namespace PapyrusAPI
 					usable(creatureSlot)) {
 					return creatureSlot;
 				}
+				// GetName() bottoms out in a game virtual that returns null for a
+				// nameless form — and unnamed actors are exactly what this branch
+				// logs. Formatting a null const char* is UB in fmt, so never hand
+				// it over raw.
+				const char* name = a_actor->GetName();
 				logger::debug("no slot for unrouted creature '{}' — add a [race_map] hint "
 							  "or set [general] default_creature_slot to voice it",
-					a_actor->GetName());
+					name ? name : "<unnamed>");
 				return nullptr;
 			}
 
