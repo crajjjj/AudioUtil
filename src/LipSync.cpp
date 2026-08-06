@@ -114,8 +114,17 @@ namespace LipSync
 				const auto chunkSize = ReadLE<std::uint32_t>(chunkHeader + 4);
 
 				if (std::memcmp(chunkHeader, "fmt ", 4) == 0) {
+					// Bound the size BEFORE allocating from it: chunkSize is raw file
+					// data, and a corrupt header (valid RIFF/WAVE magic, garbage size
+					// field) would otherwise size the vector at up to 4 GB — the
+					// resulting bad_alloc is uncaught on this path and takes the
+					// process down. A real fmt chunk is 16 (PCM), 18 (cbSize) or 40
+					// (extensible) bytes, and nothing below reads past offset 25.
+					if (chunkSize < 16 || chunkSize > 64) {
+						return nullptr;
+					}
 					std::vector<std::uint8_t> fmt(chunkSize);
-					if (chunkSize < 16 || !in.read(reinterpret_cast<char*>(fmt.data()), chunkSize)) {
+					if (!in.read(reinterpret_cast<char*>(fmt.data()), chunkSize)) {
 						return nullptr;
 					}
 					format = ReadLE<std::uint16_t>(fmt.data());
