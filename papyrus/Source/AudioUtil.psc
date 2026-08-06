@@ -71,7 +71,11 @@ bool Function ReloadConfig() global native
 ;   2. [npc_overrides]                - explicit per-NPC pin
 ;   3. [voicetype_remap] -> [voicetype_map]  - by the actor's VoiceType
 ;   4. [race_map]                     - substring match on race editor id
-;   5. default_female_slot / default_male_slot
+;   5. default_creature_slot          - CREATURES ONLY (no ActorTypeNPC keyword),
+;                                       and they stop here: the by-sex default below
+;                                       only reaches human packs, so an unmapped
+;                                       spider must not fall into one. Unset = "".
+;   6. default_female_slot / default_male_slot   - non-creatures
 ; Map values may be slot lists; then the actor picks one deterministically
 ; (same NPC = same slot every scene, load order independent).
 ;

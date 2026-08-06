@@ -44,6 +44,29 @@ namespace PapyrusAPI
 			       (!a_settings.pcMaleSlot.empty() && SameSlotID(a_slot.id, a_settings.pcMaleSlot));
 		}
 
+		// a creature = an actor whose race carries no ActorTypeNPC keyword (the
+		// engine's own humanoid marker, which IsHumanoid() reads through the default
+		// object manager). In vanilla ONLY the playable humanoid races carry it —
+		// the ten player races plus their vampire/child variants, Elder, Dremora,
+		// Afflicted (verified against Skyrim.esm). Draugr, falmer, werewolves and
+		// every beast do NOT, so they all read as creatures here. That is the point:
+		// this gates the blind by-sex fallback ONLY, so a race_map'd draugr still
+		// resolves at its own step and never notices.
+		bool IsCreature(RE::Actor* a_actor)
+		{
+			if (a_actor->IsHumanoid()) {
+				return false;
+			}
+			// defensive second look straight at the race, in case the reference-level
+			// keyword walk misses it
+			if (const auto* race = a_actor->GetRace()) {
+				if (race->HasKeywordString("ActorTypeNPC"sv)) {
+					return false;
+				}
+			}
+			return true;
+		}
+
 		// load-order-stable per-NPC id for spreading actors across candidate slots
 		std::uint32_t StableLocalID(RE::TESNPC* a_base)
 		{
@@ -176,6 +199,23 @@ namespace PapyrusAPI
 			// by explicit routing, so an sfx/creature slot never leaks onto a
 			// voiceless human here. (default_*_slot may still name an 'A' slot: that
 			// goes through FindSlot above, not this scan.)
+			//
+			// The mirror of that guard: a CREATURE no explicit route claimed takes
+			// default_creature_slot and stops, never the by-sex default below — every
+			// slot that can reach is a human voice pack, so an unmapped frostbite
+			// spider or fox would otherwise speak human lines. Unset = silent.
+			if (IsCreature(a_actor)) {
+				if (const auto* creatureSlot =
+						Config::FindSlot(a_settings, a_settings.defaultCreatureSlot);
+					usable(creatureSlot)) {
+					return creatureSlot;
+				}
+				logger::debug("no slot for unrouted creature '{}' — add a [race_map] hint "
+							  "or set [general] default_creature_slot to voice it",
+					a_actor->GetName());
+				return nullptr;
+			}
+
 			const auto* fallback = Config::FindSlot(a_settings,
 				female ? a_settings.defaultFemaleSlot : a_settings.defaultMaleSlot);
 			if (usable(fallback)) {

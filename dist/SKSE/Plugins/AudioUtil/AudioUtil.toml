@@ -52,7 +52,15 @@ fuz_slots = 24
 prewarm_fuz = false
 # sfx_slot = "SFX0"           # [[slot]] PlaySFX resolves before the [sfx] table ("" = table only)
 default_female_slot = ""      # slot for unrouted female actors ("" = none; an overlay sets it)
-default_male_slot = ""         # slot for unrouted male actors and creatures ("" = none)
+default_male_slot = ""         # slot for unrouted male actors ("" = none)
+# Third default, for a CREATURE (an actor whose race has no ActorTypeNPC keyword) that
+# no explicit route claims - no [npc_overrides] pin, no [voicetype_map] entry, no
+# [race_map] hint. Creatures never fall through to default_male_slot: everything that
+# path can pick is a human voice pack, so an unmapped frostbite spider or fox would
+# speak human lines. "" = such a creature resolves to nothing and stays silent
+# (GetSlotForActor returns "", so a script can test before playing); name a generic
+# creature slot to give them all one. Routed creatures are unaffected.
+default_creature_slot = ""
 pc_female_slot = ""           # reserved player slot; no NPC ever resolves to it ("" = none)
 pc_male_slot = ""
 

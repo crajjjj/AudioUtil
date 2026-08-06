@@ -14,8 +14,9 @@ Paths written `'Sound\...'` are **Data-relative**. Single-quoted TOML literal st
 log_level = "info"            # trace | debug | info | warn | error
 sound_flags = 0x1A            # BuildSoundDataFromFile flags
 sound_priority = 128
-default_female_slot = "F1"
-default_male_slot = "M1"
+default_female_slot = "F0"
+default_male_slot = "M0"
+default_creature_slot = "C0"    # unrouted creatures; "" = silent (never borrow a human slot)
 pc_female_slot = ""           # reserved player slot; empty = no reservation
 pc_male_slot = ""
 voice_3d = true               # 3D-position voices at the speaker; false = flat/2D
@@ -33,7 +34,8 @@ attenuation_floor = 0.05      # minimum volume factor for far sounds (0.0 = sile
 | `sound_priority` | int | `128` | Sound priority passed to the engine. |
 | `sfx_slot` | slot id | `"SFX0"` | The `[[slot]]` whose categories [`PlaySFX`](../api/audioutil.md#playsfx) resolves before the flat `[sfx]` table (see [SFX](#sfx-the-sfx-slot-sfx-table)). `""` = table only. |
 | `default_female_slot` | slot id | `"F1"` | Slot for unrouted female actors. |
-| `default_male_slot` | slot id | `"M1"` | Slot for unrouted male actors (and creatures). |
+| `default_male_slot` | slot id | `"M1"` | Slot for unrouted male actors. Creatures never reach it — see below. |
+| `default_creature_slot` | slot id | `""` | Slot for an unrouted **creature** (an actor whose race carries no `ActorTypeNPC` keyword). Creatures never fall through to `default_male_slot` or its blind scan: everything those can pick is an `'F'`/`'M'` human voice pack, so an unmapped frostbite spider would otherwise speak human lines. `""` = the creature resolves to nothing and stays silent, and [`GetSlotForActor`](../api/audioutil.md#getslotforactor) returns `""` so a script can test before playing. Explicit routing (a `[race_map]` hint, an `[npc_overrides]` pin, `PlayVoiceFromSlot`) is unaffected. |
 | `pc_female_slot` | slot id | `""` | Reserved for the player; no NPC ever resolves to it. |
 | `pc_male_slot` | slot id | `""` | Same, for a male PC. |
 | `voice_3d` | bool | `true` | `true` = 3D-position each voice at the speaker (distance attenuation). `false` = play flat/2D at full volume so every speaker is equally audible. Lipsync is unaffected either way. |

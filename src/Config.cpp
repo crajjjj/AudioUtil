@@ -170,6 +170,8 @@ namespace Config
 				settings->soundPriority = (*general)["sound_priority"].value_or(settings->soundPriority);
 				settings->defaultFemaleSlot = (*general)["default_female_slot"].value_or(settings->defaultFemaleSlot);
 				settings->defaultMaleSlot = (*general)["default_male_slot"].value_or(settings->defaultMaleSlot);
+				settings->defaultCreatureSlot =
+					(*general)["default_creature_slot"].value_or(settings->defaultCreatureSlot);
 				settings->pcFemaleSlot = (*general)["pc_female_slot"].value_or(settings->pcFemaleSlot);
 				settings->pcMaleSlot = (*general)["pc_male_slot"].value_or(settings->pcMaleSlot);
 				settings->voice3D = (*general)["voice_3d"].value_or(settings->voice3D);

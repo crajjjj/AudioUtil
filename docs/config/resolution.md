@@ -17,9 +17,26 @@ Checked top to bottom; **first hit wins**.
 | 2 | `[npc_overrides]` | Explicit per-NPC pin, `'Plugin.esp\|FormID' = "Slot"`. May target any slot, including a pc-reserved one. |
 | 3 | `[voicetype_remap]` → `[voicetype_map]` | Rename the actor's voicetype (one hop) to one you have, then map that voicetype to a slot. |
 | 4 | `[race_map]` | Substring match against the race editor id; most specific (longest) hint wins. Creatures resolve here. |
-| 5 | `default_female_slot` / `default_male_slot` | Last resort, by the actor's sex. |
+| 5 | `default_creature_slot` | **Creatures only**, and they stop here — step 6 is never reached. Empty (the default) = silent. |
+| 6 | `default_female_slot` / `default_male_slot` | Non-creatures: last resort, by the actor's sex. If that slot is missing or pc-reserved, the first free slot of the actor's sex. |
 
 `GetSlotForActor(actor)` returns exactly what this chain produces (`""` if nothing resolves). Non-player actors **never** resolve to a pc-reserved slot.
+
+### Creatures branch at step 5
+
+A **creature** — an actor whose race carries no `ActorTypeNPC` keyword — is routed by steps 1–4 like anyone else, so a `[race_map]` hint onto a `sex = "all"` slot is the normal way to voice one. What it may *not* do is fall through to the by-sex default: every slot that step can reach is an `'F'`/`'M'` human voice pack, so an unmapped frostbite spider or fox would end up speaking human lines from whichever male pack happened to be declared first.
+
+So creatures take `default_creature_slot` instead, and stop there whether or not it resolves:
+
+```toml
+[general]
+default_creature_slot = ""      # unrouted creatures stay silent (the default)
+# default_creature_slot = "C0"  # ...or give them all one generic growl slot
+```
+
+Silent is the useful default: `GetSlotForActor` returns `""`, so a script can test whether a creature is voiced before building a line around it.
+
+In vanilla, `ActorTypeNPC` sits on **only** the playable humanoid races — the ten player races plus their vampire and child variants, `ElderRace`, `DremoraRace`, `DA13AfflictedRace` and a few scripted stand-ins. Everything else is a creature by this test, **draugr, falmer and werewolves included**. That's deliberate: humanoid-*sounding* creatures are exactly the ones you want a `[race_map]` hint for, and a hint resolves at step 4, so they never reach the creature branch at all.
 
 ### Spreading across a slot list
 

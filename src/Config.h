@@ -67,6 +67,18 @@ namespace Config
 		std::string defaultFemaleSlot{ "F1" };
 		std::string defaultMaleSlot{ "M1" };
 
+		// Third default, for a CREATURE (an actor whose race carries no ActorTypeNPC
+		// keyword) that no explicit route claims — no [npc_overrides] pin, no
+		// [voicetype_map] entry, no [race_map] hint. Creatures NEVER reach the by-sex
+		// default/scan below it: every slot that scan can pick is an 'F'/'M' human
+		// voice pack, so an unmapped frostbite spider would speak human lines.
+		// Empty (the default) = such a creature resolves to nothing and stays silent
+		// (GetSlotForActor returns "", so a script can test before playing); name a
+		// generic creature slot here to give them all one. Explicit routing is
+		// unaffected — a race_map'd creature slot, a pin or a voicetype route all
+		// still win, and PlayVoiceFromSlot never comes here at all.
+		std::string defaultCreatureSlot;
+
 		// slots reserved for the player: the PC resolves to these first, and other
 		// actors never resolve to them. Empty = no reservation for that sex.
 		std::string pcFemaleSlot;

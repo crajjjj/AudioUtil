@@ -274,6 +274,7 @@ namespace FolderCache
 		};
 		add(a_settings.defaultFemaleSlot);
 		add(a_settings.defaultMaleSlot);
+		add(a_settings.defaultCreatureSlot);
 		add(a_settings.pcFemaleSlot);
 		add(a_settings.pcMaleSlot);
 		add(a_settings.sfxSlot);
@@ -437,8 +438,9 @@ namespace FolderCache
 		}
 
 		// ---- blind default / PC-reservation / sfx slot assignments ----
-		logger::info("defaults: female={} male={}  pc.female={} pc.male={}  sfx={}",
+		logger::info("defaults: female={} male={} creature={}  pc.female={} pc.male={}  sfx={}",
 			a_settings.defaultFemaleSlot, a_settings.defaultMaleSlot,
+			a_settings.defaultCreatureSlot.empty() ? "-" : a_settings.defaultCreatureSlot,
 			a_settings.pcFemaleSlot.empty() ? "-" : a_settings.pcFemaleSlot,
 			a_settings.pcMaleSlot.empty() ? "-" : a_settings.pcMaleSlot,
 			a_settings.sfxSlot.empty() ? "-" : a_settings.sfxSlot);
