@@ -115,25 +115,41 @@ namespace LipData
 			if (src.empty()) {
 				continue;  // resting channel stays empty (samples as 0)
 			}
+			// The grid is densely SAMPLED, not sparsely keyframed: a slot the
+			// stream skips is at REST (0), not "hold the last key". An active
+			// channel carries a value on every frame of its run and decays to ~0
+			// before dropping out (measured over 21k vanilla/mod lips: mean run
+			// 11 frames, 55% of runs end below 0.05, 77% below 0.15). Treating
+			// the cells as keyframes to interpolate/hold instead froze the mouth
+			// in each channel's last shape for the rest of the line — every lip
+			// whose curves ended before the audio did (most of them) left the
+			// jaw locked open through the tail.
 			series.assign(effFrames, 0.0f);
-			// linear interpolation between keys, ends held (stream order is
-			// frame-ascending; a same-frame rewrite takes the later value)
-			std::size_t k = 0;
-			for (std::uint32_t f = 0; f < effFrames; ++f) {
-				while (k + 1 < src.size() && src[k + 1].first <= f) {
+			std::vector<char> has(effFrames, 0);
+			for (const auto& [f, v] : src) {  // frame-ascending; later wins a tie
+				series[f] = v;
+				has[f] = 1;
+			}
+			// Short release where a run just stops: the drop-out is a genuine
+			// snap to rest, but ~1/3 of them aren't covered by another phoneme
+			// taking over the mouth shape, and a 1-frame cut there pops.
+			// Only a REAL key may start a release (has[f - 1]) — retriggering off
+			// a frame the release itself wrote turns 2 frames into a geometric
+			// tail that decays for ~20 frames.
+			constexpr std::uint32_t RELEASE = 2;
+			for (std::uint32_t f = 1; f < effFrames;) {
+				if (has[f] || !has[f - 1] || series[f - 1] <= 0.0f) {
+					++f;
+					continue;
+				}
+				const float from = series[f - 1];
+				std::uint32_t k = 0;
+				while (k < RELEASE && f + k < effFrames && !has[f + k]) {
+					series[f + k] = from * static_cast<float>(RELEASE - k) /
+					                static_cast<float>(RELEASE + 1);
 					++k;
 				}
-				if (f <= src.front().first) {
-					series[f] = src.front().second;
-				} else if (k + 1 >= src.size()) {
-					series[f] = src.back().second;
-				} else {
-					const auto [f0, v0] = src[k];
-					const auto [f1, v1] = src[k + 1];
-					series[f] = f1 > f0
-					              ? v0 + (v1 - v0) * (static_cast<float>(f - f0) / static_cast<float>(f1 - f0))
-					              : v1;
-				}
+				f += k > 0 ? k : 1;
 			}
 		}
 		return anim;

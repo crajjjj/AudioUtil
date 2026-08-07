@@ -60,6 +60,18 @@ would otherwise desync). Values in **[0,1] are channel weights** (keep 0.0 — c
 distinctive); values outside [0,1] are Hermite tangent data — ignore for playback. The
 engine plays weights **verbatim** (probe: 0.90 in → 0.90 out, no scaling, ~1-frame latency).
 
+**Cells are dense samples, not sparse keyframes.** The marker's `skip` counts *resting*
+slots, and a slot the stream skips is at **rest (0)** — it does **not** hold the channel's
+previous value, and there is nothing to interpolate across. An active channel carries a
+value on **every** frame of its run and decays to ~0 on its own before dropping out of the
+stream. Measured over 21 478 vanilla/mod lips: mean run 11.2 frames, 55% of runs end below
+0.05, 77% below 0.15, and the last frame of a file is at 0 on essentially all of them.
+Decoding the cells as keyframes to interpolate/hold instead leaves the mouth **frozen in
+each channel's last shape for the rest of the line** — under that rule 70% of the corpus
+ends with the jaw stuck open at 0.25–0.99. Where a run does stop abruptly (>0.3 → absent),
+another phoneme takes over the mouth shape 65% of the time; AudioUtil fades the remaining
+third out over 2 frames so the drop-out doesn't pop.
+
 ### Slot map — ENGINE-VERIFIED, identity
 
 | grid slots | drives | order |
@@ -161,8 +173,10 @@ its slot map is the OLD wrong assumption — the timelines/format part is still 
 - `Parse(bytes)`: normalizes variant B, parses header + token grid, produces dense
   per-channel timelines (`values[32][frame]`, 30 fps) for slots 0–15 (phonemes) and
   16–31 (modifiers). Values kept in [0,1] at their slot; sentinel/tiny → 0;
-  out-of-range → skipped as tangent data. `Anim::Sample(channel, t)` linearly
-  interpolates between frames; `HasMouthData()` rejects lips with no phoneme signal.
+  out-of-range → skipped as tangent data. Frames a channel doesn't appear on are
+  **rest (0)** with a 2-frame release, per §2 — not held or interpolated.
+  `Anim::Sample(channel, t)` linearly interpolates between frames (sub-frame smoothing
+  only); `HasMouthData()` rejects lips with no phoneme signal.
 - `GetFor(path)`: resolves the lip for a played path — a `.fuz`'s embedded LIP block
   (via `FuzCache`), else a same-stem `.lip` beside the file (loose or BSA) — with
   session caching (misses cached too; `ClearCache()` on config reload).

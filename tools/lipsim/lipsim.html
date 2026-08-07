@@ -277,16 +277,24 @@ function parseLip(bytes) {
   for (let ch = 0; ch < CHANNELS; ch++) {
     const src = keys[ch];
     if (!src.length) continue;
+    // The grid is densely SAMPLED, not sparsely keyframed: a skipped slot is at
+    // REST (0), never "hold the last key" — see LipData.cpp / lip-format-research.md §2.
     const series = new Float32Array(effFrames);
-    let k = 0;
-    for (let f = 0; f < effFrames; f++) {
-      while (k + 1 < src.length && src[k + 1][0] <= f) k++;
-      if (f <= src[0][0]) series[f] = src[0][1];
-      else if (k + 1 >= src.length) series[f] = src[src.length - 1][1];
-      else {
-        const [f0, v0] = src[k], [f1, v1] = src[k + 1];
-        series[f] = f1 > f0 ? v0 + (v1 - v0) * ((f - f0) / (f1 - f0)) : v1;
+    const has = new Uint8Array(effFrames);
+    for (const [f, v] of src) { series[f] = v; has[f] = 1; }
+    // short fade where a run just stops, so drop-outs don't pop; only a REAL key
+    // may start one (has[f-1]) — retriggering off the fade's own output would
+    // stretch 2 frames into a ~20-frame geometric tail
+    const RELEASE = 2;
+    for (let f = 1; f < effFrames;) {
+      if (has[f] || !has[f - 1] || series[f - 1] <= 0) { f++; continue; }
+      const from = series[f - 1];
+      let k = 0;
+      while (k < RELEASE && f + k < effFrames && !has[f + k]) {
+        series[f + k] = from * (RELEASE - k) / (RELEASE + 1);
+        k++;
       }
+      f += k > 0 ? k : 1;
     }
     anim.values[ch] = series;
   }
