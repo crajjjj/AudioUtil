@@ -1,6 +1,6 @@
 # `.lip` RLE Hypothesis — Research Plan
 
-*Drafted 2026-08-11. Suggested repo location: `docs/lip-rle-hypothesis.md`, companion
+*Drafted 2026-08-11. Suggested repo location: `tools/lipresearch/RLE Hypothesis.md`, companion
 tool `tools/lipresearch/lip_rle_validator.py`. Status: **hypothesis — needs the corpus
 run (Exp 1) and one in-game probe (Exp 2), both on the Windows/Skyrim machine.***
 
@@ -148,9 +148,112 @@ their `SKYRIM_SLOT_MAP` is already known-wrong (identity map, `lip-format-resear
 non-discrimination argument (§2 above) so the byte-exact oracle isn't re-cited as
 counter-evidence.
 
-## 7. File manifest
+## 7. UPDATE 2026-08-11 — real-file evidence: BOTH grammars are incomplete
 
-- `docs/lip-rle-hypothesis.md` — this file.
-- `tools/lipresearch/lip_rle_validator.py` — Exp 1 tool (committed alongside).
+Analyzed one real LipGenerator-authored lip (`RajdazanTG_RajdazanTG03Let_00000BE2_1.lip`,
+115 frames, 3.7 s, header perfectly canonical: duration fit exact, `num_curves=13`,
+preroll −6 ≈ audio-length fit ✓). Result — **pure RLE (§1) and the shipping dup grammar
+both misparse it identically**: landing 364 cells short, 9 garbage cells (values up to
+1e10 — impossible under ANY cell/tangent reading), all 33 slots "active" vs
+`num_curves=13`, 3 stray tail bytes. The file desyncs in ~7 regions and coincidentally
+realigns after each. **This is very likely what "mouth moves too much" is** — not the
+dup-rule heuristic misfiring, but whole token types the parser doesn't know, turning
+modifier/garbage data into phoneme keys.
+
+Unknown constructs catalogued (via escape-tolerant DP segmentation — see
+`tools/lipresearch/lip_grammar_probe.py`):
+
+- **markers with odd tags**: `00 05`, `00 09`, `00 29`, `00 3d` — all ≡ 1 (mod 4),
+  violating the `tag = 4*skip` model;
+- **the restated-float motif**: float `X`, then `00 01`, then `X` again with a `00`
+  prefix (e.g. `ef 9b 3e · 00 01 · 00 ef 9b 3e`) — seen at 4+ sites;
+- **interior `00 01 00`** splitting what should be a single float
+  (`36 63 00 01 00 3f` where `36 63 00 3f` = 0.5015 would be a plausible weight);
+- **3-byte tail `00 20 03`** — non-zero third byte (u16 tag = skip 200 ≈ trailing rest
+  padding? unverified).
+
+Best partial theory so far — **`00` is a reserved control byte**: odd-tag short markers
+(`skip = tag>>2`, bit 0 = "next float starts with an elided 00 byte"), an escape for
+zero bytes inside float data, possibly u16 long tags. Several variants tested; none yet
+lands exactly at frames×33 with 13 active slots on this file. Single-file static
+cracking is underdetermined — do not iterate further this way.
+
+**Revised priorities:**
+
+1. **Engine decompile is now the primary route** (§4 routes 1–2 of the option-B plan:
+   string xrefs on `FUZE`/`.lip` → the parser; or SpeakSound call graph). One session
+   answers what weeks of byte-guessing cannot — these constructs are all disambiguated
+   in ~50 lines of the real decoder.
+2. Corpus run (Exp 1) is still worth doing, but reinterpret: it now measures **how many
+   real files contain unknown constructs** (overshoot/OOR/slot32 columns) — i.e. the
+   real-world blast radius of the bug — not dup-vs-RLE.
+3. Segregate the corpus stats **by producer** (vanilla BSA vs LipGenerator/FaceFXWrapper
+   vs TTS tools) — the four OpenFaceFX samples and the 21k-corpus statistics may have
+   been dominated by files that simply never use the extra token types; LipGenerator
+   output (this file) clearly does.
+4. Keep `RajdazanTG_RajdazanTG03Let_00000BE2_1.{lip,wav}` as the regression fixture —
+   any candidate grammar must land it at 3795 cells with 13 active slots AND survive
+   the in-game probe (§4 oracle loop: play it via AudioUtil, `autest lipcap`, compare
+   captured phoneme tracks against the candidate decode; the wav is 44.1 kHz PCM so it
+   plays as-is).
+
+## 8. UPDATE 2026-08-11 (later) — grammar ~95% cracked on 162 real files
+
+A second producer's corpus (Bella player-voice pack, 161 fuz, `TMSDynamicDialogue`)
+plus the Rajdazan LipGenerator lip yielded enough cross-evidence to reconstruct most
+of the real grammar. Reference implementation:
+`tools/lipresearch/lip_m4_decoder.py` ("M4"). Score: **128/162 files land within one
+frame of frames×33 with zero errors (46 exact)** vs ~0 under the shipping grammar.
+
+**Cracked this session:**
+
+1. **"Variant C" = a 20-byte header** — `const14 == 7` means NO preroll field
+   (vocab u16 at offset 16, u22 at 18, payload at 20). 65 of the 161 Bella files.
+   AudioUtil currently rejects all of them (envelope fallback) — they are fully
+   parseable. `const14` is evidently a header-layout discriminator: 3 = 24-byte
+   classic, 7 = 20-byte prerollless.
+2. **Negative cell values are real** — smooth negative curves (e.g. slot 30 running
+   −0.0004→−0.0076 over frames 7–18) on modifier channels. The parser's range filter
+   (`[0,1]` else tangent) silently discards them.
+3. **Odd marker tags = 2-byte marker + RAW flag**: `00 t` (t odd), skip `t>>2`, and
+   the NEXT float is stored raw (may contain bare 00 bytes; read 4 bytes blind).
+   Every odd tag observed is ≡1 mod 4 (bit1 never set — meaning unknown).
+4. **`00 01` = escape**: the next byte is literal float data. Covers 00-leading
+   floats at token boundaries (plateau restatements `X · 00 01 · 00-X`) and 00 bytes
+   inside floats (`93 e7 00 01 00 3d` → `93 e7 00 3d` = 0.0314).
+5. **Even tags are u16**: `00 lo hi`, skip `(lo|hi<<8)>>2`. hi≠0 confirmed in the
+   wild (`00 44 02` = skip 145; the `00 20 03` tail = skip 200 trailing rest).
+6. **The dup rule is definitively dead**: adjacent equal floats are plateau cells
+   (per the RLE reading); the restated-float escape pattern shows the encoder
+   emitting equal consecutive cells routinely.
+
+**Still open:**
+
+- **Bare `00` + sane float** (LipGenerator output only): a construct where a lone
+  00 byte precedes a normal float (`00 · 12 00 80 3f`≈1.0). Semantics unresolved;
+  misreading it as a u16 marker is what breaks the remaining ~30 files. A naive
+  "rest-cell" or "no-op" reading did not fix landings — some structure is missing.
+- The deterministic u16-vs-bare-00 rule the engine's decoder must have.
+- Whether bit1 of marker tags (t≡2,3 mod 4 — never observed) means anything.
+- Engine confirmation of all of the above (§4 in-game oracle loop, or the decompile
+  — which remains the fastest way to finish this: every remaining question is a few
+  lines of the real decoder).
+
+**Producer note:** construct mix differs by tool — the Bella pack (20-byte headers,
+u16 tags, escapes, negatives) vs LipGenerator (24-byte header, bare-00 construct,
+escapes). Vanilla BSA lips still unexamined on this machine — segregate corpus stats
+by producer when the full corpus run happens.
+
+## 9. File manifest
+
+- `tools/lipresearch/RLE Hypothesis.md` — this file.
+- `tools/lipresearch/lip_rle_validator.py` — Exp 1 corpus tool (NOTE: its two
+  grammars predate §8; use it for producer surveys, not as the reference decoder).
+- `tools/lipresearch/lip_grammar_probe.py` — single-file diagnostic (header sanity,
+  shipping-grammar walk with desync report, unknown-construct catalogue).
+- `tools/lipresearch/lip_m4_decoder.py` — the §8 reference decoder (best current
+  grammar; per-file landing/error report; grammar spec in its docstring).
+- `tools/lipresearch/fixtures/RajdazanTG_RajdazanTG03Let_00000BE2_1.lip` — known-misparse
+  regression fixture (own voicepack output — safe to commit).
 - Exp 1 output: `results.csv` (do not commit; corpus-derived).
 - Exp 2 additions: `make_probe.py --dup` mode + capture CSVs (CSVs stay local).
