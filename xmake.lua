@@ -1,8 +1,8 @@
-set_xmakever("2.9.5")
+set_xmakever("3.0.0")  -- the commonlibsse-ng submodule requires 3.0
 
 -- Globals
 PROJECT_NAME = "AudioUtil"
-PROJECT_VERSION = "0.9.14"
+PROJECT_VERSION = "0.9.15"
 PROJECT_AUTHOR = "crajjjj"
 
 -- Project
@@ -41,6 +41,7 @@ elseif is_mode("release") then
 end
 
 add_defines("_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING")
+add_defines("NOMINMAX")  -- CommonLib v7 headers pull in Windows.h
 
 -- Target
 target(PROJECT_NAME)

@@ -55,7 +55,7 @@ namespace AudioEngine
 
 		RE::BSResource::ID id;
 		id.GenerateFromPath(playPath->c_str());
-		manager->BuildSoundDataFromFile(handle, id, a_flags, a_priority);
+		manager->GetSoundHandleByFile(handle, id, a_flags, a_priority);
 
 		// A slot not in the launch index (e.g. one this session self-healed into
 		// existence) fails to build — fall back to the direct cache path rather than
@@ -64,11 +64,11 @@ namespace AudioEngine
 			FuzSlots::Release(slot);
 			slot = -1;
 			id.GenerateFromPath(extracted.c_str());
-			manager->BuildSoundDataFromFile(handle, id, a_flags, a_priority);
+			manager->GetSoundHandleByFile(handle, id, a_flags, a_priority);
 		}
 
 		if (!handle.IsValid()) {
-			logger::warn("BuildSoundDataFromFile failed for '{}' (flags=0x{:X}, priority={})",
+			logger::warn("GetSoundHandleByFile failed for '{}' (flags=0x{:X}, priority={})",
 				a_dataRelPath, a_flags, a_priority);
 			return handle;
 		}

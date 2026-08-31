@@ -28,130 +28,187 @@ namespace LipData
 			std::memcpy(&value, a_bytes, sizeof(T));
 			return value;
 		}
+
+		// Header: const14 discriminates the layout — 3 = 24-byte classic
+		// (preroll i32 at 16), 7 = 20-byte prerollless (the former "variant C"),
+		// variant B = classic with one extra byte at offset 14 (dropped here).
+		struct Header
+		{
+			std::vector<std::uint8_t> shifted;   // owns the buffer for variant B
+			const std::uint8_t*       d = nullptr;
+			std::size_t               size = 0;
+			std::size_t               payloadOff = 0;
+			std::int32_t              preroll = 0;
+			std::uint32_t             frames = 0;
+			std::uint32_t             numCurves = 0;
+			char                      variant = '?';
+		};
+
+		bool FillHeader(Header& a_h, const std::uint8_t* a_d, std::size_t a_size,
+			std::size_t a_off, bool a_hasPreroll, char a_variant)
+		{
+			const auto version = ReadLE<std::uint32_t>(a_d);
+			const auto frames = static_cast<std::uint32_t>(ReadLE<std::uint16_t>(a_d + 12));
+			if (version != 1 || frames == 0 || frames > MAX_FRAMES) {
+				return false;
+			}
+			a_h.d = a_d;
+			a_h.size = a_size;
+			a_h.payloadOff = a_off;
+			a_h.preroll = a_hasPreroll ? ReadLE<std::int32_t>(a_d + 16) : 0;
+			a_h.frames = frames;
+			a_h.numCurves = ReadLE<std::uint32_t>(a_d + 8);
+			a_h.variant = a_variant;
+			return true;
+		}
+
+		bool ParseHeader(Header& a_h, const std::uint8_t* a_data, std::size_t a_size)
+		{
+			if (!a_data || a_size < 20) {
+				return false;
+			}
+			const auto u16 = [&](std::size_t a_off) -> std::int32_t {
+				return a_off + 2 <= a_size ? ReadLE<std::uint16_t>(a_data + a_off) : -1;
+			};
+			// each layout is tried in turn; a FillHeader that fails its sanity
+			// checks (bad version/frames) falls through to the next candidate
+			if (u16(14) == 7 && u16(16) == 16 &&
+				FillHeader(a_h, a_data, a_size, 20, false, 'C')) {
+				return true;  // 20-byte prerollless ("variant C")
+			}
+			if (a_size >= 24 && u16(20) == 16 &&
+				FillHeader(a_h, a_data, a_size, 24, true, 'A')) {
+				return true;  // 24-byte classic (const14==3, or tolerated odd values)
+			}
+			if (a_size >= 25) {  // variant B: drop the extra byte at offset 14
+				a_h.shifted.reserve(a_size - 1);
+				a_h.shifted.assign(a_data, a_data + 14);
+				a_h.shifted.insert(a_h.shifted.end(), a_data + 15, a_data + a_size);
+				const auto* d = a_h.shifted.data();
+				if (a_h.shifted.size() >= 24 && ReadLE<std::uint16_t>(d + 20) == 16 &&
+					FillHeader(a_h, d, a_h.shifted.size(), 24, true, 'B')) {
+					return true;
+				}
+				a_h.shifted.clear();
+			}
+			return false;
+		}
+
+		// The payload is ZERO-RLE compressed (engine-verified against the game's
+		// own FUZE/lip loader, SkyrimSE.exe 1.6.1170 sub_140243*): a nonzero
+		// byte is a literal; a 0x00 byte introduces a run — the next two bytes
+		// are a little-endian u16 count of zero bytes to emit. The decompressed
+		// buffer is a DENSE float32 grid, frame-major, 33 slots per frame, every
+		// value a channel weight in [0,1] (slots 0–15 phonemes, 16–31 modifiers,
+		// 32 unused). The trailing all-zero run is omitted by the encoder, so
+		// the grid is zero-filled up to frames*33. This single decode replaces
+		// the whole "dup/tangent/marker" grammar the format was long mis-modeled
+		// as (those were artifacts of reading the compressed bytes directly).
+		std::vector<std::uint8_t> Decompress(const std::uint8_t* a_p, std::size_t a_n,
+			std::size_t a_cap)
+		{
+			std::vector<std::uint8_t> out;
+			out.reserve(a_cap);
+			std::size_t i = 0;
+			while (i < a_n && out.size() < a_cap) {
+				const std::uint8_t b = a_p[i];
+				if (b != 0) {
+					out.push_back(b);
+					++i;
+				} else if (i + 3 <= a_n) {
+					std::size_t run = ReadLE<std::uint16_t>(a_p + i + 1);
+					run = std::min(run, a_cap - out.size());
+					out.insert(out.end(), run, std::uint8_t{ 0 });
+					i += 3;
+				} else {
+					break;  // dangling 0 at EOF
+				}
+			}
+			return out;
+		}
 	}
 
 	std::shared_ptr<const Anim> Parse(const std::uint8_t* a_data, std::size_t a_size)
 	{
-		if (!a_data || a_size < 24) {
+		Header h;
+		if (!ParseHeader(h, a_data, a_size)) {
 			return nullptr;
 		}
+		const std::uint32_t frames = h.frames;
 
-		// header: <u32 version><u32 duration><u32 numCurves><u16 frames>
-		//         <u16 const14><i32 preroll><u16 vocab><u16 u22>
-		// Variant B has one extra byte at offset 14 (and const14=2) — detected
-		// by the vocab field not reading 16; normalize by dropping that byte.
-		std::vector<std::uint8_t> shifted;
-		const std::uint8_t*       d = a_data;
-		std::size_t               size = a_size;
-		auto vocab = ReadLE<std::uint16_t>(d + 20);
-		if (vocab != 16) {
-			shifted.reserve(a_size - 1);
-			shifted.insert(shifted.end(), a_data, a_data + 14);
-			shifted.insert(shifted.end(), a_data + 15, a_data + a_size);
-			d = shifted.data();
-			size = shifted.size();
-			vocab = ReadLE<std::uint16_t>(d + 20);
-			if (vocab != 16) {
-				return nullptr;  // third (unknown) variant — skip gracefully
-			}
-		}
-		const auto version = ReadLE<std::uint32_t>(d);
-		const auto frames = static_cast<std::uint32_t>(ReadLE<std::uint16_t>(d + 12));
-		if (version != 1 || frames == 0 || frames > MAX_FRAMES) {
-			return nullptr;
-		}
-		// preroll (i32 at 16) is the grid's negative first-frame index: the
+		// preroll (variant A/B) is the grid's negative first-frame index: the
 		// first |preroll| frames are pre-audio lead-in and grid frame |preroll|
-		// lands on audio t=0 (validated by duration fit — frames-|preroll| ≈
-		// audio length on authored lips; raw frames overshoot). Skip the
-		// lead-in, else every lip plays |preroll|/30 s late.
-		auto lead = static_cast<std::uint32_t>(
-			std::clamp(-ReadLE<std::int32_t>(d + 16), 0, 150));
+		// lands on audio t=0. Skip the lead-in, else the lip plays late.
+		auto lead = static_cast<std::uint32_t>(std::clamp(
+			-static_cast<std::int64_t>(h.preroll), std::int64_t{ 0 }, std::int64_t{ 150 }));
 		if (lead + 1 >= frames) {
 			lead = 0;  // nonsense preroll — keep the whole grid
 		}
 		const std::uint32_t effFrames = frames - lead;
 
-		// token walk: [f32 value] [optional exact dup] [optional 00,4*skip,00
-		// marker]. Position advances 1 per float plus `skip` resting slots;
-		// frame = pos / 33, slot = pos % 33. Weights are values in [0,1] at
-		// slots 0..31; sentinels (~1e-15) count as explicit zero keys; anything
-		// out of range is Hermite tangent data and carries no weight.
-		std::vector<std::pair<std::uint32_t, float>> keys[CHANNELS];
-		std::size_t   i = 24;
-		std::uint64_t pos = 0;
-		while (i + 4 <= size) {
-			const float value = ReadLE<float>(d + i);
-			std::uint32_t floats = 1;
-			i += 4;
-			if (i + 4 <= size && std::memcmp(d + i, d + i - 4, 4) == 0) {
-				floats = 2;  // dup: value + equal tangent
-				i += 4;
-			}
-			std::uint32_t skip = 0;
-			if (i + 3 <= size && d[i] == 0 && d[i + 2] == 0 &&
-				d[i + 1] != 0 && d[i + 1] % 4 == 0) {
-				skip = d[i + 1] / 4u;
-				i += 3;
-			}
-			const auto frame = static_cast<std::uint32_t>(pos / STRIDE);
-			const auto slot = static_cast<std::uint32_t>(pos % STRIDE);
-			if (frame >= lead && frame < frames && slot < CHANNELS) {
-				if (std::fabs(value) < 1.0e-6f) {
-					keys[slot].emplace_back(frame - lead, 0.0f);  // sentinel/true zero
-				} else if (value >= 0.0f && value <= 1.0001f) {
-					keys[slot].emplace_back(frame - lead, std::min(value, 1.0f));
-				}
-			}
-			pos += floats + skip;
-		}
+		// decompress to the dense grid, then read frame-major float32 cells
+		const std::size_t cap = static_cast<std::size_t>(frames) * STRIDE * sizeof(float);
+		const auto grid = Decompress(h.d + h.payloadOff, h.size - h.payloadOff, cap);
+		const std::size_t cells = grid.size() / sizeof(float);
 
 		auto anim = std::make_shared<Anim>();
 		anim->frames = effFrames;
 		anim->durationSec = static_cast<float>(effFrames) / FPS;
+
 		for (std::uint32_t ch = 0; ch < CHANNELS; ++ch) {
-			auto& series = anim->values[ch];
-			const auto& src = keys[ch];
-			if (src.empty()) {
-				continue;  // resting channel stays empty (samples as 0)
+			anim->values[ch].assign(effFrames, 0.0f);
+		}
+		// The grid plays VERBATIM: authored curves already ramp down to 0 on
+		// their own (baked at 30 fps), so no smoothing/fades are added — a cell
+		// the file encodes as 0 stays 0.
+		bool          chAny[CHANNELS] = {};
+		bool          any = false;
+		std::uint64_t examined = 0;
+		std::uint64_t corrupt = 0;
+		for (std::size_t pos = 0; pos < cells; ++pos) {
+			const auto frame = static_cast<std::uint32_t>(pos / STRIDE);
+			const auto slot = static_cast<std::uint32_t>(pos % STRIDE);
+			if (frame < lead || frame >= frames || slot >= CHANNELS) {
+				continue;
 			}
-			// The grid is densely SAMPLED, not sparsely keyframed: a slot the
-			// stream skips is at REST (0), not "hold the last key". An active
-			// channel carries a value on every frame of its run and decays to ~0
-			// before dropping out (measured over 21k vanilla/mod lips: mean run
-			// 11 frames, 55% of runs end below 0.05, 77% below 0.15). Treating
-			// the cells as keyframes to interpolate/hold instead froze the mouth
-			// in each channel's last shape for the rest of the line — every lip
-			// whose curves ended before the audio did (most of them) left the
-			// jaw locked open through the tail.
-			series.assign(effFrames, 0.0f);
-			std::vector<char> has(effFrames, 0);
-			for (const auto& [f, v] : src) {  // frame-ascending; later wins a tie
-				series[f] = v;
-				has[f] = 1;
+			const float v = ReadLE<float>(grid.data() + pos * sizeof(float));
+			++examined;
+			if (!std::isfinite(v) || v < -1.0e-6f || v > 1.0001f) {
+				// a real cell is a weight in [0,1] or exact rest 0 — NaN/inf,
+				// negatives and huge values are corrupt/misaligned data (or a
+				// non-compressed lip). Skip rather than clamp: clamping a huge
+				// value to 1.0 would flash the mouth fully open.
+				++corrupt;
+				continue;
 			}
-			// Short release where a run just stops: the drop-out is a genuine
-			// snap to rest, but ~1/3 of them aren't covered by another phoneme
-			// taking over the mouth shape, and a 1-frame cut there pops.
-			// Only a REAL key may start a release (has[f - 1]) — retriggering off
-			// a frame the release itself wrote turns 2 frames into a geometric
-			// tail that decays for ~20 frames.
-			constexpr std::uint32_t RELEASE = 2;
-			for (std::uint32_t f = 1; f < effFrames;) {
-				if (has[f] || !has[f - 1] || series[f - 1] <= 0.0f) {
-					++f;
-					continue;
-				}
-				const float from = series[f - 1];
-				std::uint32_t k = 0;
-				while (k < RELEASE && f + k < effFrames && !has[f + k]) {
-					series[f + k] = from * static_cast<float>(RELEASE - k) /
-					                static_cast<float>(RELEASE + 1);
-					++k;
-				}
-				f += k > 0 ? k : 1;
+			if (v <= 0.0f) {
+				continue;  // rest (the vast majority — grid is sparse-active)
+			}
+			anim->values[slot][frame - lead] = std::min(v, 1.0f);
+			chAny[slot] = true;
+			any = true;
+		}
+		// wholesale garbage (e.g. an uncompressed lip mis-decompressed) → fall
+		// back to the envelope rather than mouthing noise. Corrupt is measured
+		// against the cells actually examined (lead frames and slot 32 are
+		// skipped before classification, so `cells` would dilute the ratio).
+		if (!any || corrupt * 4 > examined) {
+			// visible at the shipped log level: with use_lip_files on by default,
+			// a lip class silently regressing to the envelope would be invisible
+			logger::warn(
+				"LipData: rejecting lip (variant {}, {} frames): {} of {} cells corrupt, {} usable — envelope fallback",
+				h.variant, frames, corrupt, examined, any ? "some" : "none");
+			return nullptr;
+		}
+		for (std::uint32_t ch = 0; ch < CHANNELS; ++ch) {
+			if (!chAny[ch]) {
+				// truly free it — clear() would keep the effFrames*4B capacity
+				// alive in every cached anim (~MBs across a 128-entry cache)
+				std::vector<float>{}.swap(anim->values[ch]);
 			}
 		}
+		logger::debug("LipData: variant {} frames={} curves={} -> {} cells", h.variant,
+			frames, h.numCurves, cells);
 		return anim;
 	}
 

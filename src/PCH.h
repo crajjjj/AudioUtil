@@ -3,6 +3,10 @@
 #include <RE/Skyrim.h>
 #include <SKSE/SKSE.h>
 
+// CommonLib v7 (REX) pulls real <Windows.h> into the include chain; scrub the
+// macro collisions we actually hit (min/max are handled by NOMINMAX in xmake.lua)
+#undef GetObject
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>

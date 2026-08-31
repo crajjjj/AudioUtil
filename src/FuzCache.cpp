@@ -517,7 +517,13 @@ namespace FuzCache
 			// FuzSlots placeholder wavs live here but must never be evicted — they have
 			// to exist at launch for in-session fuz playback, and their size is transient
 			// (they hold whatever line is currently playing). Prefix owned by FuzSlots.
-			if (FuzSlots::IsSlotName(entry.path().filename().string())) {
+			std::string cacheName;
+			try {
+				cacheName = entry.path().filename().string();
+			} catch (const std::exception&) {
+				continue;  // unmappable name is never one of our cache files
+			}
+			if (FuzSlots::IsSlotName(cacheName)) {
 				continue;
 			}
 			const auto size = entry.file_size(ec);

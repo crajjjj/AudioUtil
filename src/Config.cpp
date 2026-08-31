@@ -231,6 +231,12 @@ namespace Config
 					std::int64_t{ 1 }, std::int64_t{ 60 }));
 				settings->lipsyncPseudoClosure = std::clamp(
 					(*lipsync)["pseudo_closure"].value_or(settings->lipsyncPseudoClosure), 0.0f, 1.0f);
+				settings->lipsyncPseudoSpeechiness = std::clamp(
+					(*lipsync)["pseudo_speechiness"].value_or(settings->lipsyncPseudoSpeechiness), 0.0f, 1.0f);
+				settings->lipsyncLipJawBoost = std::clamp(
+					(*lipsync)["lip_jaw_boost"].value_or(settings->lipsyncLipJawBoost), 0.0f, 1.0f);
+				settings->lipsyncPseudoJawBase = std::clamp(
+					(*lipsync)["pseudo_jaw_base"].value_or(settings->lipsyncPseudoJawBase), 0.0f, 1.0f);
 			} else if (lipsync->contains("enable") || lipsync->contains("gain") ||
 					   lipsync->contains("attack_ms") || lipsync->contains("release_ms") ||
 					   lipsync->contains("min_level") || lipsync->contains("block_in_dialogue") ||
@@ -238,6 +244,7 @@ namespace Config
 					   lipsync->contains("pseudo_phonemes") || lipsync->contains("lead_ms") ||
 					   lipsync->contains("pseudo_voiced_floor") || lipsync->contains("pseudo_valley_ratio") ||
 					   lipsync->contains("pseudo_min_syl_frames") || lipsync->contains("pseudo_gap_frames") ||
+					   lipsync->contains("pseudo_speechiness") || lipsync->contains("pseudo_jaw_base") || lipsync->contains("lip_jaw_boost") ||
 					   lipsync->contains("pseudo_closure")) {
 				logger::warn("[lipsync] scalar settings in an overlay are ignored (base-only); block_categories still merge");
 			}

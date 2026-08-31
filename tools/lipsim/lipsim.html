@@ -123,8 +123,11 @@
       <div class="row"><label>voiced floor</label><input type="range" id="p_voicedFloor" min="0" max="0.3" step="0.005" value="0.05"><span class="val"></span></div>
       <div class="row"><label>valley split ratio</label><input type="range" id="p_valley" min="0.2" max="0.95" step="0.01" value="0.6"><span class="val"></span></div>
       <div class="row"><label>min syllable frames</label><input type="range" id="p_minSyl" min="1" max="12" step="1" value="3"><span class="val"></span></div>
-      <div class="row"><label>closure gap frames</label><input type="range" id="p_gap" min="2" max="20" step="1" value="5"><span class="val"></span></div>
+      <div class="row"><label>closure gap frames</label><input type="range" id="p_gap" min="1" max="20" step="1" value="5"><span class="val"></span></div>
       <div class="row"><label>closure strength</label><input type="range" id="p_close" min="0" max="1" step="0.05" value="0.85"><span class="val"></span></div>
+      <div class="row"><label>speechiness</label><input type="range" id="p_speech" min="0" max="1" step="0.05" value="0.30"><span class="val"></span></div>
+      <div class="row"><label>jaw base</label><input type="range" id="p_jawBase" min="0" max="1" step="0.05" value="0.5"><span class="val"></span></div>
+      <div class="row"><label>lip jaw boost</label><input type="range" id="p_lipJawBoost" min="0" max="1" step="0.05" value="0"><span class="val"></span></div>
       <div class="row"><label>attack_ms</label><input type="range" id="p_attack" min="5" max="200" step="5" value="30"><span class="val"></span></div>
       <div class="row"><label>release_ms</label><input type="range" id="p_release" min="5" max="400" step="5" value="90"><span class="val"></span></div>
       <div class="row"><label>seed variant</label><input type="range" id="p_variant" min="0" max="9" step="1" value="0"><span class="val"></span></div>
@@ -223,79 +226,81 @@ function makeAnim(frames) {
   };
 }
 
-// Port of LipData::Parse (LipData.cpp): 24-byte header (variant B normalized by
-// dropping the extra byte at offset 14), frame-major 33-slot token grid -> dense
-// per-channel 30 fps timelines. Returns null on structural mismatch.
+/* ---- .lip parsing ------------------------------------------------------------
+   ENGINE-VERIFIED format (SkyrimSE.exe 1.6.1170 FUZE/lip loader, decompiled
+   2026-08-31 — see tools/lipresearch/RLE Hypothesis.md §11): the payload is
+   ZERO-RLE compressed — a nonzero byte is a literal; a 0x00 byte is followed
+   by a u16-LE count of zero bytes to emit. The decompressed buffer is a DENSE
+   float32 grid, frame-major, 33 slots/frame, every value a channel weight in
+   [0,1] (slots 0-15 phonemes, 16-31 modifiers, 32 unused). The trailing
+   all-zero run is omitted by the encoder, so zero-fill up to frames*33.
+   (The old dup/tangent/marker "grammars" were misreadings of the compressed
+   bytes; deleted.) Header const14 selects the layout: 3 = 24-byte classic
+   (preroll i32 at 16), 7 = 20-byte prerollless, variant B = 24-byte + one
+   extra byte at offset 14 (dropped). */
+
+// Port of LipData::Parse (LipData.cpp). Returns an anim or null.
 function parseLip(bytes) {
-  if (!bytes || bytes.length < 24) return null;
-  let d = bytes;
-  let vocab = d[20] | (d[21] << 8);
-  if (vocab !== 16) {
-    const shifted = new Uint8Array(bytes.length - 1);
-    shifted.set(bytes.subarray(0, 14), 0);
-    shifted.set(bytes.subarray(15), 14);
-    d = shifted;
-    vocab = d[20] | (d[21] << 8);
-    if (vocab !== 16) return null;  // third (unknown) variant
-  }
+  if (!bytes || bytes.length < 20) return null;
+  let d = bytes, off = 24, preroll = 0;
+  const u16 = o => o + 2 <= d.length ? d[o] | (d[o + 1] << 8) : -1;
+  if (u16(14) === 7 && u16(16) === 16) { off = 20; preroll = 0; }
+  else if (u16(14) === 3 && d.length >= 24 && u16(20) === 16) off = 24;
+  else if (d.length >= 24 && u16(20) === 16) off = 24;
+  else if (d.length >= 25) {                       // variant B: drop byte 14
+    const sh = new Uint8Array(d.length - 1);
+    sh.set(d.subarray(0, 14), 0); sh.set(d.subarray(15), 14);
+    if ((sh[20] | (sh[21] << 8)) !== 16) return null;
+    d = sh;
+  } else return null;
   const dv = new DataView(d.buffer, d.byteOffset, d.byteLength);
-  const version = dv.getUint32(0, true);
+  if (dv.getUint32(0, true) !== 1) return null;
   const frames = dv.getUint16(12, true);
-  if (version !== 1 || frames === 0 || frames > 60 * 30 * 30) return null;
-  // preroll: the first |preroll| grid frames are pre-audio lead-in; grid frame
-  // |preroll| lands on audio t=0 — skip the lead-in (matches LipData.cpp)
-  let lead = Math.max(0, Math.min(150, -dv.getInt32(16, true)));
+  if (!frames || frames > 60 * 30 * 30) return null;
+  if (off === 24) preroll = dv.getInt32(16, true);
+
+  // zero-RLE decompress -> dense float32 grid
+  const cap = frames * STRIDE * 4;
+  const out = new Uint8Array(cap);
+  let i = off, o = 0;
+  while (i < d.length && o < cap) {
+    if (d[i] !== 0) { out[o++] = d[i++]; }
+    else if (i + 3 <= d.length) {
+      let run = Math.min(d[i + 1] | (d[i + 2] << 8), cap - o);
+      o += run; i += 3;                             // Uint8Array is zero-init
+    } else break;
+  }
+  const cells = o >> 2;
+  const gv = new DataView(out.buffer);
+
+  let lead = Math.max(0, Math.min(150, -preroll));
   if (lead + 1 >= frames) lead = 0;
   const effFrames = frames - lead;
 
+  // mirrors LipData::Parse: a real cell is a weight in [0,1] or rest 0 —
+  // NaN/inf, negatives and huge values are corrupt (skipped, counted); a
+  // mostly-corrupt decode is rejected the same way the DLL rejects it
   const keys = Array.from({ length: CHANNELS }, () => []);
-  let i = 24, pos = 0;
-  const size = d.length;
-  while (i + 4 <= size) {
-    const value = dv.getFloat32(i, true);
-    let floats = 1;
-    i += 4;
-    if (i + 4 <= size &&
-        d[i] === d[i-4] && d[i+1] === d[i-3] && d[i+2] === d[i-2] && d[i+3] === d[i-1]) {
-      floats = 2;  // dup: value + equal tangent
-      i += 4;
-    }
-    let skip = 0;
-    if (i + 3 <= size && d[i] === 0 && d[i+2] === 0 && d[i+1] !== 0 && d[i+1] % 4 === 0) {
-      skip = d[i+1] / 4;
-      i += 3;
-    }
+  let examined = 0, corrupt = 0, anyCell = false;
+  for (let pos = 0; pos < cells; pos++) {
     const frame = Math.floor(pos / STRIDE), slot = pos % STRIDE;
-    if (frame >= lead && frame < frames && slot < CHANNELS) {
-      if (Math.abs(value) < 1e-6) keys[slot].push([frame - lead, 0]);
-      else if (value >= 0 && value <= 1.0001) keys[slot].push([frame - lead, Math.min(value, 1)]);
-    }
-    pos += floats + skip;
+    if (frame < lead || frame >= frames || slot >= CHANNELS) continue;
+    const v = gv.getFloat32(pos * 4, true);
+    examined++;
+    if (!Number.isFinite(v) || v < -1e-6 || v > 1.0001) { corrupt++; continue; }
+    if (v <= 0) continue;
+    keys[slot].push([frame - lead, Math.min(v, 1)]);
+    anyCell = true;
   }
+  if (!anyCell || corrupt * 4 > examined) return null;
 
+  // curves play VERBATIM — authored lips already ramp; no fades are added
   const anim = makeAnim(effFrames);
   for (let ch = 0; ch < CHANNELS; ch++) {
     const src = keys[ch];
     if (!src.length) continue;
-    // The grid is densely SAMPLED, not sparsely keyframed: a skipped slot is at
-    // REST (0), never "hold the last key" — see LipData.cpp / lip-format-research.md §2.
     const series = new Float32Array(effFrames);
-    const has = new Uint8Array(effFrames);
-    for (const [f, v] of src) { series[f] = v; has[f] = 1; }
-    // short fade where a run just stops, so drop-outs don't pop; only a REAL key
-    // may start one (has[f-1]) — retriggering off the fade's own output would
-    // stretch 2 frames into a ~20-frame geometric tail
-    const RELEASE = 2;
-    for (let f = 1; f < effFrames;) {
-      if (has[f] || !has[f - 1] || series[f - 1] <= 0) { f++; continue; }
-      const from = series[f - 1];
-      let k = 0;
-      while (k < RELEASE && f + k < effFrames && !has[f + k]) {
-        series[f + k] = from * (RELEASE - k) / (RELEASE + 1);
-        k++;
-      }
-      f += k > 0 ? k : 1;
-    }
+    for (const [f, v] of src) series[f] = v;
     anim.values[ch] = series;
   }
   return anim;
@@ -399,38 +404,71 @@ function synthesizePseudoLip(env, seedText, p) {
   if (!syllables.length) return null;
 
   const anim = makeAnim(frames);
-  for (const ch of [PH.Aah, PH.BigAah, PH.BMP, PH.Eh, PH.Oh, PH.OohQ])
-    anim.values[ch] = new Float32Array(frames);
+  for (let ch = 0; ch < PHONEME_CHANNELS; ch++) anim.values[ch] = new Float32Array(frames);
+
+  // Per-syllable phoneme palette — mirrors LipSync::SynthesizePseudoLip. SPEECH
+  // column = syllable-onset distribution measured from 638 vanilla lips (all 16
+  // channels); MOAN column collapses to open-mouth vowels. `speechiness` lerps:
+  // 0 = moans, 1 = articulated speech.
+  const PALETTE = [
+    [PH.Aah, 5, 13, true], [PH.BigAah, 2, 4, true], [PH.Oh, 4, 6, true],
+    [PH.OohQ, 3, 6, false], [PH.Eh, 2, 12, false], [PH.Eee, 1, 5, false],
+    [PH.I, 1, 6, false], [PH.N, 0, 10, false], [PH.DST, 0, 7, false],
+    [PH.R, 0, 6, false], [PH.FV, 0, 4, false],
+    [PH.Th, 0, 4, false], [PH.K, 0, 3, false], [PH.W, 0, 3, false],
+    [PH.ChjSh, 0, 3, false],
+  ];
+  const sp = p.speechiness ?? 0.3;
+  const weight = PALETTE.map(e => (1 - sp) * e[1] + sp * e[2]);
+  const total = weight.reduce((a, b) => a + b, 0);
 
   const seed = fnv1a64(seedText);
-  let prevVowel = -1, prevEnd = 0;
+  let prevPick = -1, prevEnd = 0;
   for (let s = 0; s < syllables.length; s++) {
     const syl = syllables[s];
-    const roll = Number(mix64(seed + BigInt(s)) % 10n);
-    let vowel = roll < 4 ? PH.Aah : roll < 7 ? PH.Oh : roll < 9 ? PH.OohQ : PH.Eh;
-    if (vowel === prevVowel) {
-      vowel = vowel === PH.Aah ? PH.Oh : vowel === PH.Oh ? PH.OohQ :
-              vowel === PH.OohQ ? PH.Aah : PH.Oh;
+    // roll over the distribution EXCLUDING the previous pick — no repeats
+    const excl = prevPick >= 0 ? weight[prevPick] : 0;
+    let r = Number(mix64(seed + BigInt(s)) % 100000n) / 100000 * (total - excl);
+    let pick = prevPick === 0 ? 1 : 0;
+    for (let i = 0; i < weight.length; i++) {
+      if (i === prevPick) continue;
+      if (r < weight[i]) { pick = i; break; }
+      r -= weight[i];
     }
-    prevVowel = vowel;
-    syl.vowel = vowel;
+    const ph = PALETTE[pick][0], wide = PALETTE[pick][3];
+    prevPick = pick;
+    syl.vowel = ph;
     for (let f = syl.start; f < syl.end; f++) {
-      anim.values[vowel][f] = level[f];
-      if (vowel === PH.Aah)
-        anim.values[PH.BigAah][f] = Math.max(0, level[f] - 0.55) / 0.45 * 0.35;
+      anim.values[ph][f] = level[f];
+      if (wide && ph !== PH.BigAah)
+        anim.values[PH.BigAah][f] = Math.max(anim.values[PH.BigAah][f],
+          Math.max(0, level[f] - 0.55) / 0.45 * 0.35);
     }
     if (syl.start >= 2 && syl.start - prevEnd >= p.gapFrames) {
-      anim.values[PH.BMP][syl.start - 2] = p.close * 0.65;
+      // lead-in only when the gap has room (mirrors LipSync) - at gap 1 the
+      // -2 frame is the previous syllable's last voiced frame
+      if (syl.start - prevEnd >= 2)
+        anim.values[PH.BMP][syl.start - 2] = p.close * 0.65;
       anim.values[PH.BMP][syl.start - 1] = p.close;
       syl.closure = true;
     }
     prevEnd = syl.end;
   }
 
+  // continuous jaw under-layer — mirrors LipSync::SynthesizePseudoLip: Aah
+  // carries jawBase of the envelope on voiced frames, vowels layer on top
+  const jb = p.jawBase ?? 0.5;
+  if (jb > 0) {
+    const aah = anim.values[PH.Aah];
+    for (let f = 0; f < frames; f++)
+      if (level[f] > 0) aah[f] = Math.max(aah[f], level[f] * jb);
+  }
+
   const dt = 1 / FPS;
   const attack = 1 - Math.exp(-dt / Math.max(0.005, p.attackMs / 1000));
   const release = 1 - Math.exp(-dt / Math.max(0.005, p.releaseMs / 1000));
-  for (const ch of [PH.Aah, PH.BigAah, PH.Eh, PH.Oh, PH.OohQ]) {
+  for (let ch = 0; ch < PHONEME_CHANNELS; ch++) {
+    if (ch === PH.BMP) continue;   // closures stay crisp
     let cur = 0;
     const s = anim.values[ch];
     for (let f = 0; f < s.length; f++) {
@@ -510,7 +548,8 @@ const params = () => ({
   valleyRatio: +$("p_valley").value, minSylFrames: +$("p_minSyl").value,
   gapFrames: +$("p_gap").value, close: +$("p_close").value,
   attackMs: +$("p_attack").value, releaseMs: +$("p_release").value,
-  gain: +$("p_gain").value, variant: +$("p_variant").value,
+  gain: +$("p_gain").value, variant: +$("p_variant").value, speechiness: +$("p_speech").value,
+  jawBase: +$("p_jawBase").value, lipJawBoost: +$("p_lipJawBoost").value,
 });
 
 /* ---------- file loading ---------- */
@@ -575,7 +614,7 @@ async function loadFiles(files, a_handles) {
     try {
       if (ext === "lip") {
         const anim = parseLip(bytes);
-        if (!anim) throw new Error("unparseable .lip (third header variant?)");
+        if (!anim) throw new Error("unparseable .lip (unknown header variant)");
         state.lip = { name: file.name, anim, source: ".lip file" };
       } else if (ext === "fuz") {
         const fuz = parseFuz(bytes);
@@ -585,7 +624,7 @@ async function loadFiles(files, a_handles) {
         if (fuz.lip) {
           const anim = parseLip(fuz.lip);
           if (anim) state.lip = { name: file.name, anim, source: "fuz-embedded" };
-          else lipNote = `lip block present (${fuz.lip.length} bytes) but unparseable — unknown header variant?`;
+          else lipNote = `lip block present (${fuz.lip.length} bytes) but unparseable`;
         }
         state.fuzAudioNote = "";
         try {
@@ -742,7 +781,9 @@ function rebuild() {
   if (mode === "lip") {
     state.activeAnim = state.lip.anim;
   } else if (mode === "pseudo") {
-    const seed = state.audio.name.replace(/\.[^.]+$/, "") + (p.variant ? "#" + p.variant : "");
+    // seed = lowercased file name WITH extension — matches the DLL, so at
+    // variant 0 the preview reproduces the in-game pick sequence
+    const seed = state.audio.name.toLowerCase() + (p.variant ? "#" + p.variant : "");
     state.activeAnim = synthesizePseudoLip(state.audio.envelope, seed, p);
     if (state.activeAnim) {
       const syls = state.activeAnim.syllables;
@@ -970,6 +1011,13 @@ function weightsAt(t) {
     const last = $("driveMods").checked ? CHANNELS : PHONEME_CHANNELS;
     for (let ch = 0; ch < last; ch++)
       if (anim.values[ch]) w[ch] = Math.min(1, anim.sample(ch, t) * (ch < PHONEME_CHANNELS ? g : 1));
+    // lip_jaw_boost (mirrors LipSync): authored lips only, skipped while BMP presses
+    const jb = +$("p_lipJawBoost").value;
+    if (jb > 0 && activeMode() === "lip" && w[PH.BMP] < 0.25) {
+      let vmax = 0;
+      for (let ch = 0; ch < PHONEME_CHANNELS; ch++) vmax = Math.max(vmax, w[ch]);
+      w[PH.Aah] = Math.max(w[PH.Aah], vmax * jb);
+    }
   }
   return w;
 }
@@ -2064,7 +2112,7 @@ window.addEventListener("keydown", e => {
 
 // ---------- settings persistence ----------
 const PERSIST_SLIDERS = ["p_minLevel", "p_voicedFloor", "p_valley", "p_minSyl", "p_gap",
-                         "p_close", "p_attack", "p_release", "p_variant", "p_gain"];
+                         "p_close", "p_speech", "p_jawBase", "p_lipJawBoost", "p_attack", "p_release", "p_variant", "p_gain"];
 const PERSIST_CHECKS = ["flipV", "driveMods", "showMods", "loop"];
 function saveSettings() {
   const s = { rate: state.rate, mode: state.mode, pseudoOpen: $("pseudoDetails").open };
@@ -2139,9 +2187,12 @@ const PSEUDO_HINTS = {
   p_minSyl: "shortest allowed syllable in 30 fps frames — raise to kill machine-gun flicker on warbly audio",
   p_gap: "silence (30 fps frames) that earns a lip closure before the next syllable — 5 ≈ 165 ms; lower = close on every pause, higher = only between phrases",
   p_close: "how firmly the lips press shut between moans (BMP peak, 0–1)",
+  p_speech: "0 = open-mouth MOAN vowels only (Aah/Oh/Ooh/Eh/Eee/I); 1 = full 16-phoneme SPEECH palette (adds N/D/T/K/R/F/Th/Sh consonants) weighted by real vanilla lips. Raise for spoken lines, keep low for moans",
+  p_lipJawBoost: "LIP MODE (.lip/.fuz curves): drive the jaw with this fraction of the frame's strongest channel - authored speech holds the jaw low ~80% of the time, so accurate lips read closed at game distance. 0 = verbatim",
+  p_jawBase: "continuous Aah under-layer — this fraction of the envelope always drives the jaw beneath the vowel picks. 0 = vowels replace the jaw entirely (mouth can sit still on narrow vowels); higher = steadier envelope-style jaw",
   p_attack: "how fast the mouth opens toward a louder level — lower = snappier onsets",
   p_release: "how fast the mouth closes on quiet — higher = lazier, softer look",
-  p_variant: "preview alternate vowel sequences for this wav — in-game the seed is the file path, so this slider is only for sampling variety",
+  p_variant: "0 = the pick sequence the game will use for this file (seed = file name); higher values preview alternate sequences",
   p_gain: "overall mouth-open multiplier, all lipsync modes ([lipsync] gain)",
 };
 for (const [id, hint] of Object.entries(PSEUDO_HINTS)) {
@@ -2283,7 +2334,10 @@ pseudo_voiced_floor = ${p.voicedFloor}
 pseudo_valley_ratio = ${p.valleyRatio}
 pseudo_min_syl_frames = ${p.minSylFrames}
 pseudo_gap_frames = ${p.gapFrames}
-pseudo_closure = ${p.close}`;
+pseudo_closure = ${p.close}
+pseudo_speechiness = ${p.speechiness}
+pseudo_jaw_base = ${p.jawBase}
+lip_jaw_boost = ${p.lipJawBoost}`;
   navigator.clipboard.writeText(text).then(() => setStatus("constants copied to clipboard"));
 });
 

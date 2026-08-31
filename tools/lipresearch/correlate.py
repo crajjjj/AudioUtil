@@ -35,8 +35,9 @@ def load_capture(path):
             parts = line.strip().split(",")
             if hdr is None:
                 hdr = parts
-                if "unk120_0" in hdr:
-                    cols = [hdr.index(f"unk120_{i}") for i in range(16)]
+                key = "phoneme1" if "phoneme1_0" in hdr else "unk120"  # pre/post 0.9.15 captures
+                if f"{key}_0" in hdr:
+                    cols = [hdr.index(f"{key}_{i}") for i in range(16)]
                 else:
                     cols = [hdr.index(f"p{i}") for i in range(16)]
                 continue

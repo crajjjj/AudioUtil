@@ -1,5 +1,12 @@
 # `.lip` RLE Hypothesis — Research Plan
 
+> **SOLVED 2026-08-31 by decompiling the engine (see section 11).** The payload is a
+> plain **zero-RLE compression** (`00` + u16-LE count = that many zero bytes; other
+> bytes literal) wrapping a **dense `float32[frames*33]` grid of [0,1] weights**.
+> There is no dup rule, no tangents, no escapes, no markers — all of those were
+> misreadings of the compressed bytes. AudioUtil 0.9.15 ships this decoder;
+> verify_engine.py / make_grammar_probe.py are retained as history.
+
 *Drafted 2026-08-11. Suggested repo location: `tools/lipresearch/RLE Hypothesis.md`, companion
 tool `tools/lipresearch/lip_rle_validator.py`. Status: **hypothesis — needs the corpus
 run (Exp 1) and one in-game probe (Exp 2), both on the Windows/Skyrim machine.***
@@ -244,6 +251,66 @@ u16 tags, escapes, negatives) vs LipGenerator (24-byte header, bare-00 construct
 escapes). Vanilla BSA lips still unexamined on this machine — segregate corpus stats
 by producer when the full corpus run happens.
 
+## 10. UPDATE 2026-08-31 — ENGINE VERDICT: both grammars are wrong on LipGenerator output
+
+The §4 oracle loop ran for the grammar question (tool: `verify_engine.py`; probe =
+the Rajdazan fixture lip packed as a fuz override of Carlotta's market call-out
+`dialoguewhiterun__0008f148_1.fuz`, captured via `autest lipcap`, scored on
+channel-energy profiles — alignment/gain-free).
+
+- **Calibration**: on a real *vanilla* lip (0008F148's own), the legacy decode
+  profile-matches the live engine track at **0.84** — the bar for "roughly right".
+- **Fixture verdict**: legacy **0.52**, m4dp (M4 + bare-00-RAW resolved by the
+  exact-landing DP) **0.42**. Structural, not noise: the engine's strongest
+  channel is BMP (0.27) which m4dp decodes as ZERO, while m4dp's strongest (Eh
+  0.26) plays at exactly 0.000 in the engine; I/OohQ likewise engine-silent but
+  active in both decodes.
+- **Conclusion**: the engine's decoder reads this file as something NEITHER
+  grammar produces. An exact frames×33 landing with sane weights is *a*
+  consistent parse, not *the* parse — the landing invariant is now
+  engine-refuted as an oracle, not just suspected (per the §8 warning).
+- Also engine-relevant: AudioUtil 0.9.15's `[lipsync] grammar` auto-scorer
+  preferred m4dp on the vanilla lip the engine matched legacy on → shipping
+  default is `grammar = "legacy"`; auto/m4dp remain opt-in experiments.
+- **The decompile (§7 route 1) is now the only realistic path.** The capture's
+  16 per-channel RMS numbers are a ground-truth target any candidate decoder
+  must reproduce on the fixture; keep the CSVs local.
+
+
+## 11. SOLVED 2026-08-31 — engine decompile: zero-RLE + dense float grid
+
+Disassembled the FUZE/lip loader in SkyrimSE.exe 1.6.1170 (function sub_140243*,
+found via the `FUZE` magic immediate 0x455A5546). The lip-block decode loop is
+unambiguous:
+
+```
+read 1 byte b:
+  b != 0  -> emit b literally, advance 1
+  b == 0  -> read u16 LE count, memset(dest, 0, count), advance dest by count
+```
+
+i.e. **zero-run-length compression**. The decompressed buffer is a **dense float32
+array, frame-major, 33 slots/frame, every value in [0,1]** (slots 0-15 phonemes,
+16-31 modifiers, 32 unused). The encoder omits the trailing all-zero run, so the
+grid zero-fills up to frames*33 — exactly the "lands a few cells short" behavior
+sections 3-8 kept measuring.
+
+Three-way verification:
+1. the disassembly literally is the decompressor;
+2. decompressing the Rajdazan fixture and a vanilla lip yields **100% of floats in
+   [0,1], zero garbage** (misalignment gave 1e10 values under every prior grammar);
+3. the decoded grid renders as **readable speech** (Aah->BigAah->ChjSh->Eh words
+   with rest gaps), not the all-channels-lit noise the old parsers produced.
+
+Why the old grammars limped: a literal float rarely contains a 0x00 byte, so short
+stretches decoded plausibly; every 00-containing run then desynced them, papered
+over as "markers/dups/tangents/escapes." The whole token zoo was an artifact of
+never decompressing first.
+
+Parser: src/LipData.cpp::Parse (0.9.15). The profile-scoring capture comparisons
+(verify_engine.py) were inconclusive precisely because they compared raw lip
+weights to the engine's post-coarticulation mouth output.
+
 ## 9. File manifest
 
 - `tools/lipresearch/RLE Hypothesis.md` — this file.
@@ -255,5 +322,7 @@ by producer when the full corpus run happens.
   grammar; per-file landing/error report; grammar spec in its docstring).
 - `tools/lipresearch/fixtures/RajdazanTG_RajdazanTG03Let_00000BE2_1.lip` — known-misparse
   regression fixture (own voicepack output — safe to commit).
+- `tools/lipresearch/verify_engine.py` — the §10 engine-verdict loop (build the
+  probe-fuz override, `list`/`check` lipcap captures, profile scoring).
 - Exp 1 output: `results.csv` (do not commit; corpus-derived).
 - Exp 2 additions: `make_probe.py --dup` mode + capture CSVs (CSVs stay local).

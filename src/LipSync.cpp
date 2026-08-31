@@ -229,6 +229,8 @@ namespace LipSync
 			bool  stopping = false;
 			bool  drove = false;  // wrote a non-zero phoneme → zero the mouth on removal
 			bool  droveModifiers = false;  // lip mode also drove blink/brow channels
+			bool  lipHasModifiers = false; // the anim carries real modifier curves (authored lip, not pseudo)
+			bool  lipAuthored = false;     // lip came from a .lip/fuz (jaw boost applies); false = pseudo-synth
 			// envelope mode: the smoothed mouth level. Lip mode: a master fade
 			// (0..1) multiplied over the authored curves so starts/stops ramp.
 			float current = 0.0f;
@@ -255,6 +257,9 @@ namespace LipSync
 		std::atomic<std::uint32_t> g_pseudoMinSylFrames{ 3 };
 		std::atomic<std::uint32_t> g_pseudoGapFrames{ 5 };
 		std::atomic<float>         g_pseudoClosure{ 0.85f };
+		std::atomic<float>         g_pseudoSpeechiness{ 0.30f };  // 0 = open-mouth moan vowels only, 1 = full corpus speech palette
+		std::atomic<float>         g_lipJawBoost{ 0.0f };      // lip mode: Aah >= frameMax * this (authored lips only)
+		std::atomic<float>         g_pseudoJawBase{ 0.5f };       // continuous Aah under-layer fraction (0 = vowels replace the jaw)
 		std::atomic<float> g_gain{ 1.0f };
 		std::atomic<float> g_attackTau{ 0.03f };
 		std::atomic<float> g_releaseTau{ 0.09f };
@@ -320,6 +325,8 @@ namespace LipSync
 			const std::uint32_t minSylFrames = g_pseudoMinSylFrames.load();
 			const std::uint32_t gapFrames = g_pseudoGapFrames.load();
 			const float         closure = g_pseudoClosure.load();
+			const float         speechiness = std::clamp(g_pseudoSpeechiness.load(), 0.0f, 1.0f);
+			const float         jawBase = std::clamp(g_pseudoJawBase.load(), 0.0f, 1.0f);
 
 			std::vector<float> level(frames);
 			const float voiced = std::max(g_minLevel.load(), voicedFloor);
@@ -364,56 +371,135 @@ namespace LipSync
 			auto anim = std::make_shared<LipData::Anim>();
 			anim->frames = frames;
 			anim->durationSec = a_env.durationSec;
-			for (const auto ch : { kPhonemeAah, kPhonemeBigAah, kPhonemeBMP,
-					 kPhonemeEh, kPhonemeOh, kPhonemeOohQ }) {
+			for (std::uint32_t ch = 0; ch < LipData::PHONEME_CHANNELS; ++ch) {
 				anim->values[ch].assign(frames, 0.0f);
 			}
 
-			const std::uint64_t seed = Fnv1a64(a_pathSeed);
-			std::uint32_t prevVowel = UINT32_MAX;
+			// Per-syllable phoneme palette. A bare amplitude envelope carries no
+			// phoneme identity, so the pick is deterministic-random (seeded by
+			// path) — but weighted to look like reality: the SPEECH column is the
+			// syllable-onset distribution measured from 638 decoded vanilla lips
+			// (all 16 channels), the MOAN column collapses onto open-mouth vowels
+			// (a moan shouldn't mouth consonants). `speechiness` lerps between
+			// them: 0 = moans, 1 = articulated speech. BMP is deliberately NOT a
+			// syllable phoneme — closures own it, and a lips-shut shape sustained
+			// across a voiced syllable (unsmoothed, at that) looks like a clamp.
+			// A wide-open vowel also spills into BigAah on loud peaks (as the
+			// live envelope mode does).
+			struct Weight
+			{
+				std::uint32_t ch;
+				float         moan;
+				float         speech;
+				bool          wideOpen;
+			};
+			static constexpr std::uint32_t kChjSh = 3, kDST = 4, kEee = 5, kFV = 7,
+			                               kI = 8, kK = 9, kN = 10, kR = 13,
+			                               kTh = 14, kW = 15;
+			static constexpr Weight PALETTE[] = {
+				{ kPhonemeAah, 5.0f, 13.0f, true }, { kPhonemeBigAah, 2.0f, 4.0f, true },
+				{ kPhonemeOh, 4.0f, 6.0f, true }, { kPhonemeOohQ, 3.0f, 6.0f, false },
+				{ kPhonemeEh, 2.0f, 12.0f, false }, { kEee, 1.0f, 5.0f, false },
+				{ kI, 1.0f, 6.0f, false }, { kN, 0.0f, 10.0f, false },
+				{ kDST, 0.0f, 7.0f, false }, { kR, 0.0f, 6.0f, false },
+				{ kFV, 0.0f, 4.0f, false },
+				{ kTh, 0.0f, 4.0f, false }, { kK, 0.0f, 3.0f, false },
+				{ kW, 0.0f, 3.0f, false }, { kChjSh, 0.0f, 3.0f, false },
+			};
+			constexpr std::size_t N = std::size(PALETTE);
+			float weight[N];
+			float total = 0.0f;
+			for (std::size_t i = 0; i < N; ++i) {
+				weight[i] = (1.0f - speechiness) * PALETTE[i].moan +
+				            speechiness * PALETTE[i].speech;
+				total += weight[i];
+			}
+
+			// seed from the lowercased file NAME, not the full path: tools/lipsim
+			// only ever sees a dropped file's name, so this makes its preview
+			// reproduce the exact in-game pick sequence (its hashes mirror these
+			// bit-for-bit). Same-named wavs share a sequence, but their differing
+			// audio syllabifies differently anyway.
+			std::string seedText{ a_pathSeed };
+			if (const auto cut = seedText.find_last_of("\\/"); cut != std::string::npos) {
+				seedText.erase(0, cut + 1);
+			}
+			std::transform(seedText.begin(), seedText.end(), seedText.begin(),
+				[](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+			const std::uint64_t seed = Fnv1a64(seedText);
+			std::size_t   prevPick = N;
 			std::uint32_t prevEnd = 0;
 			for (std::size_t s = 0; s < syllables.size(); ++s) {
 				const auto& syl = syllables[s];
-				// weighted vowel pick: Aah 4, Oh 3, OohQ 2, Eh 1; never the same
-				// vowel twice in a row
-				const auto roll = Mix64(seed + s) % 10;
-				std::uint32_t vowel = roll < 4 ? kPhonemeAah :
-				                      roll < 7 ? kPhonemeOh :
-				                      roll < 9 ? kPhonemeOohQ :
-				                                 kPhonemeEh;
-				if (vowel == prevVowel) {
-					vowel = vowel == kPhonemeAah  ? kPhonemeOh :
-					        vowel == kPhonemeOh   ? kPhonemeOohQ :
-					        vowel == kPhonemeOohQ ? kPhonemeAah :
-					                                kPhonemeOh;
+				// weighted pick over the distribution EXCLUDING the previous pick,
+				// so a syllable never repeats its predecessor's phoneme (the
+				// palette always has several positive weights, so the reduced
+				// distribution is never empty)
+				const float excl = prevPick < N ? weight[prevPick] : 0.0f;
+				float r = static_cast<float>(Mix64(seed + s) % 100000) /
+				          100000.0f * (total - excl);
+				std::size_t pick = prevPick == 0 ? 1 : 0;
+				for (std::size_t i = 0; i < N; ++i) {
+					if (i == prevPick) {
+						continue;
+					}
+					if (r < weight[i]) {
+						pick = i;
+						break;
+					}
+					r -= weight[i];
 				}
-				prevVowel = vowel;
+				const std::uint32_t ph = PALETTE[pick].ch;
+				const bool          wide = PALETTE[pick].wideOpen;
+				prevPick = pick;
 
 				for (std::uint32_t f = syl.start; f < syl.end; ++f) {
-					anim->values[vowel][f] = level[f];
-					if (vowel == kPhonemeAah) {
-						// same loud-peak spill into BigAah as the live envelope mode
-						anim->values[kPhonemeBigAah][f] =
-							std::max(0.0f, level[f] - 0.55f) / 0.45f * 0.35f;
+					anim->values[ph][f] = level[f];
+					if (wide && ph != kPhonemeBigAah) {
+						anim->values[kPhonemeBigAah][f] = std::max(anim->values[kPhonemeBigAah][f],
+							std::max(0.0f, level[f] - 0.55f) / 0.45f * 0.35f);
 					}
 				}
 
 				// lips close briefly before a syllable that follows a real gap
 				// (gapFrames of silence; default 5 ≈ 165 ms)
 				if (syl.start >= 2 && syl.start - prevEnd >= gapFrames) {
-					anim->values[kPhonemeBMP][syl.start - 2] = closure * 0.65f;
+					// lead-in press only when the gap has room for it: at gapFrames=1
+					// syl.start-2 is the previous syllable's last VOICED frame, and
+					// stamping a closure there pops the lips shut mid-vowel
+					if (syl.start - prevEnd >= 2) {
+						anim->values[kPhonemeBMP][syl.start - 2] = closure * 0.65f;
+					}
 					anim->values[kPhonemeBMP][syl.start - 1] = closure;
 				}
 				prevEnd = syl.end;
 			}
 
-			// bake the envelope mode's attack/release shaping into the vowel
-			// curves (closures stay crisp on purpose)
+			// Continuous jaw under-layer: Aah carries jawBase of the envelope on
+			// every voiced frame and the picked vowel layers ON TOP, instead of
+			// replacing the jaw. Vowel-only picks left the jaw idle on narrow
+			// shapes (OohQ/Eh/Eee/I = 7/18 of the moan palette) — the mouth read
+			// as barely moving next to envelope mode, which routes everything
+			// into Aah. Closure frames sit in silent gaps (level 0), so the
+			// layer never fights a BMP press.
+			if (jawBase > 0.0f) {
+				auto& aah = anim->values[kPhonemeAah];
+				for (std::uint32_t f = 0; f < frames; ++f) {
+					if (level[f] > 0.0f) {
+						aah[f] = std::max(aah[f], level[f] * jawBase);
+					}
+				}
+			}
+
+			// bake the envelope mode's attack/release shaping into every phoneme
+			// curve (closures stay crisp on purpose — BMP is skipped)
 			const float dt = 1.0f / LipData::FPS;
 			const float attack = 1.0f - std::exp(-dt / std::max(0.005f, g_attackTau.load()));
 			const float release = 1.0f - std::exp(-dt / std::max(0.005f, g_releaseTau.load()));
-			for (const auto ch : { kPhonemeAah, kPhonemeBigAah, kPhonemeEh,
-					 kPhonemeOh, kPhonemeOohQ }) {
+			for (std::uint32_t ch = 0; ch < LipData::PHONEME_CHANNELS; ++ch) {
+				if (ch == kPhonemeBMP) {
+					continue;
+				}
 				float current = 0.0f;
 				for (float& value : anim->values[ch]) {
 					current += (value - current) * (value > current ? attack : release);
@@ -513,7 +599,14 @@ namespace LipSync
 						a_entry.audible = true;
 						a_entry.audibleAt = now;
 					} else if (now - a_entry.createdAt > AUDIBLE_TIMEOUT) {
-						return true;  // stream never started; nothing was driven
+						// stream never started -- but a REPLACEMENT entry inherited
+						// `drove` (and the face still holds the replaced line's last
+						// shape), so dropping without zeroing leaves a mouth stuck
+						// open until something else drives it
+						if (a_entry.drove || a_entry.droveModifiers) {
+							ZeroMouth(actor, a_entry.droveModifiers, a_entry.lip != nullptr);
+						}
+						return true;
 					}
 				} else {
 					const float t = std::chrono::duration<float>(now - a_entry.audibleAt).count();
@@ -521,7 +614,12 @@ namespace LipSync
 					// to compensate start-detection + mix-ahead latency (the audio
 					// itself still ends at durationSec, so stop timing is unshifted)
 					const float tMouth = t + g_leadSec.load();
-					if (t >= a_entry.env->durationSec) {
+					if (t > 0.25f && !a_entry.handle.IsPlaying()) {
+						// the audio ended or was stopped early (StopHandle, channel
+						// replacement, engine cull): fade + zero from here instead of
+						// silently mouthing on until the wall-clock end
+						a_entry.stopping = true;
+					} else if (t >= a_entry.env->durationSec) {
 						a_entry.stopping = true;
 					} else if (a_entry.lip) {
 						a_entry.lipT = tMouth;
@@ -557,14 +655,31 @@ namespace LipSync
 						const float fade = a_entry.current;
 						if (phonemes.values) {
 							const auto count = std::min<std::uint32_t>(phonemes.count, LipData::PHONEME_CHANNELS);
+							float values[LipData::PHONEME_CHANNELS] = {};
+							float vmax = 0.0f;
 							for (std::uint32_t ch = 0; ch < count; ++ch) {
-								const float value = std::clamp(
+								values[ch] = std::clamp(
 									a_entry.lip->Sample(ch, a_entry.lipT) * gain, 0.0f, 1.0f) * fade;
-								phonemes.SetValue(ch, value);
-								a_entry.drove = a_entry.drove || value > 0.001f;
+								vmax = std::max(vmax, values[ch]);
+							}
+							// Authored speech holds the jaw low ~80% of voiced time
+							// (consonants and narrow vowels carry the articulation:
+							// measured jaw mean 0.17 vs frame-max 0.52 over DBVO TTS
+							// lips), which reads as a closed mouth at game camera
+							// distance. lip_jaw_boost drives Aah with a fraction of the
+							// frame's strongest channel; skipped while BMP presses the
+							// lips, and pseudo lips (jaw handled at synthesis) never boost.
+							const float jawBoost = g_lipJawBoost.load();
+							if (jawBoost > 0.0f && a_entry.lipAuthored &&
+							    values[kPhonemeBMP] < 0.25f) {
+								values[kPhonemeAah] = std::max(values[kPhonemeAah], vmax * jawBoost);
+							}
+							for (std::uint32_t ch = 0; ch < count; ++ch) {
+								phonemes.SetValue(ch, values[ch]);
+								a_entry.drove = a_entry.drove || values[ch] > 0.001f;
 							}
 						}
-						if (driveModifiers) {
+						if (driveModifiers && a_entry.lipHasModifiers) {
 							auto& modifiers = faceData->modifierKeyFrame;
 							if (modifiers.values) {
 								const auto count = std::min<std::uint32_t>(modifiers.count, 16);
@@ -665,12 +780,14 @@ namespace LipSync
 		// FuzCache-extracted wav). Null = amplitude-envelope mode, as before.
 		if (g_useLipFiles.load()) {
 			entry.lip = LipData::GetFor(a_dataRelPath);
+			entry.lipAuthored = entry.lip != nullptr;
 		}
 		// no authored lip -> optionally synthesize pseudo-phoneme curves from
 		// the envelope (deterministic per path, cheap: a few KB of floats)
 		if (!entry.lip && g_pseudoPhonemes.load()) {
 			entry.lip = SynthesizePseudoLip(*envelope, a_dataRelPath);
 		}
+		entry.lipHasModifiers = entry.lip && entry.lip->HasModifierData();
 
 		EnsureTicker();
 		{
@@ -798,6 +915,9 @@ namespace LipSync
 		g_pseudoMinSylFrames.store(settings->lipsyncPseudoMinSylFrames);
 		g_pseudoGapFrames.store(settings->lipsyncPseudoGapFrames);
 		g_pseudoClosure.store(settings->lipsyncPseudoClosure);
+		g_pseudoSpeechiness.store(settings->lipsyncPseudoSpeechiness);
+		g_lipJawBoost.store(settings->lipsyncLipJawBoost);
+		g_pseudoJawBase.store(settings->lipsyncPseudoJawBase);
 		LipData::ClearCache();
 		SetEnabled(settings->lipsyncEnabled);
 	}

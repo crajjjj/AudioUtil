@@ -20,8 +20,8 @@ namespace LipCapture
 		constexpr std::uint32_t BLOCK_COUNT = 13;
 		constexpr const char* BLOCK_NAMES[BLOCK_COUNT] = {
 			"transition",  // transitionTargetKeyFrame (pointer, may be null)
-			"expression", "unk040", "modifier", "phenome", "custom",
-			"unk0C0", "unk0E0", "unk100", "unk120", "unk140", "unk160", "unk180"
+			"expression", "expression2", "modifier", "phenome", "custom",
+			"expression3", "modifier1", "modifier3", "phoneme1", "phoneme3", "custom1", "custom3"
 		};
 
 		struct Row
@@ -98,17 +98,17 @@ namespace LipCapture
 				RE::BSSpinLockGuard guard{ faceData->lock };
 				CopyBlock(row, 0, faceData->transitionTargetKeyFrame);
 				CopyBlock(row, 1, &faceData->expressionKeyFrame);
-				CopyBlock(row, 2, &faceData->unk040);
+				CopyBlock(row, 2, &faceData->expressionKeyFrame2);
 				CopyBlock(row, 3, &faceData->modifierKeyFrame);
 				CopyBlock(row, 4, &faceData->phenomeKeyFrame);
 				CopyBlock(row, 5, &faceData->customKeyFrame);
-				CopyBlock(row, 6, &faceData->unk0C0);
-				CopyBlock(row, 7, &faceData->unk0E0);
-				CopyBlock(row, 8, &faceData->unk100);
-				CopyBlock(row, 9, &faceData->unk120);
-				CopyBlock(row, 10, &faceData->unk140);
-				CopyBlock(row, 11, &faceData->unk160);
-				CopyBlock(row, 12, &faceData->unk180);
+				CopyBlock(row, 6, &faceData->expression3);
+				CopyBlock(row, 7, &faceData->modifier1);
+				CopyBlock(row, 8, &faceData->modifier3);
+				CopyBlock(row, 9, &faceData->phoneme1);
+				CopyBlock(row, 10, &faceData->phoneme3);
+				CopyBlock(row, 11, &faceData->custom1);
+				CopyBlock(row, 12, &faceData->custom3);
 			}
 
 			std::scoped_lock lock{ g_lock };

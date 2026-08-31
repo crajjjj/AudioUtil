@@ -75,13 +75,22 @@ attack_ms = 30                # how fast the mouth opens toward a louder level
 release_ms = 90               # how fast it closes on quiet / clip end
 min_level = 0.04              # envelope levels below this keep the mouth closed
 block_in_dialogue = true      # don't lipsync an actor while they're in a dialogue with the player (the game drives that mouth)
-use_lip_files = false          # EXPERIMENTAL. Real phoneme lipsync when a line has lip data (a same-stem
-                              # .lip file, or a .fuz's embedded lip block): the authored per-phoneme curves
-                              # drive the mouth instead of the amplitude envelope. Lines without lip data
-                              # keep the envelope. Off by default - the envelope/pseudo-phoneme path is the
-                              # tested one. Runtime A/B toggle: console `autest lipfiles on|off`
-drive_modifiers = false       # let .lip data also drive blinks/brows/eye direction (the 16 MFG modifier
-                              # channels a lip carries). Off by default - expression mods own those channels.
+use_lip_files = true           # Real phoneme lipsync when a line has lip data (a same-stem .lip file, or a
+                              # .fuz's embedded lip block): the authored per-phoneme curves drive the mouth
+                              # instead of the amplitude envelope. The .lip format is engine-verified (see
+                              # tools\lipresearch\RLE Hypothesis.md) so this is the accurate path and is ON
+                              # by default; lines WITHOUT lip data still fall back to the envelope /
+                              # pseudo_phonemes. Runtime A/B toggle: console `autest lipfiles on|off`
+drive_modifiers = true        # let .lip data also drive blinks/brows/eye direction (the 16 MFG modifier
+                              # channels a lip carries - real authored lips do use them, so ON makes faces
+                              # blink/emote in sync with speech). Set to false if an expression / emotion mod
+                              # (MFEE, RaceMenu overlays, a scene-face system like SLO VE) owns the upper face
+                              # on your actors - then the lip's modifier track would fight it.
+lip_jaw_boost = 0.0           # 0.0-1.0, lip mode only. Drive the jaw (Aah) with this fraction of the
+                              # frame's STRONGEST channel. Authored speech keeps the jaw low ~80% of
+                              # the time (consonants/narrow vowels), which reads as a closed mouth at
+                              # game distance - 0.5-0.7 makes .lip/.fuz lines visibly open. 0 = play
+                              # curves verbatim. Never applies to pseudo lips or while BMP is pressed.
 pseudo_phonemes = true       # lines WITHOUT lip data: synthesize phoneme curves from the amplitude
                               # envelope - per-syllable vowel variety (Aah\Oh\Ooh\Eh) plus brief lip
                               # closures after silence gaps - instead of the plain Aah jaw-flap.
@@ -97,8 +106,17 @@ pseudo_voiced_floor = 0.05    # voiced when envelope >= max(min_level, this); ra
 pseudo_valley_ratio = 0.6     # split syllables at dips below this fraction of the running peak
                               # (higher = choppier, more vowel changes; lower = long merged syllables)
 pseudo_min_syl_frames = 3     # minimum syllable length in 30 fps frames (raise to kill flicker)
-pseudo_gap_frames = 5         # silence frames that earn a BMP lip closure before the next syllable (5 = 165 ms)
+pseudo_gap_frames = 3         # silence frames that earn a BMP lip closure before the next syllable (5 = 165 ms)
 pseudo_closure = 0.85         # closure strength 0-1 (how firmly the lips shut between moans)
+pseudo_jaw_base = 0.7         # 0.0-1.0. Continuous Aah under-layer: this fraction of the envelope always
+                              # drives the jaw on voiced frames, with the picked vowel layered on top.
+                              # 0 = vowels fully replace the jaw (mouth can sit nearly still on narrow
+                              # vowels); higher = closer to envelope mode's steady jaw motion.
+pseudo_speechiness = 0.30     # 0.0-1.0. How much the synth articulates like SPEECH vs a MOAN. 0.0 = only
+                              # open-mouth vowels (Aah/Oh/Ooh/Eh/Eee/I - right for moans); 1.0 = the full
+                              # 16-phoneme palette weighted by real vanilla lips (consonants N/D/T/K/R/F/Th/
+                              # Sh included - right for spoken lines). The mouth uses more channels and looks
+                              # busier as this rises. Only affects pseudo-synthesized lines (no .lip/fuz lip).
 # block_categories = ["Slurp"]   # categories that never drive the mouth (additive: overlays may add their own)
 
 [gag]

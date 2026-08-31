@@ -1,9 +1,20 @@
 # Skyrim `.lip` Format — Technical Summary
 
-*Researched 2026-08-03/04. The format is **fully engine-verified** (in-game probe
-injection, §5) and implemented in AudioUtil: `src/LipData.{h,cpp}` parses it,
-`LipSync` plays it (§6). Config: `[lipsync] use_lip_files` / `drive_modifiers` /
-`pseudo_phonemes`; runtime toggles: `autest lipfiles on|off`, `autest pseudolip on|off`.*
+*Researched 2026-08-03/04.*
+
+> **PARTIALLY SUPERSEDED 2026-08-31.** The **slot map** (§3: slots 0–15 = MFG
+> phonemes, 16–31 = modifiers, identity order), the **header/preroll** analysis
+> and the §5 probe methodology remain engine-verified and correct. The **payload
+> token grammar** described in §2/§4 (floats + dup="tangent" + `00 4k 00`
+> markers, range filter) is **refuted**: the payload is actually a plain
+> zero-RLE compression (`00` + u16-LE count = that many zero bytes) over a dense
+> `float32[frames*33]` grid — proven by decompiling the engine's own loader.
+> See `tools/lipresearch/RLE Hypothesis.md` §11 for the proof and
+> `src/LipData.cpp` for the shipping decoder. Read the token-grammar sections
+> here as history, not as the spec.
+
+*Config: `[lipsync] use_lip_files` / `drive_modifiers` / `pseudo_phonemes`;
+runtime toggles: `autest lipfiles on|off`, `autest pseudolip on|off`.*
 
 ## 1. Overview
 

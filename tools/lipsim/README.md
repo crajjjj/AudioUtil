@@ -27,11 +27,18 @@ Part of [AudioUtil](https://crajjjj.github.io/AudioUtil/) (GPLv3).
   (identity slot map: 0–15 phonemes, 16–31 blink/brow/gaze modifiers).
 - **Preview AudioUtil's pseudo-phoneme synthesis**: drop a bare wav — the
   envelope is segmented into syllables with vowel variety and lip closures,
-  mirroring the DLL's `SynthesizePseudoLip` line for line. The tuning
+  mirroring the DLL's `SynthesizePseudoLip` line for line. At seed
+  variant 0 the preview reproduces the in-game pick sequence (both sides
+  seed from the lowercased file name). The tuning
   sliders re-synthesize live; **copy constants** exports your values for the
   `[lipsync]` toml / C++ constants.
 - **Compare modes** (auto / authored lip / pseudo / plain envelope), scrub
   the timeline, loop, watch per-channel bars.
+- **Authored .lip decoding**: lips are decoded with the engine-verified format
+  (zero-RLE compression over a dense `float32[frames*33]` grid — the same
+  `LipData::Parse` the DLL ships; see `tools/lipresearch/RLE Hypothesis.md` §11),
+  so the preview mouth matches in-game (same decoder, same rejection rules). Handles 24- and 20-byte
+  (`const14=7`) headers plus variant B.
 - **Parse / edit / create MFG expression presets**: drop a PapyrusUtil
   StorageUtil preset json (e.g. SLO VE's `FemaleExpressions.json` — a
   `"string"` table of 33-value presets: 16 phonemes, 14 modifiers,

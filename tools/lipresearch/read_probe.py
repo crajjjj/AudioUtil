@@ -19,7 +19,8 @@ def load(path):
         if hdr is None:
             hdr = p
             it = hdr.index("info")
-            cols = [hdr.index(f"unk120_{i}") for i in range(16)]
+            key = "phoneme1" if "phoneme1_0" in hdr else "unk120"  # pre/post 0.9.15 capture CSVs
+            cols = [hdr.index(f"{key}_{i}") for i in range(16)]
             continue
         if len(p) != len(hdr):
             continue

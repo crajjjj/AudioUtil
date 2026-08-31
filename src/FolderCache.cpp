@@ -27,11 +27,29 @@ namespace FolderCache
 		std::mutex   g_lock;
 		std::mt19937 g_rng{ std::random_device{}() };
 
+		// path -> narrow string via the ANSI codepage. path::string() THROWS
+		// std::system_error on a character the codepage cannot express (one
+		// exotic TTS filename in a 42k-file voicepack CTD'd the whole scan) --
+		// and the engine's narrow-path resource loader could never open such a
+		// file anyway, so the right treatment is skip-and-count, never throw.
+		bool NarrowPathImpl(const std::filesystem::path& a_path, std::string& a_out)
+		{
+			try {
+				a_out = a_path.string();
+				return true;
+			} catch (const std::exception&) {
+				return false;
+			}
+		}
+
 		bool IsAudioFile(const std::filesystem::path& a_path)
 		{
 			// .fuz voice containers count too: AudioEngine::PlayPath transparently
 			// plays their extracted xWMA/wav payload (see FuzCache)
-			const auto ext = a_path.extension().string();
+			std::string ext;
+			if (!NarrowPathImpl(a_path.extension(), ext)) {
+				return false;
+			}
 			return _stricmp(ext.c_str(), ".wav") == 0 || _stricmp(ext.c_str(), ".xwm") == 0 ||
 			       _stricmp(ext.c_str(), ".fuz") == 0;
 		}
@@ -43,7 +61,10 @@ namespace FolderCache
 			// real mod folder (E:\...\mods\<mod>\Sound\...), yielding "..\..\mods\..."
 			// which the game's resource loader cannot open. Entry paths are composed
 			// lexically from a_dataRoot, so a lexical relative is exact.
-			auto rel = a_abs.lexically_relative(a_dataRoot).string();
+			std::string rel;
+			if (!NarrowPathImpl(a_abs.lexically_relative(a_dataRoot), rel)) {
+				return {};  // unmappable name: caller skips (engine couldn't open it)
+			}
 			std::replace(rel.begin(), rel.end(), '/', '\\');
 			return rel;
 		}
@@ -57,10 +78,21 @@ namespace FolderCache
 				return false;
 			}
 			Folder folder;
+			std::size_t unmappable = 0;
 			for (const auto& entry : std::filesystem::directory_iterator(a_dir, ec)) {
 				if (entry.is_regular_file(ec) && IsAudioFile(entry.path())) {
-					folder.files.push_back(DataRelative(entry.path(), a_dataRoot));
+					auto rel = DataRelative(entry.path(), a_dataRoot);
+					if (rel.empty()) {
+						++unmappable;
+						continue;
+					}
+					folder.files.push_back(std::move(rel));
 				}
+			}
+			if (unmappable > 0) {
+				logger::warn("Scan '{}': skipped {} file(s) whose names the system "
+				             "codepage cannot express (unplayable by the engine)",
+					a_key, unmappable);
 			}
 			if (folder.files.empty()) {
 				return false;
@@ -160,11 +192,17 @@ namespace FolderCache
 				if (!entry.is_directory(ec)) {
 					continue;
 				}
-				const auto category = Config::Normalize(entry.path().filename().string());
+				std::string catName;
+				if (!NarrowPathImpl(entry.path().filename(), catName)) {
+					logger::warn("Slot {}: skipped a category folder whose name the "
+					             "system codepage cannot express", slot.id);
+					continue;
+				}
+				const auto category = Config::Normalize(catName);
 				const auto key = Config::Normalize(slot.id) + "/" + category;
 				if (HasKey(key)) {
 					logger::warn("Slot {}: duplicate normalized category '{}' — folder {} ignored",
-						slot.id, category, entry.path().string());
+						slot.id, category, catName);
 					continue;
 				}
 				if (ScanDir(key, entry.path(), dataRoot)) {

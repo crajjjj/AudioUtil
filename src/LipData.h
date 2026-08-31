@@ -1,13 +1,17 @@
 #pragma once
 
-// Parsed Skyrim .lip animation data — the engine-verified format documented in
-// docs/lip-format-research.md. A .lip is a 24-byte header plus a frame-major
-// positional token grid at 30 fps, 33 slots per frame:
+// Parsed Skyrim .lip animation data. A .lip is a 24-byte header (or a 20-byte
+// prerollless one, const14=7) plus a frame-major positional token grid at
+// 30 fps, 33 slots per frame:
 //   slots 0-15  = the 16 MFG phoneme channels (identity order, Aah..W)
 //   slots 16-31 = the 16 MFG modifier channels (BlinkL..head)
 //   slot  32    = unused
-// Values in [0,1] are channel weights the engine plays verbatim; anything else
-// is Hermite tangent data (skipped). Parsing has no game dependencies.
+// The slot map AND the payload byte-format are engine-verified against the
+// game's own FUZE/lip loader (SkyrimSE.exe 1.6.1170): the payload is ZERO-RLE
+// compressed (a 0x00 byte + u16-LE count = that many zero bytes; other bytes
+// literal), decompressing to a dense float32[frames*33] grid of [0,1] weights.
+// (The old "dup/tangent/marker" grammar mis-modeled the compressed bytes.)
+// Parsing has no game dependencies.
 namespace LipData
 {
 	inline constexpr std::uint32_t CHANNELS = 32;         // 16 phonemes + 16 modifiers
@@ -52,11 +56,28 @@ namespace LipData
 			}
 			return false;
 		}
+
+		// true if any modifier channel (16-31, blink/brow/gaze) carries signal —
+		// i.e. a real authored lip. Pseudo-synth lines write only phonemes, so
+		// this stays false for them, letting `drive_modifiers` leave the upper
+		// face to expression mods on lines that carry no modifier animation.
+		bool HasModifierData() const
+		{
+			for (std::uint32_t ch = PHONEME_CHANNELS; ch < CHANNELS; ++ch) {
+				for (const float v : values[ch]) {
+					if (v > 0.01f) {
+						return true;
+					}
+				}
+			}
+			return false;
+		}
 	};
 
 	// Parse a raw LIP block (the bytes between the FUZE header and the audio,
-	// or a standalone .lip file's contents). Handles header variant B (extra
-	// byte at offset 14). Returns nullptr on any structural mismatch.
+	// or a standalone .lip file's contents). Handles header variants B (extra
+	// byte at offset 14) and C (20-byte prerollless header). Returns nullptr
+	// on any structural mismatch.
 	std::shared_ptr<const Anim> Parse(const std::uint8_t* a_data, std::size_t a_size);
 
 	// Resolve + parse the lip for a played path, session-cached (misses too):
