@@ -629,6 +629,7 @@ namespace PapyrusAPI
 
 		void StopLipSync(RE::StaticFunctionTag*, RE::Actor* a_actor)
 		{
+			logger::debug("StopLipSync called for {:08X}", a_actor ? a_actor->GetFormID() : 0);
 			if (a_actor) {
 				LipSync::StopFor(a_actor);
 			}
@@ -636,6 +637,7 @@ namespace PapyrusAPI
 
 		void SetLipSyncEnabled(RE::StaticFunctionTag*, bool a_enabled)
 		{
+			logger::debug("SetLipSyncEnabled({}) called", a_enabled);
 			LipSync::SetEnabled(a_enabled);
 		}
 

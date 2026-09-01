@@ -213,6 +213,8 @@ namespace Config
 				settings->lipsyncMinLevel = (*lipsync)["min_level"].value_or(settings->lipsyncMinLevel);
 				settings->lipsyncBlockInDialogue = (*lipsync)["block_in_dialogue"].value_or(settings->lipsyncBlockInDialogue);
 				settings->lipsyncUseLipFiles = (*lipsync)["use_lip_files"].value_or(settings->lipsyncUseLipFiles);
+				settings->lipsyncFrameInterp = std::clamp(
+					(*lipsync)["frame_interpolation"].value_or(settings->lipsyncFrameInterp), 0.0f, 1.0f);
 				settings->lipsyncDriveModifiers = (*lipsync)["drive_modifiers"].value_or(settings->lipsyncDriveModifiers);
 				settings->lipsyncPseudoPhonemes = (*lipsync)["pseudo_phonemes"].value_or(settings->lipsyncPseudoPhonemes);
 				settings->lipsyncLeadMs = std::clamp(
@@ -240,7 +242,8 @@ namespace Config
 			} else if (lipsync->contains("enable") || lipsync->contains("gain") ||
 					   lipsync->contains("attack_ms") || lipsync->contains("release_ms") ||
 					   lipsync->contains("min_level") || lipsync->contains("block_in_dialogue") ||
-					   lipsync->contains("use_lip_files") || lipsync->contains("drive_modifiers") ||
+					   lipsync->contains("use_lip_files") || lipsync->contains("frame_interpolation") ||
+					   lipsync->contains("drive_modifiers") ||
 					   lipsync->contains("pseudo_phonemes") || lipsync->contains("lead_ms") ||
 					   lipsync->contains("pseudo_voiced_floor") || lipsync->contains("pseudo_valley_ratio") ||
 					   lipsync->contains("pseudo_min_syl_frames") || lipsync->contains("pseudo_gap_frames") ||

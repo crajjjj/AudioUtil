@@ -74,6 +74,18 @@ Function PlayPath(string path) global
     endif
 EndFunction
 
+; Spoken-line variant of `play`: same path, but drives the player's mouth
+; (PlayFileWithLipSync - authored .lip/fuz lip when present, else envelope/
+; pseudo).  e.g.  autest playlip "Sound\Voice\Skyrim.esm\FemaleEvenToned\dialoguewhiterun__0008f148_1.fuz"
+Function PlayLipPath(string path) global
+    int h = AudioUtil.PlayFileWithLipSync(path, Game.GetPlayer())
+    if h > 0
+        Debug.Notification("playlip '" + path + "' handle=" + h + " dur=" + AudioUtil.GetHandleDuration(h))
+    else
+        Debug.Notification("playlip '" + path + "' FAILED (0) - see AudioUtil.log")
+    endif
+EndFunction
+
 ; Shuffle-bag play a whole folder as a pool (no-repeat until the deck empties),
 ; spoken variant so the picked clip drives the player's mouth. Data-relative
 ; folder path, e.g.  autest playfolder "Sound\TMSDynamicDialogue\VoiceBella\Base"

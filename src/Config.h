@@ -185,6 +185,10 @@ namespace Config
 		// when a played line has one, its authored curves drive the mouth
 		// instead of the amplitude envelope (runtime toggle: autest lipfiles)
 		bool          lipsyncUseLipFiles{ true };
+		// interpolation strength between the 30 fps lip frames when sampling,
+		// 0..1: 0 = hold each frame (stepped), 1 = full lerp (smooth),
+		// between = partial — applies to lip + pseudo playback
+		float         lipsyncFrameInterp{ 0.3f };  // default: lightly-softened steps
 		// also drive the 16 MFG modifier channels (blinks/brows/gaze) a .lip
 		// carries — off by default: expression mods own those channels
 		bool          lipsyncDriveModifiers{ true };
@@ -206,8 +210,8 @@ namespace Config
 		std::uint32_t lipsyncPseudoGapFrames{ 5 };        // silence frames (30 fps) that earn a BMP lip closure
 		float         lipsyncPseudoClosure{ 0.85f };      // closure peak weight (lead-in frame = 0.65x this)
 		float         lipsyncPseudoSpeechiness{ 0.30f };  // 0 = open-mouth moan vowels, 1 = full speech phoneme palette (corpus-weighted)
-		float         lipsyncLipJawBoost{ 0.0f };        // lip mode: drive Aah with this fraction of the frame's strongest channel (0 = authored curves verbatim)
-		float         lipsyncPseudoJawBase{ 0.5f };       // continuous Aah under-layer: fraction of the envelope that always drives the jaw beneath the vowel picks
+		float         lipsyncLipJawBoost{ 0.5f };        // lip mode: drive Aah with this fraction of the frame's strongest channel (0 = authored curves verbatim)
+		float         lipsyncPseudoJawBase{ 1.0f };       // continuous Aah under-layer: fraction of the envelope that always drives the jaw beneath the vowel picks
 		// requested categories that never drive lipsync — the line plays mouth-still.
 		// For pools that aren't vocalization (oral sfx: slurping) or where another
 		// system owns the mouth (a climax/ahegao face). Matched on the REQUESTED

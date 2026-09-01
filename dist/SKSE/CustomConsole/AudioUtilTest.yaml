@@ -58,6 +58,14 @@ subs:
         type: String
         required: true
         help: Data-relative wav path, e.g. Sound\fx\foo\bar.wav
+  - name: playlip
+    func: PlayLipPath
+    help: Play any path at the player WITH lipsync (authored .lip/fuz lip when present, else envelope/pseudo)
+    args:
+      - name: path
+        type: String
+        required: true
+        help: Data-relative wav/fuz path (BSA fuz work too)
   - name: playfolder
     func: PlayFolderPath
     help: Shuffle-bag play a whole folder as a pool (spoken/lipsynced); re-run for the next pick

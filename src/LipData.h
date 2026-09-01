@@ -15,6 +15,12 @@
 namespace LipData
 {
 	inline constexpr std::uint32_t CHANNELS = 32;         // 16 phonemes + 16 modifiers
+	// interpolation amount for Anim::Sample ([lipsync] frame_interpolation,
+	// base-only, 0..1): 0 = hold each 30 fps frame's value (stepped),
+	// 1 = full linear interpolation (smooth), between = the value travels that
+	// fraction of the way toward the next frame within each frame. Whether the
+	// ENGINE lerps or steps its own lip playback is unverified — the A/B knob.
+	inline std::atomic<float> g_frameInterp{ 0.3f };
 	inline constexpr std::uint32_t PHONEME_CHANNELS = 16;
 	inline constexpr float         FPS = 30.0f;
 
@@ -25,7 +31,7 @@ namespace LipData
 		// dense per-channel timelines, values[channel][frame] in [0,1]
 		std::vector<float> values[CHANNELS];
 
-		// sampled with linear interpolation between frames; 0 outside the clip
+		// sampled per g_frameInterp (0 hold .. 1 full lerp); 0 outside the clip
 		float Sample(std::uint32_t a_channel, float a_t) const
 		{
 			if (a_channel >= CHANNELS || frames == 0 || a_t < 0.0f) {
@@ -40,7 +46,11 @@ namespace LipData
 			if (index + 1 >= series.size()) {
 				return index < series.size() ? series[index] : 0.0f;
 			}
-			const float frac = pos - static_cast<float>(index);
+			const float amount = g_frameInterp.load(std::memory_order_relaxed);
+			if (amount <= 0.0f) {
+				return series[index];  // hold: the frame's value plays verbatim
+			}
+			const float frac = (pos - static_cast<float>(index)) * std::min(amount, 1.0f);
 			return series[index] + (series[index + 1] - series[index]) * frac;
 		}
 

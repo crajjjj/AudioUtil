@@ -258,8 +258,8 @@ namespace LipSync
 		std::atomic<std::uint32_t> g_pseudoGapFrames{ 5 };
 		std::atomic<float>         g_pseudoClosure{ 0.85f };
 		std::atomic<float>         g_pseudoSpeechiness{ 0.30f };  // 0 = open-mouth moan vowels only, 1 = full corpus speech palette
-		std::atomic<float>         g_lipJawBoost{ 0.0f };      // lip mode: Aah >= frameMax * this (authored lips only)
-		std::atomic<float>         g_pseudoJawBase{ 0.5f };       // continuous Aah under-layer fraction (0 = vowels replace the jaw)
+		std::atomic<float>         g_lipJawBoost{ 0.5f };      // lip mode: Aah >= frameMax * this (authored lips only)
+		std::atomic<float>         g_pseudoJawBase{ 1.0f };       // continuous Aah under-layer fraction (0 = vowels replace the jaw)
 		std::atomic<float> g_gain{ 1.0f };
 		std::atomic<float> g_attackTau{ 0.03f };
 		std::atomic<float> g_releaseTau{ 0.09f };
@@ -582,8 +582,12 @@ namespace LipSync
 				// face stays put.
 				if (now >= a_entry.handoverCheckAt) {
 					a_entry.handoverCheckAt = now + HANDOVER_RECHECK;
-					if (GagState::IsGagged(actor) || TongueState::IsWearingTongue(actor) ||
-						(g_blockInDialogue.load() && IsInDialogue(actor))) {
+					const bool gag = GagState::IsGagged(actor);
+					const bool tongue = !gag && TongueState::IsWearingTongue(actor);
+					const bool dlg = !gag && !tongue && g_blockInDialogue.load() && IsInDialogue(actor);
+					if (gag || tongue || dlg) {
+						logger::debug("LipSync: handover mid-line on {:08X} ({})",
+							a_entry.actorID, gag ? "gag" : tongue ? "tongue" : "dialogue");
 						return true;
 					}
 				}
@@ -788,6 +792,10 @@ namespace LipSync
 			entry.lip = SynthesizePseudoLip(*envelope, a_dataRelPath);
 		}
 		entry.lipHasModifiers = entry.lip && entry.lip->HasModifierData();
+		logger::debug("LipSync start '{}' actor={:08X} mode={} jawBoost={:.2f} interp={:.2f} gain={:.2f}",
+			a_dataRelPath, entry.actorID,
+			entry.lip ? (entry.lipAuthored ? "lip" : "pseudo") : "envelope",
+			g_lipJawBoost.load(), LipData::g_frameInterp.load(), g_gain.load());
 
 		EnsureTicker();
 		{
@@ -907,6 +915,7 @@ namespace LipSync
 		g_minLevel.store(settings->lipsyncMinLevel);
 		g_blockInDialogue.store(settings->lipsyncBlockInDialogue);
 		g_useLipFiles.store(settings->lipsyncUseLipFiles);
+		LipData::g_frameInterp.store(settings->lipsyncFrameInterp);
 		g_driveModifiers.store(settings->lipsyncDriveModifiers);
 		g_pseudoPhonemes.store(settings->lipsyncPseudoPhonemes);
 		g_leadSec.store(static_cast<float>(settings->lipsyncLeadMs) / 1000.0f);
@@ -919,6 +928,14 @@ namespace LipSync
 		g_lipJawBoost.store(settings->lipsyncLipJawBoost);
 		g_pseudoJawBase.store(settings->lipsyncPseudoJawBase);
 		LipData::ClearCache();
+		// one info line per (re)load so "did my au reload take?" is answerable
+		// from the log — a toml set without a reload changes nothing until then
+		logger::info(
+			"LipSync config: enable={} use_lip_files={} frame_interp={:.2f} drive_modifiers={} pseudo={} speechiness={:.2f} gain={:.2f}",
+			settings->lipsyncEnabled, settings->lipsyncUseLipFiles,
+			settings->lipsyncFrameInterp, settings->lipsyncDriveModifiers,
+			settings->lipsyncPseudoPhonemes, settings->lipsyncPseudoSpeechiness,
+			settings->lipsyncGain);
 		SetEnabled(settings->lipsyncEnabled);
 	}
 
