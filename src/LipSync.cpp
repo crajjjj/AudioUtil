@@ -531,7 +531,8 @@ namespace LipSync
 			if (a_alsoModifiers) {
 				auto& modifiers = faceData->modifierKeyFrame;
 				if (modifiers.values) {
-					const auto count = std::min<std::uint32_t>(modifiers.count, 16);
+					const auto count = std::min<std::uint32_t>(modifiers.count,
+						LipData::CHANNELS - LipData::PHONEME_CHANNELS);
 					for (std::uint32_t ch = 0; ch < count; ++ch) {
 						modifiers.SetValue(ch, 0.0f);
 					}
@@ -686,12 +687,17 @@ namespace LipSync
 						if (driveModifiers && a_entry.lipHasModifiers) {
 							auto& modifiers = faceData->modifierKeyFrame;
 							if (modifiers.values) {
-								const auto count = std::min<std::uint32_t>(modifiers.count, 16);
+								// all 17 modifiers (BlinkLeft..HeadYaw); the head
+								// channels are signed, so clamp to [-1,1] — the
+								// authored curves swing negative routinely there
+								const auto count = std::min<std::uint32_t>(modifiers.count,
+									LipData::CHANNELS - LipData::PHONEME_CHANNELS);
 								for (std::uint32_t ch = 0; ch < count; ++ch) {
 									const float value = std::clamp(a_entry.lip->Sample(
-										LipData::PHONEME_CHANNELS + ch, a_entry.lipT), 0.0f, 1.0f) * fade;
+										LipData::PHONEME_CHANNELS + ch, a_entry.lipT), -1.0f, 1.0f) * fade;
 									modifiers.SetValue(ch, value);
-									a_entry.droveModifiers = a_entry.droveModifiers || value > 0.001f;
+									a_entry.droveModifiers =
+										a_entry.droveModifiers || std::fabs(value) > 0.001f;
 								}
 							}
 						}

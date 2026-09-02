@@ -203,8 +203,8 @@
 /* ================= LIPSIM CORE (no DOM — extractable for node tests) ================ */
 const PHONEMES = ["Aah","BigAah","BMP","ChjSh","DST","Eee","Eh","FV","I","K","N","Oh","OohQ","R","Th","W"];
 const MODIFIERS = ["BlinkL","BlinkR","BrowDnL","BrowDnR","BrowInL","BrowInR","BrowUpL","BrowUpR",
-                   "LookDn","LookL","LookR","LookUp","SquintL","SquintR","Head14","Head15"];
-const CHANNELS = 32, PHONEME_CHANNELS = 16, FPS = 30, STRIDE = 33;
+                   "LookDn","LookL","LookR","LookUp","SquintL","SquintR","HeadPitch","HeadRoll","HeadYaw"];
+const CHANNELS = 33, PHONEME_CHANNELS = 16, FPS = 30, STRIDE = 33;
 const PH = Object.fromEntries(PHONEMES.map((n, i) => [n, i]));
 
 function makeAnim(frames) {
@@ -220,7 +220,7 @@ function makeAnim(frames) {
     },
     hasModifiers() {
       for (let ch = PHONEME_CHANNELS; ch < CHANNELS; ch++)
-        if (this.values[ch] && this.values[ch].some(v => v > 0.01)) return true;
+        if (this.values[ch] && this.values[ch].some(v => Math.abs(v) > 0.01)) return true;
       return false;
     },
   };
@@ -228,12 +228,16 @@ function makeAnim(frames) {
 
 /* ---- .lip parsing ------------------------------------------------------------
    ENGINE-VERIFIED format (SkyrimSE.exe 1.6.1170 FUZE/lip loader, decompiled
-   2026-08-31 — see tools/lipresearch/RLE Hypothesis.md §11): the payload is
+   2026-08-31 — see tools/lipresearch/RLE Hypothesis.md §11-12): the payload is
    ZERO-RLE compressed — a nonzero byte is a literal; a 0x00 byte is followed
-   by a u16-LE count of zero bytes to emit. The decompressed buffer is a DENSE
-   float32 grid, frame-major, 33 slots/frame, every value a channel weight in
-   [0,1] (slots 0-15 phonemes, 16-31 modifiers, 32 unused). The trailing
-   all-zero run is omitted by the encoder, so zero-fill up to frames*33.
+   by a u16-LE count of zero bytes to emit. The u16 right before the payload is
+   a START TOKEN: token>>2 zero cells are prepended first (the leading rest run
+   hoisted into the header — miss it and every channel decodes rotated; credit
+   Raynor1511). The decompressed buffer is a DENSE float32 grid, frame-major,
+   33 slots/frame, every value a signed channel weight in [-1,1] (slots 0-15
+   phonemes, 16-32 the 17 modifiers BlinkLeft..HeadYaw — no padding slot; the
+   head channels swing negative routinely). The trailing all-zero run is
+   omitted by the encoder, so zero-fill up to frames*33.
    (The old dup/tangent/marker "grammars" were misreadings of the compressed
    bytes; deleted.) Header const14 selects the layout: 3 = 24-byte classic
    (preroll i32 at 16), 7 = 20-byte prerollless, variant B = 24-byte + one
@@ -259,10 +263,12 @@ function parseLip(bytes) {
   if (!frames || frames > 60 * 30 * 30) return null;
   if (off === 24) preroll = dv.getInt32(16, true);
 
-  // zero-RLE decompress -> dense float32 grid
+  // zero-RLE decompress -> dense float32 grid; the start token's leading
+  // zero cells come first (Uint8Array is zero-init, so just advance o)
   const cap = frames * STRIDE * 4;
   const out = new Uint8Array(cap);
-  let i = off, o = 0;
+  const startCells = dv.getUint16(off - 2, true) >> 2;
+  let i = off, o = Math.min(cap, startCells * 4);
   while (i < d.length && o < cap) {
     if (d[i] !== 0) { out[o++] = d[i++]; }
     else if (i + 3 <= d.length) {
@@ -277,9 +283,10 @@ function parseLip(bytes) {
   if (lead + 1 >= frames) lead = 0;
   const effFrames = frames - lead;
 
-  // mirrors LipData::Parse: a real cell is a weight in [0,1] or rest 0 —
-  // NaN/inf, negatives and huge values are corrupt (skipped, counted); a
-  // mostly-corrupt decode is rejected the same way the DLL rejects it
+  // mirrors LipData::Parse: a real cell is a signed weight in [-1,1] or rest 0
+  // (head channels and phoneme undershoot go negative) — NaN/inf and huge
+  // values are corrupt (skipped, counted); a mostly-corrupt decode is
+  // rejected the same way the DLL rejects it
   const keys = Array.from({ length: CHANNELS }, () => []);
   let examined = 0, corrupt = 0, anyCell = false;
   for (let pos = 0; pos < cells; pos++) {
@@ -287,9 +294,9 @@ function parseLip(bytes) {
     if (frame < lead || frame >= frames || slot >= CHANNELS) continue;
     const v = gv.getFloat32(pos * 4, true);
     examined++;
-    if (!Number.isFinite(v) || v < -1e-6 || v > 1.0001) { corrupt++; continue; }
-    if (v <= 0) continue;
-    keys[slot].push([frame - lead, Math.min(v, 1)]);
+    if (!Number.isFinite(v) || v < -1.0001 || v > 1.0001) { corrupt++; continue; }
+    if (v === 0) continue;
+    keys[slot].push([frame - lead, Math.max(-1, Math.min(v, 1))]);
     anyCell = true;
   }
   if (!anyCell || corrupt * 4 > examined) return null;
@@ -892,7 +899,7 @@ function renderTimeline() {
   const showMods = $("showMods").checked && anim && anim.hasModifiers();
   tlRows = [];
   for (let ch = 0; ch < PHONEME_CHANNELS; ch++) tlRows.push({ ch, label: PHONEMES[ch] });
-  if (showMods) for (let ch = 0; ch < 16; ch++) tlRows.push({ ch: PHONEME_CHANNELS + ch, label: MODIFIERS[ch] });
+  if (showMods) for (let ch = 0; ch < MODIFIERS.length; ch++) tlRows.push({ ch: PHONEME_CHANNELS + ch, label: MODIFIERS[ch] });
 
   const W = tl.clientWidth || 800, rowH = TL_ROW, waveH = TL_WAVE, ruler = TL_RULER;
   tl.width = W * devicePixelRatio;
@@ -1010,7 +1017,9 @@ function weightsAt(t) {
   if (anim && (state.playing || state.offset > 0)) {
     const last = $("driveMods").checked ? CHANNELS : PHONEME_CHANNELS;
     for (let ch = 0; ch < last; ch++)
-      if (anim.values[ch]) w[ch] = Math.min(1, anim.sample(ch, t) * (ch < PHONEME_CHANNELS ? g : 1));
+      if (anim.values[ch]) w[ch] = ch < PHONEME_CHANNELS
+        ? Math.min(1, Math.max(0, anim.sample(ch, t) * g))     // phonemes: [0,1] (undershoot clipped, as in LipSync)
+        : Math.min(1, Math.max(-1, anim.sample(ch, t)));       // modifiers: signed (head channels)
     // lip_jaw_boost (mirrors LipSync): authored lips only, skipped while BMP presses
     const jb = +$("p_lipJawBoost").value;
     if (jb > 0 && activeMode() === "lip" && w[PH.BMP] < 0.25) {
@@ -1522,7 +1531,7 @@ function drawPhotoFace(canvas, fp) {
 const HEAD_PHONEMES = ["Aah","BigAah","BMP","ChJSh","DST","Eee","Eh","FV","I","K","N","Oh","OohQ","R","Th","W"];
 const HEAD_MODIFIERS = ["BlinkLeft","BlinkRight","BrowDownLeft","BrowDownRight","BrowInLeft","BrowInRight",
                         "BrowUpLeft","BrowUpRight","LookDown","LookLeft","LookRight","LookUp",
-                        "SquintLeft","SquintRight",null,null];
+                        "SquintLeft","SquintRight",null,null,null];  // HeadPitch/Roll/Yaw: bone poses, not mesh morphs
 
 function installHead(fileName, doc) {
   const positions = new Float32Array(doc.positions);
@@ -1635,12 +1644,12 @@ function drawHeadFace(canvas, w, expr) {
   if (!H.ready) return;
   const gl = G.gl;
 
-  // accumulate morph weights from the 32 channels + preset expression
+  // accumulate morph weights from the 33 channels + preset expression
   const g = +$("p_gain").value;
   const mw = {};
   const add = (name, weight) => { if (name && weight > 0.001) mw[name.toLowerCase()] = (mw[name.toLowerCase()] || 0) + weight; };
   for (let ch = 0; ch < PHONEME_CHANNELS; ch++) add(HEAD_PHONEMES[ch], Math.min(1, w[ch] * g));
-  for (let ch = 0; ch < 16; ch++) add(HEAD_MODIFIERS[ch], w[PHONEME_CHANNELS + ch]);
+  for (let ch = 0; ch < HEAD_MODIFIERS.length; ch++) add(HEAD_MODIFIERS[ch], w[PHONEME_CHANNELS + ch]);
   if (expr) add(EXPRESSIONS[expr.id], expr.strength);
 
   // CPU morph blend over original-vertex sparse deltas

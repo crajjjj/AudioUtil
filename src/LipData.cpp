@@ -41,6 +41,7 @@ namespace LipData
 			std::int32_t              preroll = 0;
 			std::uint32_t             frames = 0;
 			std::uint32_t             numCurves = 0;
+			std::uint32_t             startCells = 0;  // leading zero cells (start token >> 2)
 			char                      variant = '?';
 		};
 
@@ -58,6 +59,13 @@ namespace LipData
 			a_h.preroll = a_hasPreroll ? ReadLE<std::int32_t>(a_d + 16) : 0;
 			a_h.frames = frames;
 			a_h.numCurves = ReadLE<std::uint32_t>(a_d + 8);
+			// the u16 right before the payload is the START TOKEN: token>>2 =
+			// leading zero cells hoisted out of the payload (the low 2 bits are
+			// a tag, ~always 3). Corpus-verified: honoring it lands 9741/9760
+			// files at exactly frames*33*4 decompressed bytes (0 without it) —
+			// and skipping it decodes every channel rotated by (33 - start)
+			// slots. (Correction due to Raynor1511.)
+			a_h.startCells = ReadLE<std::uint16_t>(a_d + a_off - 2) >> 2;
 			a_h.variant = a_variant;
 			return true;
 		}
@@ -97,18 +105,21 @@ namespace LipData
 		// The payload is ZERO-RLE compressed (engine-verified against the game's
 		// own FUZE/lip loader, SkyrimSE.exe 1.6.1170 sub_140243*): a nonzero
 		// byte is a literal; a 0x00 byte introduces a run — the next two bytes
-		// are a little-endian u16 count of zero bytes to emit. The decompressed
-		// buffer is a DENSE float32 grid, frame-major, 33 slots per frame, every
-		// value a channel weight in [0,1] (slots 0–15 phonemes, 16–31 modifiers,
-		// 32 unused). The trailing all-zero run is omitted by the encoder, so
-		// the grid is zero-filled up to frames*33. This single decode replaces
-		// the whole "dup/tangent/marker" grammar the format was long mis-modeled
+		// are a little-endian u16 count of zero bytes to emit. `a_prefixBytes`
+		// zero bytes (the header start token's hoisted leading rest run) are
+		// emitted first. The decompressed buffer is a DENSE float32 grid,
+		// frame-major, 33 slots per frame, every value a signed channel weight
+		// in [-1,1] (slots 0–15 phonemes, 16–32 the 17 modifiers — no padding
+		// slot). The trailing all-zero run is omitted by the encoder, so the
+		// grid is zero-filled up to frames*33. This single decode replaces the
+		// whole "dup/tangent/marker" grammar the format was long mis-modeled
 		// as (those were artifacts of reading the compressed bytes directly).
 		std::vector<std::uint8_t> Decompress(const std::uint8_t* a_p, std::size_t a_n,
-			std::size_t a_cap)
+			std::size_t a_cap, std::size_t a_prefixBytes)
 		{
 			std::vector<std::uint8_t> out;
 			out.reserve(a_cap);
+			out.assign(std::min(a_prefixBytes, a_cap), std::uint8_t{ 0 });
 			std::size_t i = 0;
 			while (i < a_n && out.size() < a_cap) {
 				const std::uint8_t b = a_p[i];
@@ -146,9 +157,11 @@ namespace LipData
 		}
 		const std::uint32_t effFrames = frames - lead;
 
-		// decompress to the dense grid, then read frame-major float32 cells
+		// decompress to the dense grid (start-token zero cells first), then
+		// read frame-major float32 cells
 		const std::size_t cap = static_cast<std::size_t>(frames) * STRIDE * sizeof(float);
-		const auto grid = Decompress(h.d + h.payloadOff, h.size - h.payloadOff, cap);
+		const auto grid = Decompress(h.d + h.payloadOff, h.size - h.payloadOff, cap,
+			static_cast<std::size_t>(h.startCells) * sizeof(float));
 		const std::size_t cells = grid.size() / sizeof(float);
 
 		auto anim = std::make_shared<Anim>();
@@ -173,25 +186,26 @@ namespace LipData
 			}
 			const float v = ReadLE<float>(grid.data() + pos * sizeof(float));
 			++examined;
-			if (!std::isfinite(v) || v < -1.0e-6f || v > 1.0001f) {
-				// a real cell is a weight in [0,1] or exact rest 0 — NaN/inf,
-				// negatives and huge values are corrupt/misaligned data (or a
-				// non-compressed lip). Skip rather than clamp: clamping a huge
-				// value to 1.0 would flash the mouth fully open.
+			if (!std::isfinite(v) || v < -1.0001f || v > 1.0001f) {
+				// a real cell is a signed weight in [-1,1] or exact rest 0
+				// (negatives are routine on the head channels and undershoot on
+				// phonemes) — NaN/inf and huge values are corrupt/misaligned
+				// data (or a non-compressed lip). Skip rather than clamp:
+				// clamping a huge value to 1.0 would flash the mouth fully open.
 				++corrupt;
 				continue;
 			}
-			if (v <= 0.0f) {
+			if (v == 0.0f) {
 				continue;  // rest (the vast majority — grid is sparse-active)
 			}
-			anim->values[slot][frame - lead] = std::min(v, 1.0f);
+			anim->values[slot][frame - lead] = std::clamp(v, -1.0f, 1.0f);
 			chAny[slot] = true;
 			any = true;
 		}
 		// wholesale garbage (e.g. an uncompressed lip mis-decompressed) → fall
 		// back to the envelope rather than mouthing noise. Corrupt is measured
-		// against the cells actually examined (lead frames and slot 32 are
-		// skipped before classification, so `cells` would dilute the ratio).
+		// against the cells actually examined (lead frames are skipped before
+		// classification, so `cells` would dilute the ratio).
 		if (!any || corrupt * 4 > examined) {
 			// visible at the shipped log level: with use_lip_files on by default,
 			// a lip class silently regressing to the envelope would be invisible
@@ -207,8 +221,8 @@ namespace LipData
 				std::vector<float>{}.swap(anim->values[ch]);
 			}
 		}
-		logger::debug("LipData: variant {} frames={} curves={} -> {} cells", h.variant,
-			frames, h.numCurves, cells);
+		logger::debug("LipData: variant {} frames={} curves={} start={} -> {} cells",
+			h.variant, frames, h.numCurves, h.startCells, cells);
 		return anim;
 	}
 

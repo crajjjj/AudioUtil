@@ -189,8 +189,8 @@ namespace Config
 		// 0..1: 0 = hold each frame (stepped), 1 = full lerp (smooth),
 		// between = partial — applies to lip + pseudo playback
 		float         lipsyncFrameInterp{ 0.3f };  // default: lightly-softened steps
-		// also drive the 16 MFG modifier channels (blinks/brows/gaze) a .lip
-		// carries — off by default: expression mods own those channels
+		// also drive the 17 MFG modifier channels (blinks/brows/gaze/head) a .lip
+		// carries — ON by default; off hands the upper face to expression mods
 		bool          lipsyncDriveModifiers{ true };
 		// lines WITHOUT lip data: synthesize pseudo-phoneme curves from the
 		// amplitude envelope (per-syllable vowel variety + lip closures after

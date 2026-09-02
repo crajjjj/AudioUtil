@@ -81,7 +81,7 @@ use_lip_files = true           # Real phoneme lipsync when a line has lip data (
                               # tools\lipresearch\RLE Hypothesis.md) so this is the accurate path and is ON
                               # by default; lines WITHOUT lip data still fall back to the envelope /
                               # pseudo_phonemes. Runtime A/B toggle: console `autest lipfiles on|off`
-drive_modifiers = true        # let .lip data also drive blinks/brows/eye direction (the 16 MFG modifier
+drive_modifiers = true        # let .lip data also drive blinks/brows/eye direction (the 17 MFG modifier
                               # channels a lip carries - real authored lips do use them, so ON makes faces
                               # blink/emote in sync with speech). Set to false if an expression / emotion mod
                               # (MFEE, RaceMenu overlays, a scene-face system like SLO VE) owns the upper face

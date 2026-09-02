@@ -1,11 +1,14 @@
 # `.lip` RLE Hypothesis — Research Plan
 
-> **SOLVED 2026-08-31 by decompiling the engine (see section 11).** The payload is a
-> plain **zero-RLE compression** (`00` + u16-LE count = that many zero bytes; other
-> bytes literal) wrapping a **dense `float32[frames*33]` grid of [0,1] weights**.
-> There is no dup rule, no tangents, no escapes, no markers — all of those were
-> misreadings of the compressed bytes. AudioUtil 0.9.15 ships this decoder;
-> verify_engine.py / make_grammar_probe.py are retained as history.
+> **SOLVED 2026-08-31 by decompiling the engine (see section 11), CORRECTED
+> 2026-09-02 (see section 12 — credit Raynor1511).** The payload is a plain
+> **zero-RLE compression** (`00` + u16-LE count = that many zero bytes; other
+> bytes literal) wrapping a **dense `float32[frames*33]` grid of signed [-1,1]
+> weights** — 16 phonemes + 17 modifiers, no padding slot, with the header's
+> start token (u16 before the payload, `>>2`) giving the count of leading zero
+> cells to prepend. There is no dup rule, no tangents, no escapes, no markers —
+> all of those were misreadings of the compressed bytes. AudioUtil 0.9.16 ships
+> this decoder; verify_engine.py / make_grammar_probe.py are retained as history.
 
 *Drafted 2026-08-11. Suggested repo location: `tools/lipresearch/RLE Hypothesis.md`, companion
 tool `tools/lipresearch/lip_rle_validator.py`. Status: **hypothesis — needs the corpus
@@ -326,3 +329,47 @@ weights to the engine's post-coarticulation mouth output.
   probe-fuz override, `list`/`check` lipcap captures, profile scoring).
 - Exp 1 output: `results.csv` (do not commit; corpus-derived).
 - Exp 2 additions: `make_probe.py --dup` mode + capture CSVs (CSVs stay local).
+
+## 12. CORRECTION 2026-09-02 — the start token, the 17-modifier layout (credit: Raynor1511)
+
+Raynor1511 (Dragonborn ReVoiced), building a lipsync driver on §11, found two errors
+in it and reported them; both verified here on a 9,760-file local corpus (loose .lip
++ fuz-embedded lips across several producers) and now shipped in `LipData.cpp`:
+
+1. **The u16 right before the payload is a load-bearing START TOKEN** (offset 22 in
+   the 24-byte header, 18 in the 20-byte one) — §11 dismissed it as "semantics
+   unknown". `token >> 2` is the grid cell the payload's first byte belongs at:
+   that many zero cells are prepended before decompressing (the grid's leading
+   rest run, hoisted into the header; the low 2 bits are a tag, ≡3 in ~99.8% of
+   this corpus, meaning unknown). Corpus landing with the prefix honored:
+   **9,741/9,760 files decompress to exactly frames×33×4 bytes** (0 without it;
+   the remaining 19 overshoot by exactly 3 bytes — trailing-run quirk, truncated
+   harmlessly). The old "most files decode short, so zero-fill the tail" behavior
+   was this prefix, measured from the wrong end. Raynor found it by capturing the
+   engine's own facegen output during `Player.SpeakSound` and diffing against the
+   decode: identical values, channels rotated by (33 − start). **Every lip with a
+   nonzero token decoded with all channels rotated** — in this corpus that was
+   ~100% of files (Raynor measured ~73% across a 65k CK/FaceFXWrapper corpus; the
+   errors cancel only when the token is 0).
+2. **The layout is 16 phonemes + 17 modifiers = 33 — there is no padding slot.**
+   Slot 32 is the 17th modifier, not "unused"; CommonLib's
+   `BSFaceGenKeyframeMultiple::Modifier` enum has had the answer all along:
+   BlinkLeft..SquintRight then **HeadPitch=14, HeadRoll=15, HeadYaw=16** (slots
+   30–32). Corpus occupancy confirms: slot 32 carries data in 29% of files, and
+   slots 30–32 are the only routinely **signed** channels (±0.5..±0.74 — head
+   rotations). Negative cells are real (also small undershoot on phoneme slots),
+   so the parser's [0,1] "corrupt" filter was silently discarding them; the valid
+   range is [-1,1].
+
+Bonus finding while validating: the u16 *before* the start token (the "vocab = 16"
+header constant at offset 20/16) is a **phoneme-track count**, and the real stride
+is `count + 17`. The ~1.3k local TTS fuz with `43` there (previously unparseable)
+land exactly at frames×**60**×4 with the same start-token rule — a 43-phoneme vocab
+(different tool chain). AudioUtil still only drives `16`-track (stride-33) lips, as
+there is no mapping from a 43-phoneme vocab to Skyrim's 16 MFG channels. A second
+residual unknown: a rare 27-byte header (`00 01 00 02 00` at offset 12, frames
+u16@12, anchor 16 at 23, start at 25, payload at 27) — parseable by the same rules,
+not yet worth a variant in the DLL.
+
+Fixed in AudioUtil 0.9.16: `LipData` honors the start token, keeps signed values
+(clamped [-1,1]), and `CHANNELS` is 33 with `LipSync` driving all 17 modifiers.

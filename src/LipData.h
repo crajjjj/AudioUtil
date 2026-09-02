@@ -4,17 +4,25 @@
 // prerollless one, const14=7) plus a frame-major positional token grid at
 // 30 fps, 33 slots per frame:
 //   slots 0-15  = the 16 MFG phoneme channels (identity order, Aah..W)
-//   slots 16-31 = the 16 MFG modifier channels (BlinkL..head)
-//   slot  32    = unused
+//   slots 16-32 = the 17 MFG modifier channels (BlinkLeft..HeadYaw — the full
+//                 BSFaceGenKeyframeMultiple::Modifier enum; NO padding slot)
+// The u16 right before the payload is a START TOKEN: token>>2 is the grid cell
+// the payload's first byte belongs at, i.e. that many zero cells are prepended
+// before decompressing (the leading rest run hoisted into the header). Miss it
+// and every channel decodes rotated by (33 - start) slots. Values are signed:
+// the head channels (slots 30-32) swing negative routinely, and phoneme cells
+// undershoot below 0.
 // The slot map AND the payload byte-format are engine-verified against the
 // game's own FUZE/lip loader (SkyrimSE.exe 1.6.1170): the payload is ZERO-RLE
 // compressed (a 0x00 byte + u16-LE count = that many zero bytes; other bytes
-// literal), decompressing to a dense float32[frames*33] grid of [0,1] weights.
-// (The old "dup/tangent/marker" grammar mis-modeled the compressed bytes.)
+// literal), decompressing to a dense float32[frames*33] grid of [-1,1] weights.
+// (The old "dup/tangent/marker" grammar mis-modeled the compressed bytes; the
+// start token + 17-modifier layout corrections are due to Raynor1511, verified
+// on a 9.7k-file corpus — see tools/lipresearch/RLE Hypothesis.md §12.)
 // Parsing has no game dependencies.
 namespace LipData
 {
-	inline constexpr std::uint32_t CHANNELS = 32;         // 16 phonemes + 16 modifiers
+	inline constexpr std::uint32_t CHANNELS = 33;         // 16 phonemes + 17 modifiers
 	// interpolation amount for Anim::Sample ([lipsync] frame_interpolation,
 	// base-only, 0..1): 0 = hold each 30 fps frame's value (stepped),
 	// 1 = full linear interpolation (smooth), between = the value travels that
@@ -28,7 +36,7 @@ namespace LipData
 	{
 		std::uint32_t      frames = 0;      // count on the 30 fps grid
 		float              durationSec = 0.0f;
-		// dense per-channel timelines, values[channel][frame] in [0,1]
+		// dense per-channel timelines, values[channel][frame] in [-1,1]
 		std::vector<float> values[CHANNELS];
 
 		// sampled per g_frameInterp (0 hold .. 1 full lerp); 0 outside the clip
@@ -67,15 +75,16 @@ namespace LipData
 			return false;
 		}
 
-		// true if any modifier channel (16-31, blink/brow/gaze) carries signal —
-		// i.e. a real authored lip. Pseudo-synth lines write only phonemes, so
-		// this stays false for them, letting `drive_modifiers` leave the upper
-		// face to expression mods on lines that carry no modifier animation.
+		// true if any modifier channel (16-32, blink/brow/gaze/head) carries
+		// signal — i.e. a real authored lip. Pseudo-synth lines write only
+		// phonemes, so this stays false for them, letting `drive_modifiers`
+		// leave the upper face to expression mods on lines that carry no
+		// modifier animation. |v|: the head channels are signed.
 		bool HasModifierData() const
 		{
 			for (std::uint32_t ch = PHONEME_CHANNELS; ch < CHANNELS; ++ch) {
 				for (const float v : values[ch]) {
-					if (v > 0.01f) {
+					if (std::fabs(v) > 0.01f) {
 						return true;
 					}
 				}
