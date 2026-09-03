@@ -14,6 +14,7 @@
 #include "LipCapture.h"
 #include "LipSync.h"
 #include "PPABridge.h"
+#include "Tags.h"
 #include "TomlStore.h"
 
 namespace PapyrusAPI
@@ -24,7 +25,7 @@ namespace PapyrusAPI
 		constexpr auto PPA_SCRIPT_NAME = "AudioUtilPPA";
 		constexpr auto TOML_SCRIPT_NAME = "TomlUtil";
 		constexpr auto TEST_SCRIPT_NAME = "AudioUtilTest";  // debug/calibration natives only
-		constexpr std::int32_t API_VERSION = 5;  // v5: captions (GetHandleCaption, [captions], AudioUtil_Caption event)
+		constexpr std::int32_t API_VERSION = 6;  // v6: tag-scored playback (PlayVoiceTagged, PlayVoiceFromSlotTagged)
 
 		using VM = RE::BSScript::IVirtualMachine;
 
@@ -263,7 +264,8 @@ namespace PapyrusAPI
 		// the gag slot instead; if that category is absent there, the muffled
 		// gagDefaultCategory plays rather than leaking the clear line.
 		std::string ResolveGaggedKey(const Config::Settings& a_settings,
-			const Config::Slot& a_slot, std::string_view a_category, RE::Actor* a_actor)
+			const Config::Slot& a_slot, std::string_view a_category, RE::Actor* a_actor,
+			Tags::Mask a_facts = 0)
 		{
 			const Config::Slot* slot = &a_slot;
 			if (a_settings.gagEnabled && !a_slot.gagSlot.empty() && GagState::IsGagged(a_actor)) {
@@ -271,9 +273,9 @@ namespace PapyrusAPI
 					slot = gagSlot;
 				}
 			}
-			auto key = FolderCache::ResolveVoiceKey(a_settings, *slot, a_category);
+			auto key = FolderCache::ResolveVoiceKey(a_settings, *slot, a_category, a_facts);
 			if (key.empty() && slot != &a_slot && !a_settings.gagDefaultCategory.empty()) {
-				key = FolderCache::ResolveVoiceKey(a_settings, *slot, a_settings.gagDefaultCategory);
+				key = FolderCache::ResolveVoiceKey(a_settings, *slot, a_settings.gagDefaultCategory, a_facts);
 			}
 			return key;
 		}
@@ -284,17 +286,39 @@ namespace PapyrusAPI
 		// path — then the legacy flat [sfx] table. Direct key lookups (no
 		// alias/fallback), so a name only in the [sfx] table doesn't trip the
 		// voice resolver's miss warning.
-		std::string ResolveSfxKey(const Config::Settings& a_settings, std::string_view a_name)
+		// the sfx slot is a real [[slot]], so its categories are tag-scanned and
+		// may hold only tagged pools. Gating on the tag-blind file count would
+		// hand back a key PickNext(key, facts) can't satisfy — handle 0, no log,
+		// no fallback. Gate on what the pick will actually see, and say so once
+		// when a category exists but is tagged past the request.
+		std::string ResolveSfxKey(const Config::Settings& a_settings, std::string_view a_name,
+			Tags::Mask a_facts = 0)
 		{
 			const auto catNorm = Config::Normalize(a_name);
+			const auto usable = [&](const std::string& a_key) {
+				if (FolderCache::HasPlayableFiles(a_key, a_facts)) {
+					return true;
+				}
+				if (FolderCache::FileCount(a_key) > 0) {
+					static std::unordered_set<std::string> warned;
+					static std::mutex                      warnedLock;
+					std::scoped_lock lock{ warnedLock };
+					if (warned.insert(a_key + "|" + std::format("{:x}", a_facts)).second) {
+						logger::warn("SFX '{}': every pool is tagged beyond this request's facts [{}] — "
+						             "nothing qualifies to play",
+							a_key, Tags::Describe(a_facts));
+					}
+				}
+				return false;
+			};
 			if (!a_settings.sfxSlot.empty()) {
 				const auto slotKey = Config::Normalize(a_settings.sfxSlot) + "/" + catNorm;
-				if (FolderCache::FileCount(slotKey) > 0) {
+				if (usable(slotKey)) {
 					return slotKey;
 				}
 			}
 			const auto sfxKey = "sfx/" + catNorm;
-			return FolderCache::FileCount(sfxKey) > 0 ? sfxKey : std::string{};
+			return usable(sfxKey) ? sfxKey : std::string{};
 		}
 
 		// ---------- shared play helper ----------
@@ -307,12 +331,13 @@ namespace PapyrusAPI
 		std::int32_t PlayFromKey(const std::string& a_folderKey, RE::Actor* a_follow,
 			float a_volume, const std::string& a_group, const std::string& a_channel,
 			RE::Actor* a_mouth = nullptr, bool a_noInterrupt = false,
-			RE::Actor* a_speaker = nullptr)
+			RE::Actor* a_speaker = nullptr, Tags::Mask a_facts = 0,
+			bool a_blockCaption = false)
 		{
 			if (a_folderKey.empty()) {
 				return 0;
 			}
-			const auto file = FolderCache::PickNext(a_folderKey);
+			const auto file = FolderCache::PickNext(a_folderKey, a_facts);
 			if (file.empty()) {
 				return 0;
 			}
@@ -334,7 +359,9 @@ namespace PapyrusAPI
 			if (a_mouth) {
 				LipSync::Start(a_mouth, file, handle, id);
 			}
-			CaptionManager::Start(a_speaker ? a_speaker : a_follow, file, handle, id);
+			if (!a_blockCaption) {
+				CaptionManager::Start(a_speaker ? a_speaker : a_follow, file, handle, id);
+			}
 			return id;
 		}
 
@@ -348,6 +375,7 @@ namespace PapyrusAPI
 		bool ReloadConfig(RE::StaticFunctionTag*)
 		{
 			const bool ok = Config::Load();
+			Tags::Configure(*Config::Get());
 			FolderCache::Rebuild();
 			GagState::Resolve(*Config::Get());
 			TongueState::Resolve(*Config::Get());
@@ -359,9 +387,13 @@ namespace PapyrusAPI
 			return ok;
 		}
 
-		std::int32_t PlayVoice(RE::StaticFunctionTag*, RE::Actor* a_actor,
-			RE::BSFixedString a_category, float a_volume, RE::BSFixedString a_group,
-			RE::BSFixedString a_channel, bool a_blockLipSync)
+		// shared body of PlayVoice / PlayVoiceTagged: identical except for the
+		// tag fact set threaded into resolution + pool selection (0 =
+		// untagged-only = the pre-tags behavior, so there is ONE code path, not
+		// a per-variation branch)
+		std::int32_t PlayVoiceImpl(RE::Actor* a_actor, const char* a_category,
+			Tags::Mask a_facts, float a_volume, const char* a_group,
+			const char* a_channel, bool a_blockLipSync, bool a_blockCaption = false)
 		{
 			const auto settings = Config::Get();
 			const auto* slot = ResolveSlotForActor(*settings, a_actor);
@@ -369,47 +401,91 @@ namespace PapyrusAPI
 				logger::warn("PlayVoice: no slot resolvable for actor");
 				return 0;
 			}
-			auto key = ResolveGaggedKey(*settings, *slot, a_category.c_str(), a_actor);
+			auto key = ResolveGaggedKey(*settings, *slot, a_category, a_actor, a_facts);
 			if (key.empty()) {
 				// last resort: non-voice scene sounds (PullOutGape, Smack, ...) live in
-				// the sfx slot / [sfx] table
-				key = ResolveSfxKey(*settings, a_category.c_str());
+				// the sfx slot / [sfx] table. The facts ride along — the sfx slot is a
+				// real [[slot]], so its categories can carry tag pools too, and
+				// PlayFromKey picks with these same facts.
+				key = ResolveSfxKey(*settings, a_category, a_facts);
 			}
 			// no-interrupt early-out: cheap pre-check to avoid building a sound we'd
 			// drop (the atomic claim in PlayFromKey closes the check/claim race)
-			if (settings->voiceNoInterrupt && a_channel.length() > 0 &&
-				InstanceManager::IsChannelBusy(a_channel.c_str())) {
+			if (settings->voiceNoInterrupt && a_channel[0] != '\0' &&
+				InstanceManager::IsChannelBusy(a_channel)) {
 				return 0;
 			}
 			// 3D-follow only when voice3D is on; either way the mouth actor drives lipsync
 			RE::Actor* follow = settings->voice3D ? a_actor : nullptr;
 			// per-call opt-out OR a category configured to never lipsync (oral sfx, climax)
 			const bool blockLip = a_blockLipSync ||
-				settings->lipsyncBlockCategories.contains(Config::Normalize(a_category.c_str()));
-			return PlayFromKey(key, follow, a_volume, a_group.c_str(), a_channel.c_str(),
-				blockLip ? nullptr : a_actor, settings->voiceNoInterrupt, a_actor);
+				settings->lipsyncBlockCategories.contains(Config::Normalize(a_category));
+			return PlayFromKey(key, follow, a_volume, a_group, a_channel,
+				blockLip ? nullptr : a_actor, settings->voiceNoInterrupt, a_actor, a_facts,
+				a_blockCaption);
+		}
+
+		std::int32_t PlayVoice(RE::StaticFunctionTag*, RE::Actor* a_actor,
+			RE::BSFixedString a_category, float a_volume, RE::BSFixedString a_group,
+			RE::BSFixedString a_channel, bool a_blockLipSync)
+		{
+			return PlayVoiceImpl(a_actor, a_category.c_str(), 0, a_volume,
+				a_group.c_str(), a_channel.c_str(), a_blockLipSync);
+		}
+
+		// tagged variant: same as PlayVoice plus a fact string ("rcv victim intense") —
+		// the scene truths this line may be matched against. Tagged pools whose
+		// constraints the facts cover compete tone-first; no coverage = the
+		// untagged pool; no untagged pool either = normal category fallbacks.
+		std::int32_t PlayVoiceTagged(RE::StaticFunctionTag*, RE::Actor* a_actor,
+			RE::BSFixedString a_category, RE::BSFixedString a_tags, float a_volume,
+			RE::BSFixedString a_group, RE::BSFixedString a_channel, bool a_blockLipSync,
+			bool a_blockCaption)
+		{
+			return PlayVoiceImpl(a_actor, a_category.c_str(), Tags::ParseFacts(a_tags.c_str()),
+				a_volume, a_group.c_str(), a_channel.c_str(), a_blockLipSync, a_blockCaption);
+		}
+
+		std::int32_t PlayVoiceFromSlotImpl(const char* a_slot, const char* a_category,
+			Tags::Mask a_facts, RE::Actor* a_follow, float a_volume,
+			const char* a_group, const char* a_channel, bool a_blockLipSync,
+			bool a_blockCaption = false)
+		{
+			const auto settings = Config::Get();
+			const auto* slot = Config::FindSlot(*settings, a_slot);
+			if (!slot) {
+				logger::warn("PlayVoiceFromSlot: unknown slot '{}'", a_slot);
+				return 0;
+			}
+			const auto key = ResolveGaggedKey(*settings, *slot, a_category, a_follow, a_facts);
+			if (settings->voiceNoInterrupt && a_channel[0] != '\0' &&
+				InstanceManager::IsChannelBusy(a_channel)) {
+				return 0;
+			}
+			RE::Actor* follow = settings->voice3D ? a_follow : nullptr;
+			const bool blockLip = a_blockLipSync ||
+				settings->lipsyncBlockCategories.contains(Config::Normalize(a_category));
+			return PlayFromKey(key, follow, a_volume, a_group, a_channel,
+				blockLip ? nullptr : a_follow, settings->voiceNoInterrupt, a_follow, a_facts,
+				a_blockCaption);
 		}
 
 		std::int32_t PlayVoiceFromSlot(RE::StaticFunctionTag*, RE::BSFixedString a_slot,
 			RE::BSFixedString a_category, RE::Actor* a_follow, float a_volume,
 			RE::BSFixedString a_group, RE::BSFixedString a_channel, bool a_blockLipSync)
 		{
-			const auto settings = Config::Get();
-			const auto* slot = Config::FindSlot(*settings, a_slot.c_str());
-			if (!slot) {
-				logger::warn("PlayVoiceFromSlot: unknown slot '{}'", a_slot.c_str());
-				return 0;
-			}
-			const auto key = ResolveGaggedKey(*settings, *slot, a_category.c_str(), a_follow);
-			if (settings->voiceNoInterrupt && a_channel.length() > 0 &&
-				InstanceManager::IsChannelBusy(a_channel.c_str())) {
-				return 0;
-			}
-			RE::Actor* follow = settings->voice3D ? a_follow : nullptr;
-			const bool blockLip = a_blockLipSync ||
-				settings->lipsyncBlockCategories.contains(Config::Normalize(a_category.c_str()));
-			return PlayFromKey(key, follow, a_volume, a_group.c_str(), a_channel.c_str(),
-				blockLip ? nullptr : a_follow, settings->voiceNoInterrupt, a_follow);
+			return PlayVoiceFromSlotImpl(a_slot.c_str(), a_category.c_str(), 0, a_follow,
+				a_volume, a_group.c_str(), a_channel.c_str(), a_blockLipSync);
+		}
+
+		std::int32_t PlayVoiceFromSlotTagged(RE::StaticFunctionTag*, RE::BSFixedString a_slot,
+			RE::BSFixedString a_category, RE::BSFixedString a_tags, RE::Actor* a_follow,
+			float a_volume, RE::BSFixedString a_group, RE::BSFixedString a_channel,
+			bool a_blockLipSync, bool a_blockCaption)
+		{
+			return PlayVoiceFromSlotImpl(a_slot.c_str(), a_category.c_str(),
+				Tags::ParseFacts(a_tags.c_str()), a_follow, a_volume,
+				a_group.c_str(), a_channel.c_str(), a_blockLipSync, a_blockCaption);
 		}
 
 		std::int32_t PlaySFX(RE::StaticFunctionTag*, RE::BSFixedString a_name,
@@ -551,7 +627,9 @@ namespace PapyrusAPI
 			if (!slot) {
 				return 0;
 			}
-			const auto key = FolderCache::ResolveVoiceKey(*settings, *slot, a_category.c_str());
+			// kAllFacts: introspection keeps its legacy meaning — "does this
+			// category hold ANY content" — even when all of it is tagged
+			const auto key = FolderCache::ResolveVoiceKey(*settings, *slot, a_category.c_str(), Tags::kAllFacts);
 			return key.empty() ? 0 : FolderCache::FileCount(key);
 		}
 
@@ -574,7 +652,7 @@ namespace PapyrusAPI
 			if (!slot) {
 				return "";
 			}
-			const auto key = FolderCache::ResolveVoiceKey(*settings, *slot, a_category.c_str());
+			const auto key = FolderCache::ResolveVoiceKey(*settings, *slot, a_category.c_str(), Tags::kAllFacts);
 			if (key.empty()) {
 				return "";
 			}
@@ -997,7 +1075,9 @@ namespace PapyrusAPI
 		REGISTERFUNC(GetAPIVersion, SCRIPT_NAME);
 		REGISTERFUNC(ReloadConfig, SCRIPT_NAME);
 		REGISTERFUNC(PlayVoice, SCRIPT_NAME);
+		REGISTERFUNC(PlayVoiceTagged, SCRIPT_NAME);
 		REGISTERFUNC(PlayVoiceFromSlot, SCRIPT_NAME);
+		REGISTERFUNC(PlayVoiceFromSlotTagged, SCRIPT_NAME);
 		REGISTERFUNC(PlaySFX, SCRIPT_NAME);
 		REGISTERFUNC(PlayFile, SCRIPT_NAME);
 		REGISTERFUNC(PlayFileWithLipSync, SCRIPT_NAME);

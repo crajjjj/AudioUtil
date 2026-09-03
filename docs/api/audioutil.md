@@ -12,7 +12,7 @@ All name and key matching (categories, slots, groups, SFX names) is **case- and 
 int Function GetAPIVersion() global native
 ```
 
-API version of the loaded DLL, for compatibility checks. `0` = DLL not installed. Increases only when signatures/behavior change incompatibly. Currently `5` (v2 added `GetSlotVariation`, v3 `GetResolvingSlot`, v4 `GetHandlePath`, v5 captions).
+API version of the loaded DLL, for compatibility checks. `0` = DLL not installed. Increases only when signatures/behavior change incompatibly. Currently `6` (v2 added `GetSlotVariation`, v3 `GetResolvingSlot`, v4 `GetHandlePath`, v5 captions, v6 the tag-scored natives).
 
 ### `ReloadConfig`
 
@@ -41,6 +41,18 @@ AudioUtil.PlayVoice(npc, "Taunt", 0.8, "npc_voice")            ; + volume, group
 AudioUtil.PlayVoice(npc, "Taunt", 1.0, "npc_voice", "npc_main") ; channel: replaces prior line
 ```
 
+### `PlayVoiceTagged`
+
+```papyrus
+int Function PlayVoiceTagged(Actor akActor, string category, string tags, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false, bool blockCaption = false) global native
+```
+
+*API v6+.* `PlayVoice` plus a **fact string** (`"angry intense undead"` — whitespace/comma separated, case-insensitive, at most one fact per axis). Inside the resolved category, a tagged pool competes only if **all** its tags appear among the facts; the highest axis-weight sum wins and untagged files are the always-valid floor. Unknown fact tokens are ignored (warned once); empty `tags` — or no `[tags]` vocabulary configured — makes this identical to `PlayVoice`. `blockCaption = true` suppresses the line's [caption sidecar](#captions) — no HUD subtitle, no `AudioUtil_Caption` event — the caption analogue of `blockLipSync`, for a caller rendering its own text. See [Tag-Scored Pools](../tags.md).
+
+```papyrus
+int h = AudioUtil.PlayVoiceTagged(npc, "BattleCry", "angry intense undead")
+```
+
 ### `PlayVoiceFromSlot`
 
 ```papyrus
@@ -48,6 +60,14 @@ int Function PlayVoiceFromSlot(string slot, string category, Actor akFollow, flo
 ```
 
 Same as `PlayVoice`, but the slot is named **explicitly** (`"F1"`, `"M4"`, `"C2"`, …) instead of resolved from an actor — for samples, tests, or when the caller already decided the voice. `akFollow` only provides the 3D position.
+
+### `PlayVoiceFromSlotTagged`
+
+```papyrus
+int Function PlayVoiceFromSlotTagged(string slot, string category, string tags, Actor akFollow = None, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false, bool blockCaption = false) global native
+```
+
+*API v6+.* Tag-scored variant of `PlayVoiceFromSlot` — the fact string and `blockCaption` work exactly as in [`PlayVoiceTagged`](#playvoicetagged).
 
 ### `PlaySFX`
 

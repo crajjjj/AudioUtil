@@ -245,6 +245,19 @@ Whisper = "Murmur"
 | `[male_only_remap]` | male slots only | Substitute a male category for a female-engine category name. |
 | `[category_fallbacks.female]` / `.male` | that sex's slots | Substitute (one hop) when a category resolves to no folder. |
 
+## `[tags]`
+
+Defines the **tag vocabulary** for [tag-scored pools](../tags.md): named axes of mutually-exclusive tokens, each axis with a match weight (≤ 64 tokens total). The plugin ships **none** — no `[tags]` anywhere means the whole tag layer is dormant (category folders scan flat; `PlayVoiceTagged` ≡ `PlayVoice`). **Additive** across the base + overlays like slots/sfx, so several consumer mods can ship their own axes and coexist: same-named axes union their tokens (no file can remove another's), weight is last-writer-wins in sorted filename order.
+
+```toml
+[tags]
+mood      = { tokens = ["calm", "angry", "afraid"],  weight = 8 }
+intensity = { tokens = ["soft", "intense"],          weight = 4 }
+target    = { tokens = ["human", "beast", "undead"], weight = 1 }
+```
+
+See [Tag-Scored Pools](../tags.md) for how packs tag files and how a call's facts pick a pool.
+
 ## `[groups]`
 
 Startup volumes, `0.0`–`1.0`. **Startup state only** — a consumer mod overrides at runtime via [`SetGroupVolume`](../api/audioutil.md#setgroupvolume) (AudioUtil ships no MCM of its own). Groups are created on first use; these are just the conventional ones.

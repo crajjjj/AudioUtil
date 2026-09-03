@@ -118,6 +118,34 @@ subs:
         type: String
         required: true
         help: Category name, e.g. Orgasm
+  - name: voicetag
+    func: VoiceTag
+    help: Tag-scored play from an explicit slot at the player
+    args:
+      - name: slot
+        type: String
+        required: true
+        help: Slot id, e.g. F1
+      - name: category
+        type: String
+        required: true
+        help: Category name (quote if spaced)
+      - name: tags
+        type: String
+        required: true
+        help: Quoted fact string, e.g. "angry intense"
+  - name: voicetagpc
+    func: VoiceTagPC
+    help: Tag-scored play through the player's resolved slot
+    args:
+      - name: category
+        type: String
+        required: true
+        help: Category name (quote if spaced)
+      - name: tags
+        type: String
+        required: true
+        help: Quoted fact string, e.g. "angry intense"
   - name: sfx
     func: Sfx
     help: Play an SFX by name at the player

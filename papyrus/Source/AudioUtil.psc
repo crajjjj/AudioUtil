@@ -88,6 +88,25 @@ bool Function ReloadConfig() global native
 ; the catch-all.
 int Function PlayVoice(Actor akActor, string category, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false) global native
 
+; Tag-scored play: exactly PlayVoice plus a FACT string describing the scene
+; from the SPEAKER's perspective (e.g. "angry intense beast" - whitespace/
+; comma separated, case-insensitive, order irrelevant, at most one fact per
+; axis). The vocabulary (axes, tokens, weights) is defined ENTIRELY by the
+; merged [tags] config sections (additive across the base + overlays, so
+; several calling mods can each ship their own axes) - the plugin ships none;
+; the consumer mod that calls this owns the token contract its voice packs
+; tag against. Inside the resolved category, a tagged pool (a tag subfolder /
+; [bracketed] filenames / _tags.toml entries) competes only if ALL its tags
+; appear among the facts; the highest axis-weight sum wins, untagged files are
+; the always-valid floor. Pass only facts you actually know - a missing fact
+; just means more specific pools sit this line out; an unknown token is
+; ignored (warned once in the log). Empty tags - or no [tags] vocabulary at
+; all - makes this identical to PlayVoice, so it is always safe to call.
+; blockCaption = true suppresses this line's caption sidecar (no HUD subtitle
+; and no AudioUtil_Caption event) - the caption analogue of blockLipSync, for
+; a caller that renders its own text for the line.
+int Function PlayVoiceTagged(Actor akActor, string category, string tags, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false, bool blockCaption = false) global native
+
 ; Like PlayVoice but the slot is named explicitly instead of resolved from an
 ; actor - for samples, tests, or when the caller already decided the voice.
 ; Returns a handle (see CONCEPTS); 0 if no audio resolved.
@@ -104,6 +123,10 @@ int Function PlayVoice(Actor akActor, string category, float volume = 1.0, strin
 ;                  the new one if voice_no_interrupt); "" = no channel.
 ;   blockLipSync - true plays this line without moving akFollow's mouth (see PlayVoice).
 int Function PlayVoiceFromSlot(string slot, string category, Actor akFollow, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false) global native
+
+; Tag-scored variant of PlayVoiceFromSlot - the fact string and blockCaption
+; work exactly as in PlayVoiceTagged.
+int Function PlayVoiceFromSlotTagged(string slot, string category, string tags, Actor akFollow = None, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false, bool blockCaption = false) global native
 
 ; Play a named sound effect. Returns a handle (see CONCEPTS); 0 if nothing resolved.
 ;

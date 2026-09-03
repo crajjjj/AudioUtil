@@ -42,10 +42,12 @@ namespace Config
 		bool scriptOnly{ false };
 
 		// optional per-slot schema label, for consumers whose voice packs ship in
-		// more than one folder/category layout. "B" = the alternate layout, "A"
-		// (default) = the primary one. AudioUtil does not interpret it; a consumer
-		// mod sets it and gates its own category routing on it. Empty/unset = "A".
-		std::string variation;  // "A" or "B"; default "A"
+		// more than one folder/category layout. "B" = the partitioned compound-name
+		// layout, "D" = the tagged layout, "A" (default) = the
+		// primary one. AudioUtil does not interpret it — tag scoring engages on the
+		// FACTS a call carries, not on this label; a consumer mod sets it and gates
+		// its own category/fact emission on it. Empty/unset = "A".
+		std::string variation;  // "A", "B" or "D"; default "A"
 	};
 
 	// a plugin + local form id reference, resolved to a live form at load
@@ -59,6 +61,17 @@ namespace Config
 
 	using StringMap = std::unordered_map<std::string, std::string>;
 	using SlotList = std::vector<std::string>;  // candidate slot ids, picked per actor
+
+	// one tag axis: a named group of mutually-exclusive tokens sharing a
+	// weight. The whole vocabulary is config-defined ([tags], additive across
+	// base + overlays) — the DLL ships none, keeping the neutral default SFW
+	// and game-agnostic.
+	struct TagAxis
+	{
+		std::string              name;    // normalized ("mood", "beastkind", ...)
+		std::vector<std::string> tokens;  // normalized token list (replaces the axis's)
+		int                      weight{ 1 };
+	};
 
 	struct Settings
 	{
@@ -255,6 +268,13 @@ namespace Config
 		bool                  tongueEnabled{ true };
 		std::vector<FormRef>  tongueKeywords;
 		std::vector<FormRef>  tongueItems;  // specific worn tongue-armor forms (ARMO)
+
+		// the merged [tags] vocabulary (ADDITIVE across base + overlays, like
+		// slots: same-named axes union their tokens, weight last-writer-wins) —
+		// so several consumer mods can each ship their own axes and coexist.
+		// Empty (the SFW-neutral default) = the entire tag layer is dormant and
+		// category scans behave exactly pre-tags.
+		std::vector<TagAxis> tagAxes;
 	};
 
 	// lowercase + strip non-alphanumerics: "About To Cum" == "AboutToCum" == "abouttocum"

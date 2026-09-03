@@ -11,6 +11,7 @@ Point it at a folder of `.wav` files and call `AudioUtil.PlayVoice(actor, "Categ
 
 - **Folder-based voice playback** — `PlayVoice(actor, category)` resolves the actor's voice slot (per-NPC pin → voicetype → race → default by sex) and shuffle-picks a wav from `<slot>\<category>\`. No repeats until the bag empties.
 - **SFX, files, and folders** — `PlaySFX`, `PlayFile` (loose *or* BSA-packed), `PlayFolder`.
+- **Tag-scored pools** — files inside a category may carry tags (subfolders, `[bracketed]` filenames, a `_tags.toml` manifest); `PlayVoiceTagged(actor, category, facts)` picks the best-matching pool, untagged files stay the always-valid floor. Vocabulary is defined by the consumer's `[tags]` config — dormant without one. See [Tag-Scored Pools](tags.md).
 - **Per-instance & group control** — every `Play*` returns an `int` handle: stop it, revolume it, query duration. Group volumes and ducking apply live to all members; channels give exclusivity lanes (a new line on a channel stops the previous one).
 - **Automatic lipsync** — reads the wav's amplitude envelope and drives the MFG `Aah`/`BigAah` phonemes per frame. No `.lip` baking, no dialogue records; works for any loose PCM wav.
 - **PPA bridge** — optional integration with the third-party *Accurate Penetration* plugin, republishing depth/context to Papyrus as throttled mod events. See [AudioUtilPPA](api/ppa.md).

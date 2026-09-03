@@ -155,6 +155,22 @@ Function VoicePC(string category) global
     Debug.Notification("voicepc " + category + " slot=" + slot + " handle=" + h)
 EndFunction
 
+; Tag-scored play from an explicit slot at the player, quoting the fact
+; string.  e.g.  autest voicetag F1 Greeting "angry intense"
+Function VoiceTag(string slot, string category, string tags) global
+    int n = AudioUtil.GetCategoryFileCount(slot, category)
+    int h = AudioUtil.PlayVoiceFromSlotTagged(slot, category, tags, Game.GetPlayer())
+    Debug.Notification("voicetag " + slot + "/" + category + " [" + tags + "] files=" + n + " handle=" + h)
+EndFunction
+
+; Tag-scored play through the player's resolved slot.
+; e.g.  autest voicetagpc Greeting "angry intense"
+Function VoiceTagPC(string category, string tags) global
+    string slot = AudioUtil.GetSlotForActor(Game.GetPlayer())
+    int h = AudioUtil.PlayVoiceTagged(Game.GetPlayer(), category, tags)
+    Debug.Notification("voicetagpc " + category + " [" + tags + "] slot=" + slot + " handle=" + h)
+EndFunction
+
 ; Play an SFX by name at the player.  e.g.  autest sfx MediumClap
 Function Sfx(string name) global
     int h = AudioUtil.PlaySFX(name, Game.GetPlayer())

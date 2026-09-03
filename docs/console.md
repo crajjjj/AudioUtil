@@ -57,12 +57,16 @@ install. Each plays at the player and reports the resulting instance handle
 | `autest play <path>` | Data-relative wav path | Play any loose wav via `PlayFile`. |
 | `autest voice <slot> <category>` | slot id, category | Play a category from an explicit slot (`PlayVoiceFromSlot`); also prints the category's file count. |
 | `autest voicepc <category>` | category | Resolve the player's slot and play the category through it (`PlayVoice`); prints the resolved slot. |
+| `autest voicetag <slot> <category> "<facts>"` | slot id, category, quoted fact string | [Tag-scored](tags.md) play from an explicit slot (`PlayVoiceFromSlotTagged`). Needs a base `[tags]` vocabulary. |
+| `autest voicetagpc <category> "<facts>"` | category, quoted fact string | Tag-scored play through the player's resolved slot (`PlayVoiceTagged`). |
 | `autest sfx <name>` | sfx/category name | Play an SFX by name (`PlaySFX`). |
 
 ```
 autest play Sound\fx\MyMod\Moans\01.wav
 autest voice F1 Orgasm
 autest voicepc BattleCry
+autest voicetag F1 BattleCry "angry intense"
+autest voicetagpc BattleCry "afraid"
 autest sfx MediumClap
 ```
 

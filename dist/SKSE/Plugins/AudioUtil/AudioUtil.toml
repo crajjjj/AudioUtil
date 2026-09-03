@@ -197,6 +197,32 @@ language = "auto"
 # event - for a consumer mod that renders captions with its own widget.
 hud = true
 
+# [tags]
+# Tag-scored voice pools. A category folder may refine WHICH file plays via
+# tags: subfolders named as tag sets ("angry intense\"), trailing [bracket]
+# groups in filenames, or a per-folder _tags.toml manifest. A PlayVoiceTagged
+# call sends the scene FACTS; a tagged pool competes only when all its tags
+# are among the facts, the highest-weighted match wins, untagged files are the
+# always-valid floor (plain PlayVoice = no facts = untagged only).
+#
+# This section DEFINES the vocabulary: named axes of mutually-exclusive
+# tokens, each axis with a match weight (64 tokens max total). The plugin
+# ships NONE (this neutral default is content-free by design, like the empty
+# slot/sfx tables) - the consumer mod that sends facts defines its axes in
+# its own config. With no [tags] anywhere, the tag layer is fully dormant:
+# category folders scan flat, subfolders and [brackets] mean nothing.
+# Example (a combat-bark voice mod):
+#   [tags]
+#   mood      = { tokens = ["calm","angry","afraid"],   weight = 8 }
+#   intensity = { tokens = ["soft","intense"],          weight = 4 }
+#   target    = { tokens = ["human","beast","undead"],  weight = 1 }
+# ADDITIVE across base + config\*.toml overlays (like slots/sfx), so several
+# consumer mods can each ship their own axes and coexist on one install: a
+# same-named axis UNIONS its tokens (nothing already tagged can be broken by
+# another mod's file), its weight is last-writer-wins in sorted filename
+# order. On-disk tags using tokens outside the merged vocabulary exclude that
+# file/folder (warned in the log, never played in the wrong context).
+
 [groups]                      # startup volumes per group, 0.0-1.0 (a consumer mod overrides at runtime via SetGroupVolume)
 pc_high = 1.0
 pc_low = 1.0

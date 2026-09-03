@@ -290,6 +290,78 @@ namespace Config
 			ParseFormRefs((*tongue)["items"].as_array(), "tongue", "item", settings->tongueItems);
 		}
 
+		if (const auto* tags = root["tags"].as_table()) {
+			// The tag vocabulary (the DLL ships none — SFW-neutral default).
+			// ADDITIVE across base + overlays, like slots/sfx: several consumer
+			// mods can each ship their own axes and coexist on one install. A
+			// same-named axis UNIONS its tokens (no file can remove another's —
+			// so nothing already tagged ever turns into an unknown-token
+			// exclusion); its weight is last-writer-wins (logged), the standard
+			// additive convention — numeric filename prefixes order deliberately.
+			// Cross-mod tokens are inert by construction: a token only matters
+			// when the mod that defined it also sends it as a fact.
+			// scores are summed weights and compared as "more specific wins"; a
+			// negative weight would make a tagged pool score below the untagged
+			// floor, i.e. rank a committed line under the generic one. Clamp it.
+			const auto readWeight = [&](const toml::table& a_axis, std::string_view a_name, int a_default) {
+				const int weight = a_axis["weight"].value_or(a_default);
+				if (weight < 0) {
+					logger::warn("[tags] {}: negative weight {} clamped to 0 (weights are additive "
+					             "specificity, never a penalty)",
+						a_name, weight);
+					return 0;
+				}
+				return weight;
+			};
+
+			for (auto&& [axisName, axisValue] : *tags) {
+				const auto* axisTable = axisValue.as_table();
+				if (!axisTable) {
+					logger::warn("[tags] {}: expected a table {{ tokens = [...], weight = N }} — ignored", axisName.str());
+					continue;
+				}
+				const auto name = Normalize(axisName.str());
+				std::vector<std::string> parsed;
+				if (const auto* tokens = (*axisTable)["tokens"].as_array()) {
+					for (const auto& token : *tokens) {
+						if (const auto text = token.value<std::string>()) {
+							const auto norm = Normalize(*text);
+							if (!norm.empty()) {
+								parsed.push_back(norm);
+							}
+						}
+					}
+				}
+				if (name.empty() || parsed.empty()) {
+					logger::warn("[tags] {}: no valid tokens — ignored", axisName.str());
+					continue;
+				}
+				const auto existing = std::find_if(settings->tagAxes.begin(), settings->tagAxes.end(),
+					[&](const TagAxis& a) { return a.name == name; });
+				if (existing == settings->tagAxes.end()) {
+					TagAxis axis;
+					axis.name = name;
+					axis.tokens = std::move(parsed);
+					axis.weight = readWeight(*axisTable, name, 1);
+					settings->tagAxes.push_back(std::move(axis));
+					continue;
+				}
+				// merge into the earlier definition: union tokens, weight last-wins
+				for (auto& token : parsed) {
+					if (std::find(existing->tokens.begin(), existing->tokens.end(), token) ==
+						existing->tokens.end()) {
+						existing->tokens.push_back(std::move(token));
+					}
+				}
+				const int weight = readWeight(*axisTable, name, existing->weight);
+				if (weight != existing->weight) {
+					logger::info("[tags] {}: weight {} -> {} (last-writer-wins across config files)",
+						name, existing->weight, weight);
+					existing->weight = weight;
+				}
+			}
+		}
+
 		if (const auto* captions = root["captions"].as_table()) {
 			// pure scalars, so base-only like [general]/[ppa] — the display
 			// language and HUD behavior are the USER's install-wide choices,
@@ -317,12 +389,15 @@ namespace Config
 				// script_only: this slot is played directly by a script via
 				// PlayVoiceFromSlot, so the wiring audit skips it (no orphan warning).
 				slot.scriptOnly = (*table)["script_only"].value_or(false);
-				// variation: optional per-slot schema label. "B" = the alternate
-				// folder/category layout, anything else (incl. unset) = "A".
+				// variation: optional per-slot schema label. "B" = the partitioned
+				// compound-name layout, "D" = the tagged layout (a consumer gates its
+				// fact emission on it — AudioUtil's own tag scoring works regardless),
+				// anything else (incl. unset) = "A".
 				// First letter only, case-insensitive.
 				const auto var = (*table)["variation"].value_or(""s);
-				slot.variation = (!var.empty() &&
-					std::tolower(static_cast<unsigned char>(var[0])) == 'b') ? "B" : "A";
+				const char varC = var.empty() ? 'a' :
+					static_cast<char>(std::tolower(static_cast<unsigned char>(var[0])));
+				slot.variation = varC == 'b' ? "B" : varC == 'd' ? "D" : "A";
 				// sex: 'F' female, 'A' all/any (sex-neutral: creatures, sfx pools), else
 				// 'M' male (the default). First letter only, case-insensitive.
 				const auto sex = (*table)["sex"].value_or(""s);

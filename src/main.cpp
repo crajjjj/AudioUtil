@@ -7,6 +7,7 @@
 #include "CaptionManager.h"
 #include "Config.h"
 #include "FolderCache.h"
+#include "Tags.h"
 #include "FuzCache.h"
 #include "FuzSlots.h"
 #include "GagState.h"
@@ -94,6 +95,7 @@ namespace
 		switch (a_msg->type) {
 		case MessagingInterface::kDataLoaded:
 			Config::Load();
+			Tags::Configure(*Config::Get());  // before Rebuild: the scan parses folder/file tags
 			FolderCache::Rebuild();
 			GagState::Resolve(*Config::Get());
 			TongueState::Resolve(*Config::Get());

@@ -47,6 +47,7 @@ nav:
     - Overview: config/index.md
     - Voice & Category Resolution: config/resolution.md
     - Config Reference: config/reference.md
+  - Tag-Scored Pools: tags.md
   - Console Commands: console.md
 
 markdown_extensions:

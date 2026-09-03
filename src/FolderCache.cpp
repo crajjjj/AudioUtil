@@ -2,8 +2,13 @@
 
 #include "AudioEngine.h"
 #include "Config.h"
+#include "Tags.h"
 
+#include <toml++/toml.hpp>
+
+#include <bit>
 #include <format>
+#include <fstream>
 #include <unordered_set>
 
 namespace FolderCache
@@ -14,11 +19,54 @@ namespace FolderCache
 
 	namespace
 	{
-		struct Folder
+		// one shuffle-bag of files sharing an effective tag set. pools[0] of every
+		// Folder is the UNTAGGED pool (tags == 0) — the always-valid floor a
+		// legacy (facts = 0) call draws from; tagged pools only qualify when the
+		// request's facts cover their constraints (see Tags::Qualifies).
+		struct Pool
 		{
+			Tags::Mask               tags{ 0 };
 			std::vector<std::string> files;  // data-relative paths
 			std::vector<std::size_t> deck;   // shuffled indices, consumed from the back
 			std::size_t              lastPlayed = SIZE_MAX;
+		};
+
+		struct Folder
+		{
+			std::vector<Pool> pools;  // invariant: pools[0] exists and has tags == 0
+
+			Folder() { pools.emplace_back(); }
+
+			Pool& PoolFor(Tags::Mask a_tags)
+			{
+				for (auto& pool : pools) {
+					if (pool.tags == a_tags) {
+						return pool;
+					}
+				}
+				auto& pool = pools.emplace_back();
+				pool.tags = a_tags;
+				return pool;
+			}
+
+			std::size_t TotalFiles() const
+			{
+				std::size_t n = 0;
+				for (const auto& pool : pools) {
+					n += pool.files.size();
+				}
+				return n;
+			}
+
+			bool HasQualifying(Tags::Mask a_facts) const
+			{
+				for (const auto& pool : pools) {
+					if (!pool.files.empty() && Tags::Qualifies(pool.tags, a_facts)) {
+						return true;
+					}
+				}
+				return false;
+			}
 		};
 
 		std::unordered_map<std::string, Folder> g_folders;  // key -> folder
@@ -69,7 +117,30 @@ namespace FolderCache
 			return rel;
 		}
 
-		// scan one directory (non-recursive) into g_folders under a_key. Caller holds g_lock.
+		// finalize a scanned Folder into g_folders: sort each pool's files, order
+		// tagged pools deterministically (by mask) so equal-score ties resolve the
+		// same on every machine, drop tagless empties. Caller holds g_lock.
+		bool CommitFolder(const std::string& a_key, Folder&& a_folder, std::size_t a_unmappable)
+		{
+			if (a_unmappable > 0) {
+				logger::warn("Scan '{}': skipped {} file(s) whose names the system "
+				             "codepage cannot express (unplayable by the engine)",
+					a_key, a_unmappable);
+			}
+			if (a_folder.TotalFiles() == 0) {
+				return false;
+			}
+			for (auto& pool : a_folder.pools) {
+				std::sort(pool.files.begin(), pool.files.end());
+			}
+			std::sort(a_folder.pools.begin() + 1, a_folder.pools.end(),
+				[](const Pool& a, const Pool& b) { return a.tags < b.tags; });
+			g_folders[a_key] = std::move(a_folder);
+			return true;
+		}
+
+		// scan one directory (non-recursive, no tag semantics) into g_folders
+		// under a_key — for [sfx] folders and PlayFolder dir keys. Caller holds g_lock.
 		bool ScanDir(const std::string& a_key, const std::filesystem::path& a_dir,
 			const std::filesystem::path& a_dataRoot)
 		{
@@ -86,20 +157,181 @@ namespace FolderCache
 						++unmappable;
 						continue;
 					}
-					folder.files.push_back(std::move(rel));
+					folder.pools[0].files.push_back(std::move(rel));
 				}
 			}
-			if (unmappable > 0) {
-				logger::warn("Scan '{}': skipped {} file(s) whose names the system "
-				             "codepage cannot express (unplayable by the engine)",
-					a_key, unmappable);
+			return CommitFolder(a_key, std::move(folder), unmappable);
+		}
+
+		// ---------- tag carriers (tag subfolders / [bracketed] filenames / _tags.toml) ----------
+
+		// "line_07 [victim intense].wav" -> "victim intense"; empty when the stem
+		// carries no trailing [...] group
+		std::string BracketTags(const std::string& a_filename)
+		{
+			const auto dot = a_filename.rfind('.');
+			auto stem = a_filename.substr(0, dot == std::string::npos ? a_filename.size() : dot);
+			while (!stem.empty() && stem.back() == ' ') {
+				stem.pop_back();
 			}
-			if (folder.files.empty()) {
+			if (stem.size() < 2 || stem.back() != ']') {
+				return {};
+			}
+			const auto open = stem.rfind('[');
+			if (open == std::string::npos) {
+				return {};
+			}
+			return stem.substr(open + 1, stem.size() - open - 2);
+		}
+
+		// optional per-folder _tags.toml manifest: filename -> token string
+		// (tags an existing pack without renaming files + their sidecars)
+		using ManifestMap = std::unordered_map<std::string, std::string>;  // normalized filename -> tags
+		ManifestMap LoadManifest(const std::filesystem::path& a_dir)
+		{
+			ManifestMap out;
+			std::error_code ec;
+			const auto file = a_dir / "_tags.toml";
+			if (!std::filesystem::is_regular_file(file, ec)) {
+				return out;
+			}
+			try {
+				std::ifstream stream(file);  // stream, not parse_file: path may exceed the ANSI codepage
+				if (!stream) {
+					logger::warn("_tags.toml unreadable in {}", a_dir.string());
+					return out;
+				}
+				const auto root = toml::parse(stream);
+				for (auto&& [name, value] : root) {
+					if (const auto text = value.value<std::string>()) {
+						out[Config::Normalize(name.str())] = *text;
+					} else {
+						logger::warn("_tags.toml in {}: '{}' is not a string — ignored",
+							a_dir.string(), name.str());
+					}
+				}
+			} catch (const std::exception& e) {
+				logger::warn("_tags.toml parse error in {}: {}", a_dir.string(), e.what());
+			}
+			return out;
+		}
+
+		// scan a voice CATEGORY directory with tag semantics: loose
+		// files land in the pool for their effective tag set (subfolder tags ∪
+		// filename [brackets] ∪ _tags.toml manifest); one level of tag subfolders
+		// is honored, deeper nesting and invalid tag sets are warned + ignored.
+		// A file whose tags don't parse (typo) or self-contradict (two tokens of
+		// one axis) is EXCLUDED — a bad tag must degrade to silence-with-a-log,
+		// never to playing in the wrong context. Caller holds g_lock.
+		bool ScanCategoryDir(const std::string& a_key, const std::filesystem::path& a_dir,
+			const std::filesystem::path& a_dataRoot)
+		{
+			std::error_code ec;
+			if (!std::filesystem::is_directory(a_dir, ec)) {
 				return false;
 			}
-			std::sort(folder.files.begin(), folder.files.end());
-			g_folders[a_key] = std::move(folder);
-			return true;
+			Folder folder;
+			std::size_t unmappable = 0;
+			// no [tags] vocabulary loaded = the tag layer is dormant: ignore
+			// subfolders and tag carriers entirely (exactly the pre-tags scan),
+			// so stray subdirs / bracketed names in a pack cause zero warnings
+			const bool tagged = Tags::IsConfigured();
+
+			const auto addFile = [&](const std::filesystem::directory_entry& a_entry,
+									 Tags::Mask a_folderTags, const ManifestMap& a_manifest) {
+				std::error_code fec;
+				if (!a_entry.is_regular_file(fec) || !IsAudioFile(a_entry.path())) {
+					return;
+				}
+				auto rel = DataRelative(a_entry.path(), a_dataRoot);
+				std::string name;
+				if (rel.empty() || !NarrowPathImpl(a_entry.path().filename(), name)) {
+					++unmappable;
+					return;
+				}
+				Tags::Mask  tags = a_folderTags;
+				std::string err;
+				if (!tagged) {
+					folder.pools[0].files.push_back(std::move(rel));
+					return;
+				}
+				// a trailing [group] is a tag carrier only when it actually names
+				// vocabulary. One mod's [tags] block enables the carrier for every
+				// pack on the install, and packs bracket filenames for their own
+				// reasons ("moan_04 [loud].wav") — treating those as a broken tag
+				// set would silently mute unrelated content. A group with SOME
+				// known tokens is a real (mistyped) tag set and still excludes.
+				if (const auto bracket = BracketTags(name);
+					!bracket.empty() && Tags::ContainsKnownToken(bracket)) {
+					Tags::Mask m = 0;
+					if (!Tags::ParseConstraints(bracket, m, err)) {
+						logger::warn("Scan '{}': '{}' excluded — {}", a_key, name, err);
+						return;
+					}
+					tags |= m;
+				}
+				if (const auto it = a_manifest.find(Config::Normalize(name)); it != a_manifest.end()) {
+					Tags::Mask m = 0;
+					if (!Tags::ParseConstraints(it->second, m, err)) {
+						logger::warn("Scan '{}': '{}' excluded — _tags.toml entry: {}", a_key, name, err);
+						return;
+					}
+					tags |= m;
+				}
+				if (Tags::HasAxisConflict(tags)) {
+					logger::warn("Scan '{}': '{}' excluded — contradictory axis tokens across its "
+					             "folder/filename/manifest tags ({})",
+						a_key, name, Tags::Describe(tags));
+					return;
+				}
+				folder.PoolFor(tags).files.push_back(std::move(rel));
+			};
+
+			const auto topManifest = tagged ? LoadManifest(a_dir) : ManifestMap{};
+			for (const auto& entry : std::filesystem::directory_iterator(a_dir, ec)) {
+				if (entry.is_directory(ec)) {
+					if (!tagged) {
+						continue;
+					}
+					std::string sub;
+					if (!NarrowPathImpl(entry.path().filename(), sub)) {
+						logger::warn("Scan '{}': skipped a subfolder whose name the system "
+						             "codepage cannot express", a_key);
+						continue;
+					}
+					Tags::Mask  folderTags = 0;
+					std::string err;
+					if (!Tags::ParseConstraints(sub, folderTags, err) || folderTags == 0) {
+						// same rule as the [bracket] carrier: a name holding no
+						// vocabulary at all isn't a mistyped tag folder, it's an
+						// unrelated pack's subdirectory — ignore it as the pre-tags
+						// scan did, without a warning nobody can act on
+						if (Tags::ContainsKnownToken(sub)) {
+							logger::warn("Scan '{}': subfolder '{}' is not a valid tag set{}{} — ignored "
+							             "(tag folders are named from the [tags] vocabulary, e.g. 'victim intense')",
+								a_key, sub, err.empty() ? "" : ": ", err);
+						}
+						continue;
+					}
+					const auto  subManifest = LoadManifest(entry.path());
+					bool        nestedWarned = false;
+					std::error_code sec;
+					for (const auto& subEntry : std::filesystem::directory_iterator(entry.path(), sec)) {
+						if (subEntry.is_directory(sec)) {
+							if (!nestedWarned) {
+								nestedWarned = true;
+								logger::warn("Scan '{}': nested folder(s) under tag folder '{}' ignored "
+								             "(tag folders are one level deep, not a tree)", a_key, sub);
+							}
+							continue;
+						}
+						addFile(subEntry, folderTags, subManifest);
+					}
+				} else {
+					addFile(entry, 0, topManifest);
+				}
+			}
+			return CommitFolder(a_key, std::move(folder), unmappable);
 		}
 
 		std::filesystem::path DataRoot()
@@ -111,6 +343,14 @@ namespace FolderCache
 		bool HasKey(const std::string& a_key)
 		{
 			return g_folders.contains(a_key);
+		}
+
+		// caller holds g_lock: the key exists AND holds >=1 nonempty pool the
+		// facts cover — the existence test the tag-aware resolver routes on
+		bool KeyQualifies(const std::string& a_key, Tags::Mask a_facts)
+		{
+			const auto it = g_folders.find(a_key);
+			return it != g_folders.end() && it->second.HasQualifying(a_facts);
 		}
 	}
 
@@ -140,11 +380,13 @@ namespace FolderCache
 					logger::warn("Slot {}: duplicate explicit category '{}' ignored", slot.id, category);
 					continue;
 				}
+				// explicit lists are untagged (pool 0): they're the BSA-capable hand-
+				// written form, and a BSA path has no scannable tag carriers anyway
 				Folder folder;
-				folder.files.reserve(files.size());
+				folder.pools[0].files.reserve(files.size());
 				for (auto file : files) {
 					std::replace(file.begin(), file.end(), '/', '\\');
-					folder.files.push_back(std::move(file));
+					folder.pools[0].files.push_back(std::move(file));
 				}
 				g_folders[key] = std::move(folder);
 				++voiceFolders;
@@ -171,7 +413,7 @@ namespace FolderCache
 						slot.id, category, folder);
 					continue;
 				}
-				if (ScanDir(key, dir, dataRoot)) {
+				if (ScanCategoryDir(key, dir, dataRoot)) {
 					++voiceFolders;
 					++slotFolders;
 				} else {
@@ -205,7 +447,7 @@ namespace FolderCache
 						slot.id, category, catName);
 					continue;
 				}
-				if (ScanDir(key, entry.path(), dataRoot)) {
+				if (ScanCategoryDir(key, entry.path(), dataRoot)) {
 					++voiceFolders;
 					++slotFolders;
 				}
@@ -411,16 +653,30 @@ namespace FolderCache
 		logger::info("Slots ({}):", a_settings.slots.size());
 		for (const auto& slot : a_settings.slots) {
 			const auto prefix = Config::Normalize(slot.id) + "/";
-			std::vector<std::string> cats;  // "moan(12)"
+			std::vector<std::string> cats;      // "moan(12)"
+			std::vector<std::string> tagLines;  // per-category tagged-pool detail
 			std::size_t totalFiles = 0;
 			for (const auto& [key, folder] : g_folders) {
 				if (key.starts_with(prefix)) {
 					cats.push_back(key.substr(prefix.size()) + "(" +
-						std::to_string(folder.files.size()) + ")");
-					totalFiles += folder.files.size();
+						std::to_string(folder.TotalFiles()) + ")");
+					totalFiles += folder.TotalFiles();
+					if (folder.pools.size() > 1) {
+						// tagged pools: show each tag set + its file count so an
+						// author can verify what the scan understood of their tagging
+						std::string line = "      tags " + key.substr(prefix.size()) + ":";
+						for (const auto& pool : folder.pools) {
+							if (!pool.files.empty() && pool.tags != 0) {
+								line += " [" + Tags::Describe(pool.tags) + "](" +
+									std::to_string(pool.files.size()) + ")";
+							}
+						}
+						tagLines.push_back(std::move(line));
+					}
 				}
 			}
 			std::sort(cats.begin(), cats.end());
+			std::sort(tagLines.begin(), tagLines.end());
 
 			// flags: explicit-only marker (no scan root), then variation / fallback /
 			// gag redirect - only the ones actually set, space-joined
@@ -472,6 +728,9 @@ namespace FolderCache
 					wrap += cats[j];
 				}
 				logger::info("{}", wrap);
+			}
+			for (const auto& tagLine : tagLines) {
+				logger::info("{}", tagLine);
 			}
 		}
 
@@ -554,11 +813,15 @@ namespace FolderCache
 	}
 
 	std::string ResolveVoiceKey(const Config::Settings& a_settings,
-		const Config::Slot& a_slot, std::string_view a_category)
+		const Config::Slot& a_slot, std::string_view a_category, Tags::Mask a_facts)
 	{
 		const auto slotNorm = Config::Normalize(a_slot.id);
 		const auto catNorm = Config::Normalize(a_category);
-		const auto cacheKey = slotNorm + "/" + catNorm;
+		// facts are part of the resolution identity: a category whose only pools
+		// are tagged "exists" for a request that covers them and falls through to
+		// fallbacks for one that doesn't — so each fact set caches separately
+		const auto cacheKey = slotNorm + "/" + catNorm +
+			(a_facts ? "|" + std::format("{:x}", a_facts) : "");
 
 		std::scoped_lock lock{ g_lock };
 
@@ -590,7 +853,7 @@ namespace FolderCache
 				}
 				for (const auto& candidate : candidates) {
 					const auto key = inSlotNorm + "/" + candidate;
-					if (HasKey(key)) {
+					if (KeyQualifies(key, a_facts)) {
 						return key;
 					}
 				}
@@ -619,10 +882,21 @@ namespace FolderCache
 		}
 
 		g_resolveCache[cacheKey] = resolved;
-		if (resolved.empty() && !g_missLogged[cacheKey]) {
-			g_missLogged[cacheKey] = true;
-			logger::warn("No audio for slot {} category '{}' (no folder, alias, fallback, or fallback slot)",
-				a_slot.id, a_category);
+		// the miss log is keyed WITHOUT the facts: a category that's simply absent
+		// misses for every fact set a consumer sends, and one warn per combination
+		// is log spam over an unbounded key set. Once per slot+category, as before.
+		const auto missKey = slotNorm + "/" + catNorm;
+		if (resolved.empty() && !g_missLogged[missKey]) {
+			g_missLogged[missKey] = true;
+			// kAllFacts is introspection asking "is there ANY content here" — it's
+			// not a fact set a caller sent, so don't echo the whole vocabulary back
+			if (a_facts && a_facts != Tags::kAllFacts) {
+				logger::warn("No audio for slot {} category '{}' facts [{}] (no qualifying pool, alias, fallback, or fallback slot)",
+					a_slot.id, a_category, Tags::Describe(a_facts));
+			} else {
+				logger::warn("No audio for slot {} category '{}' (no folder, alias, fallback, or fallback slot)",
+					a_slot.id, a_category);
+			}
 		}
 		return resolved;
 	}
@@ -655,7 +929,14 @@ namespace FolderCache
 		}
 		std::scoped_lock lock{ g_lock };
 		const auto it = g_folders.find(key);
-		return it == g_folders.end() ? std::vector<std::string>{} : it->second.files;
+		if (it == g_folders.end()) {
+			return {};
+		}
+		std::vector<std::string> out;
+		for (const auto& pool : it->second.pools) {
+			out.insert(out.end(), pool.files.begin(), pool.files.end());
+		}
+		return out;
 	}
 
 	std::vector<std::string> AllAudioFiles()
@@ -663,58 +944,93 @@ namespace FolderCache
 		std::unordered_set<std::string> seen;
 		std::scoped_lock lock{ g_lock };
 		for (const auto& [key, folder] : g_folders) {
-			for (const auto& f : folder.files) {
-				seen.insert(f);
+			for (const auto& pool : folder.pools) {
+				for (const auto& f : pool.files) {
+					seen.insert(f);
+				}
 			}
 		}
 		return { seen.begin(), seen.end() };
 	}
 
-	std::string PickNext(const std::string& a_folderKey)
+	std::string PickNext(const std::string& a_folderKey, Tags::Mask a_facts)
 	{
 		std::scoped_lock lock{ g_lock };
 		const auto it = g_folders.find(a_folderKey);
-		if (it == g_folders.end() || it->second.files.empty()) {
+		if (it == g_folders.end()) {
 			return {};
 		}
-		auto& folder = it->second;
 
-		if (folder.files.size() == 1) {
-			return folder.files[0];
+		// pool selection: among nonempty pools whose constraints the facts cover,
+		// the highest weight-sum wins; ties go to the more specific set (more
+		// tokens), then the lowest mask (pools are mask-sorted at scan, so this is
+		// deterministic per install). facts = 0 -> only the untagged pool
+		// qualifies = the pre-tags behavior, one code path for both.
+		// no score sentinel: the FIRST qualifying pool seeds the comparison, so a
+		// vocabulary with a zero or negative axis weight still picks a pool rather
+		// than reporting "playable" (HasQualifying) and then returning nothing.
+		Pool* best = nullptr;
+		int   bestScore = 0;
+		int   bestBits = 0;
+		for (auto& pool : it->second.pools) {
+			if (pool.files.empty() || !Tags::Qualifies(pool.tags, a_facts)) {
+				continue;
+			}
+			const int score = Tags::Score(pool.tags);
+			const int bits = std::popcount(pool.tags);
+			if (!best || score > bestScore || (score == bestScore && bits > bestBits)) {
+				best = &pool;
+				bestScore = score;
+				bestBits = bits;
+			}
+		}
+		if (!best) {
+			return {};
+		}
+		auto& pool = *best;
+
+		if (pool.files.size() == 1) {
+			return pool.files[0];
 		}
 
-		if (folder.deck.empty()) {
-			folder.deck.resize(folder.files.size());
-			for (std::size_t i = 0; i < folder.deck.size(); ++i) {
-				folder.deck[i] = i;
+		if (pool.deck.empty()) {
+			pool.deck.resize(pool.files.size());
+			for (std::size_t i = 0; i < pool.deck.size(); ++i) {
+				pool.deck[i] = i;
 			}
-			std::shuffle(folder.deck.begin(), folder.deck.end(), g_rng);
+			std::shuffle(pool.deck.begin(), pool.deck.end(), g_rng);
 			// avoid an immediate repeat across refills. Compare the file PATH, not
 			// the deck index, so a clip listed more than once (deliberate weighting)
 			// still never plays back-to-back. Swap in the first entry that's a
 			// genuinely different clip; if every entry is the same file there's
 			// nothing else to play and a repeat is unavoidable.
-			if (folder.lastPlayed != SIZE_MAX &&
-				folder.files[folder.deck.back()] == folder.files[folder.lastPlayed]) {
-				for (auto d = folder.deck.begin(); d + 1 != folder.deck.end(); ++d) {
-					if (folder.files[*d] != folder.files[folder.lastPlayed]) {
-						std::swap(*d, folder.deck.back());
+			if (pool.lastPlayed != SIZE_MAX &&
+				pool.files[pool.deck.back()] == pool.files[pool.lastPlayed]) {
+				for (auto d = pool.deck.begin(); d + 1 != pool.deck.end(); ++d) {
+					if (pool.files[*d] != pool.files[pool.lastPlayed]) {
+						std::swap(*d, pool.deck.back());
 						break;
 					}
 				}
 			}
 		}
 
-		const auto index = folder.deck.back();
-		folder.deck.pop_back();
-		folder.lastPlayed = index;
-		return folder.files[index];
+		const auto index = pool.deck.back();
+		pool.deck.pop_back();
+		pool.lastPlayed = index;
+		return pool.files[index];
 	}
 
 	int FileCount(const std::string& a_folderKey)
 	{
 		std::scoped_lock lock{ g_lock };
 		const auto it = g_folders.find(a_folderKey);
-		return it != g_folders.end() ? static_cast<int>(it->second.files.size()) : 0;
+		return it != g_folders.end() ? static_cast<int>(it->second.TotalFiles()) : 0;
+	}
+
+	bool HasPlayableFiles(const std::string& a_folderKey, Tags::Mask a_facts)
+	{
+		std::scoped_lock lock{ g_lock };
+		return KeyQualifies(a_folderKey, a_facts);
 	}
 }
