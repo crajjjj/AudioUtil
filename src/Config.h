@@ -154,6 +154,18 @@ namespace Config
 		// and cheap once cached (a disk-exists check per file). Base-only global.
 		bool prewarmFuz{ false };
 
+		// Whether IsGamePaused() reports a FROZEN WORLD (RE::Main::freezeTime) in
+		// addition to a real menu-mode pause. That flag is what the ImGui overlay
+		// menus set (SKSE Menu Framework's GameLock) - they never enter menu mode,
+		// so the Papyrus VM runs straight through them and a consumer's voice
+		// scheduler keeps advancing lines over a frozen scene unless it can see
+		// this. The same flag is set by the console's `tfc 1` (free camera WITH
+		// time frozen - plain `tfc` does not set it), so turning this off is the
+		// escape hatch for anyone who wants voices to keep going while a scene is
+		// frozen for screenshots. Off = IsGamePaused() reports only menu-mode
+		// pauses. Base-only global.
+		bool pauseOnFreezeTime{ true };
+
 		// 3D-position voices at the speaker (distance attenuation) vs play them
 		// flat/2D at full volume. Off makes every speaker equally audible - the
 		// player's voice is otherwise at the listener while partners attenuate

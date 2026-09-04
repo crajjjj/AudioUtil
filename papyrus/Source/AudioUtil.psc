@@ -39,6 +39,14 @@ Scriptname AudioUtil Hidden
 ; Increases only when signatures/behavior change incompatibly.
 int Function GetAPIVersion() global native
 
+; True while the game world is frozen behind a menu - either a real menu-mode
+; menu, or an ImGui overlay that freezes time without entering menu mode (what
+; SKSE Menu Framework does). The Papyrus VM keeps running through the latter, so
+; Utility.Wait, RegisterForSingleUpdate and Utility.IsInMenuMode() all miss it:
+; a voice/sfx scheduler that should hold while the scene is frozen has to poll
+; this. API v7+. Audio already playing is not affected - this only reports.
+bool Function IsGamePaused() global native
+
 ; Re-read AudioUtil.toml and rescan all slot folders in-game (no restart
 ; needed). Returns false if the file failed to parse - the previous config
 ; stays active in that case. Console (ConsoleUtil Extended): au reload
@@ -411,5 +419,14 @@ Function Play(string category, Actor akActor, bool waitForCompletion = true, flo
         PlayVoiceAndWait(akActor, category, volume, group, channel, blockLipSync)
     else
         PlayVoice(akActor, category, volume, group, channel, blockLipSync)
+    endif
+EndFunction
+
+; Tag-scored variant of Play: same dispatch, with the fact string forwarded to
+; PlayVoiceTagged. Empty tags (or no [tags] vocabulary) = identical to Play.
+Function PlayTagged(string category, Actor akActor, string tags, bool waitForCompletion = true, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false, bool blockCaption = false) global
+    int h = PlayVoiceTagged(akActor, category, tags, volume, group, channel, blockLipSync, blockCaption)
+    if waitForCompletion
+        WaitForHandle(h)
     endif
 EndFunction

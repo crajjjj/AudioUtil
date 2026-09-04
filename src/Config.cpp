@@ -183,6 +183,8 @@ namespace Config
 				settings->fuzCacheMaxMB = (*general)["fuz_cache_max_mb"].value_or(settings->fuzCacheMaxMB);
 				settings->prewarmFuz = (*general)["prewarm_fuz"].value_or(settings->prewarmFuz);
 				settings->fuzSlots = (*general)["fuz_slots"].value_or(settings->fuzSlots);
+				settings->pauseOnFreezeTime =
+					(*general)["pause_on_freeze_time"].value_or(settings->pauseOnFreezeTime);
 
 				if (const auto level = (*general)["log_level"].value<std::string>()) {
 					const auto lvl = spdlog::level::from_str(*level);

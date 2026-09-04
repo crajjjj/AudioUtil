@@ -25,7 +25,7 @@ namespace PapyrusAPI
 		constexpr auto PPA_SCRIPT_NAME = "AudioUtilPPA";
 		constexpr auto TOML_SCRIPT_NAME = "TomlUtil";
 		constexpr auto TEST_SCRIPT_NAME = "AudioUtilTest";  // debug/calibration natives only
-		constexpr std::int32_t API_VERSION = 6;  // v6: tag-scored playback (PlayVoiceTagged, PlayVoiceFromSlotTagged)
+		constexpr std::int32_t API_VERSION = 7;  // v7: IsGamePaused (v6: tag-scored playback)
 
 		using VM = RE::BSScript::IVirtualMachine;
 
@@ -370,6 +370,29 @@ namespace PapyrusAPI
 		std::int32_t GetAPIVersion(RE::StaticFunctionTag*)
 		{
 			return API_VERSION;
+		}
+
+		// True while the game world is frozen behind a menu, so a caller's own
+		// scheduling loop can hold instead of advancing to its next line over a
+		// frozen scene. Two independent freezes are reported:
+		//   * UI::GameIsPaused() - a real menu-mode menu (numPausesGame > 0).
+		//   * Main::freezeTime   - what the ImGui overlay frameworks set (SKSE
+		//     Menu Framework's GameLock). These never enter menu mode, so the
+		//     Papyrus VM keeps ticking - Utility.Wait, RegisterForSingleUpdate
+		//     and vanilla Utility.IsInMenuMode() all miss them, which is why a
+		//     script loop needs this check to notice the pause at all. The same
+		//     flag is set by `tfc 1`, so [general] pause_on_freeze_time = false
+		//     drops this half and reports menu-mode pauses only.
+		bool IsGamePaused(RE::StaticFunctionTag*)
+		{
+			if (const auto ui = RE::UI::GetSingleton(); ui && ui->GameIsPaused()) {
+				return true;
+			}
+			if (const auto settings = Config::Get(); !settings || !settings->pauseOnFreezeTime) {
+				return false;
+			}
+			const auto main = RE::Main::GetSingleton();
+			return main && main->GetRuntimeData().freezeTime;
 		}
 
 		bool ReloadConfig(RE::StaticFunctionTag*)
@@ -1074,6 +1097,7 @@ namespace PapyrusAPI
 	{
 		REGISTERFUNC(GetAPIVersion, SCRIPT_NAME);
 		REGISTERFUNC(ReloadConfig, SCRIPT_NAME);
+		REGISTERFUNC(IsGamePaused, SCRIPT_NAME);
 		REGISTERFUNC(PlayVoice, SCRIPT_NAME);
 		REGISTERFUNC(PlayVoiceTagged, SCRIPT_NAME);
 		REGISTERFUNC(PlayVoiceFromSlot, SCRIPT_NAME);
