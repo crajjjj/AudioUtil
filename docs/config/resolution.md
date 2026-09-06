@@ -100,7 +100,7 @@ Once the slot is known, `"Category"` resolves against that slot, in this order:
 exact folder
   → [category_aliases]        (rename: script name -> on-disk folder)
   → [male_only_remap]         (male slots only)
-  → [category_fallbacks]      (substitute, one hop)
+  → [category_fallbacks]      (substitute; chained - see below)
   → the slot's `fallback` slot (retry the whole chain there)
   → [sfx] table               (last resort, same name)
 ```
@@ -130,7 +130,20 @@ ComfortLines = "Calm Lines"
 
 ### `[category_fallbacks]` — substitute an empty category
 
-A single hop: the substitute must resolve directly. Split by sex:
+**Chained** (since 0.9.18, max 8 hops, cycles broken): if the substitute has no
+folder either, its *own* fallback entry is tried, and so on. This lets a table be
+authored as a ladder from a specific category down to a general one — each rung a
+real folder some pack ships — so a pack is served by the nearest rung it has:
+
+```
+"Whisper Angry"  ->  "Whisper"  ->  "Murmur"
+```
+
+Note the whole ladder is walked **inside one slot** before the slot's `fallback`
+slot is consulted, so a deeper rung in the pack wins over a shallower rung in the
+stock slot. That is the same preference `[category_aliases]` already encodes (a
+pack's own audio over stock), but it does mean adding a rung can move where an
+existing request lands. Split by sex:
 
 ```toml
 [category_fallbacks.female]

@@ -89,7 +89,7 @@ bool Function ReloadConfig() global native
 ;
 ; Category resolution inside the slot:
 ;   exact folder -> [category_aliases] -> [male_only_remap] (male slots) ->
-;   [category_fallbacks] (one hop) -> the slot's `fallback` slot (retried per
+;   [category_fallbacks] (chained, max 8 hops) -> the slot's `fallback` slot (retried per
 ;   category, up to 4 hops) -> [sfx] table as a last resort.
 ; If the actor is gagged (wears a [gag] keyword) and the slot names a gag_slot,
 ; resolution runs in that muffled slot instead, with [gag] default_category as

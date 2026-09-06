@@ -19,6 +19,12 @@ namespace FolderCache
 
 	namespace
 	{
+		// how far ResolveVoiceKey walks the [category_fallbacks] ladder before
+		// giving up. The shipped SLO VE table is at most 3 rungs deep
+		// (compound -> intense -> base); the cap only exists so a mis-authored
+		// table cannot spin, and the visited set already breaks true cycles.
+		constexpr int kMaxCategoryFallbackHops = 8;
+
 		// one shuffle-bag of files sharing an effective tag set. pools[0] of every
 		// Folder is the UNTAGGED pool (tags == 0) — the always-valid floor a
 		// legacy (facts = 0) call draws from; tagged pools only qualify when the
@@ -860,11 +866,36 @@ namespace FolderCache
 				return {};
 			};
 
+			// WALK the category-fallback chain rather than taking a single hop. The
+			// preset's table is authored as a LADDER: "Penetrated Comments Victim
+			// Intense" -> "Penetrated Comments Intense" -> "Penetrated Comments".
+			// A Variation-B pack ships the middle rung as a real folder and must
+			// land there first, which is why the ordering matters and the table is
+			// not flattened. A tag-shaped (Variation-D) pack ships only the BASE
+			// category and expresses victim/intense as tags - so a single hop
+			// stopped dead on the rung it deliberately does not have and dropped
+			// the line all the way to the stock moans, silently. Chaining preserves
+			// vB's ordering exactly (middle rung still tried first) and lets vD
+			// fall the rest of the way to its tagged base pool.
+			// NOT a no-op, and deliberately so: this whole ladder is walked inside
+			// ONE slot before the caller moves on to the slot's `fallback` slot, so
+			// a request that used to exhaust the pack's two rungs and reach the
+			// stock slot can now land on a further rung inside the pack. That is
+			// the preference [category_aliases] already encodes (the pack's own
+			// audio over stock, even when a rung less exact), but it does mean
+			// adding a rung moves where existing requests land - see
+			// docs/config/resolution.md.
+			// Hop cap + visited set break cycles in a hand-authored table.
 			std::string result = tryCandidates(catNorm);
-			if (result.empty()) {
-				if (const auto it = fallbacks.find(catNorm); it != fallbacks.end()) {
-					result = tryCandidates(it->second);
+			std::string cat = catNorm;
+			std::unordered_set<std::string> seen{ cat };
+			for (int hop = 0; result.empty() && hop < kMaxCategoryFallbackHops; ++hop) {
+				const auto it = fallbacks.find(cat);
+				if (it == fallbacks.end() || !seen.insert(it->second).second) {
+					break;
 				}
+				cat = it->second;
+				result = tryCandidates(cat);
 			}
 			return result;
 		};

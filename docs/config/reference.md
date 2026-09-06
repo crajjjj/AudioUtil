@@ -233,7 +233,7 @@ BattleCry = "War Shout"
 [male_only_remap]             # male slots only: female-engine category -> male category
 ComfortLines = "Calm Lines"
 
-[category_fallbacks.female]   # substitute when a category has no folder (one hop)
+[category_fallbacks.female]   # substitute when a category has no folder (chained)
 Whisper = "Murmur"
 [category_fallbacks.male]
 # ...
@@ -243,7 +243,7 @@ Whisper = "Murmur"
 |-------|-----------|---------|
 | `[category_aliases.female]` / `.male` | that sex's slots | Rename a requested category to the actual folder name. |
 | `[male_only_remap]` | male slots only | Substitute a male category for a female-engine category name. |
-| `[category_fallbacks.female]` / `.male` | that sex's slots | Substitute (one hop) when a category resolves to no folder. |
+| `[category_fallbacks.female]` / `.male` | that sex's slots | Substitute when a category resolves to no folder. **Chained** since 0.9.18 (max 8 hops): a substitute that also has no folder falls through to its own entry, so the table can be a ladder. The full ladder is walked in one slot before the slot's `fallback` slot. |
 
 ## `[tags]`
 
