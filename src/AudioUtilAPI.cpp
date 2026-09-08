@@ -92,8 +92,8 @@ float AudioUtil_GetMouthClaimTimeLeft(RE::Actor* actor)
 
 std::uint32_t AudioUtil_GetClaimedActors(RE::Actor** out, std::uint32_t max)
 {
-	const auto ids = MouthClaim::ClaimedActorIDs();
-	std::uint32_t written = 0;
+	const auto    ids = MouthClaim::ClaimedActorIDs();
+	std::uint32_t written = 0;  // total resolvable claims, not just those stored
 	for (const auto formID : ids) {
 		auto* actor = RE::TESForm::LookupByID<RE::Actor>(formID);
 		if (!actor) {
@@ -104,9 +104,9 @@ std::uint32_t AudioUtil_GetClaimedActors(RE::Actor** out, std::uint32_t max)
 		}
 		++written;
 	}
-	// out == nullptr is the "how many?" call; otherwise never report more than
-	// the caller's buffer actually holds
-	return (out && written > max) ? max : written;
+	// ALWAYS the total, never the written count: a return > max is how a caller
+	// with a fixed buffer sees that it was truncated. Writing stopped at `max`.
+	return written;
 }
 
 }  // extern "C"

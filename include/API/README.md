@@ -41,8 +41,8 @@ if (h) {
 Never call the `AudioUtil_*` names directly — they are declarations of functions that live in
 AudioUtil's DLL, so a direct call is an unresolved external at link time.
 
-Feature-detect with `AudioUtil_GetInterfaceVersion()` (packed `MMmmpp`; `10100` = 1.1.0, the
-build that added the mouth claims). Exports are append-only, never reordered or removed, so a
+Feature-detect with `AudioUtil_GetInterfaceVersion()` (packed `MMmmpp`; `10200` = 1.2.0, the
+build that added the mouth claims and the claim listing). Exports are append-only, never reordered or removed, so a
 version check covers the whole surface — but still null-check the individual pointer you are
 about to call, since an older AudioUtil resolves the old names and leaves newer ones null.
 `AudioUtil_GetVersion()` reports the mod version instead, packed `MMmmppp`.
@@ -59,7 +59,8 @@ endif
 ```
 
 Guard an optional dependency with `AudioUtil.GetAPIVersion()`, which returns `0` when the DLL
-is absent, and gate any newer call on the version that introduced it (v8 = mouth claims).
+is absent, and gate any newer call on the version that introduced it (v9 = mouth claims and
+the claim listing). `VERSIONS.txt` in this archive names both current numbers.
 
 ## Where the documentation is
 

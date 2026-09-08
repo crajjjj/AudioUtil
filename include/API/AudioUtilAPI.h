@@ -158,12 +158,23 @@ std::uint32_t AudioUtil_GetMouthClaimOwner(RE::Actor* actor, char* buffer, std::
 float AudioUtil_GetMouthClaimTimeLeft(RE::Actor* actor);
 
 // Enumerate the actors that currently hold a claim, so a listing can be built without
-// parsing text. Writes up to `max` into `out` and returns how many claims there are;
-// pass out = nullptr to ask for the count first, then call again with a buffer:
+// parsing text. Writes at most `max` entries into `out` and ALWAYS returns the total
+// number of live claims - so a return greater than `max` means your buffer was too
+// small and the extras were not written. out = nullptr (with max = 0) is the count-only
+// call. A fixed buffer needs one call:
+//
+//     RE::Actor* held[16];
+//     uint32_t   total = getClaimed(held, 16);
+//     uint32_t   got   = total < 16 ? total : 16;   // clamp before you iterate
+//
+// Claims are few (one per talking actor), so 16 is a generous buffer. Growing instead:
 //
 //     uint32_t n = getClaimed(nullptr, 0);
 //     std::vector<RE::Actor*> held(n);
-//     n = getClaimed(held.data(), n);   // never writes more than `max`
+//     if (n) {
+//         uint32_t total = getClaimed(held.data(), n);   // n grew? clamp, don't trust
+//         held.resize(total < n ? total : n);
+//     }
 //
 // Actors whose form no longer resolves are skipped. Interface version >= 10200.
 std::uint32_t AudioUtil_GetClaimedActors(RE::Actor** out, std::uint32_t max);
