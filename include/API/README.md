@@ -1,14 +1,20 @@
 # AudioUtil integration kit
 
 Everything another mod needs to talk to AudioUtil, and nothing else. Shipped as
-`AudioUtil-API-<version>.zip` (built with `xmake build sdk`); the same files live in the
-AudioUtil repo, so you can also just copy them from there.
+`AudioUtil-API-<interface version>.zip` (built with `xmake build sdk`); the same files live in
+the AudioUtil repo, so you can also just copy them from there.
+
+The archive is named for the **API version, not the mod version** — it only changes when the
+interface does, so the number tells you whether a newer download would give you anything.
+`VERSIONS.txt` inside carries both numbers to gate on: the C++ interface version and the
+Papyrus `GetAPIVersion()`.
 
 ```
 cpp/AudioUtilAPI.h        C++ inter-plugin API (SKSE plugins)
 papyrus/AudioUtil.psc     the Papyrus API (script mods compile against this)
 papyrus/AudioUtilPPA.psc  optional Accurate Penetration bridge
 papyrus/TomlUtil.psc      generic TOML reader/writer hosted by the same DLL
+VERSIONS.txt              the two versions to gate on (C interface + Papyrus API)
 ```
 
 **You do not need AudioUtil installed to build against these**, and nothing here creates a

@@ -2,7 +2,7 @@
 
 For **SKSE plugins written in C++**, AudioUtil exposes a small native inter-plugin API — the [`PlayFile` / `PlayFileWithLipSync`](audioutil.md#playfile) natives, plus the [mouth-claim](audioutil.md#mouth-claims) group, callable directly in C++ with no Papyrus round-trip. Use it when your own DLL wants to fire a loose audio file (a UI sound, a scripted line, a reactive one-shot) with AudioUtil's engine-level playback, captions and lipsync — instead of going through a script.
 
-The single consumer header is **`include/API/AudioUtilAPI.h`** (self-contained — copy it into your project). It also ships on its own as **`AudioUtil-API-<version>.zip`** (the integration kit: this header plus the `.psc` files, with no mod content), so you can build an integration without installing AudioUtil at all.
+The single consumer header is **`include/API/AudioUtilAPI.h`** (self-contained — copy it into your project). It also ships on its own as **`AudioUtil-API-<interface version>.zip`** (the integration kit: this header plus the `.psc` files, with no mod content), so you can build an integration without installing AudioUtil at all. The archive is named for the **API** version, not the mod version — it only changes when the interface does.
 
 !!! info "How to use the header"
     `AudioUtilAPI.h` is a **reference, not a library**: it gives you the documented signatures to cast `GetProcAddress` results to. There is no `.lib` and no import library anywhere, so copying it into your project adds **zero** build-time dependency on AudioUtil. (Including it is optional — hand-writing the few signatures you use works identically.)

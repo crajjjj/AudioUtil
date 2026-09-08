@@ -185,11 +185,18 @@ target("lipsim")
 target_end()
 
 -- Integration kit: xmake build sdk
--- Zips the consumer-facing API surface — the C++ header and the Papyrus scripts
--- other mods compile against — into Release\AudioUtil-API-<version>.zip. A
--- separate, tiny download for MOD AUTHORS: no DLL, no config, no audio, so it
+-- Zips the consumer-facing API surface -- the C++ header and the Papyrus scripts
+-- other mods compile against -- into Release\AudioUtil-API-<interface version>.zip.
+-- A separate, tiny download for MOD AUTHORS: no DLL, no config, no audio, so it
 -- can be built against without installing AudioUtil at all. The same files are
 -- in the repo; this just makes them linkable from a mod page.
+--
+-- The archive is named for the API VERSION, not the mod version: the kit only
+-- changes when the interface does, so a mod author can see at a glance whether a
+-- newer download would give them anything. Both numbers are read from the source
+-- of truth (the C interface from AudioUtilAPI.cpp, the Papyrus API_VERSION from
+-- PapyrusAPI.cpp) and written into VERSIONS.txt inside the archive, so nothing
+-- here can drift from what the DLL reports.
 target("sdk")
     set_kind("phony")
     set_default(false)
@@ -206,12 +213,31 @@ target("sdk")
         for _, f in ipairs({ "AudioUtil.psc", "AudioUtilPPA.psc", "TomlUtil.psc" }) do
             os.cp(path.join(proj, "papyrus", "Source", f), path.join(staging, "papyrus"))
         end
+        -- versions straight out of the sources that define them
+        local api = io.readfile(path.join(proj, "src", "AudioUtilAPI.cpp"))
+        local packed = tonumber(api:match("AudioUtil_GetInterfaceVersion%(%)%s*{%s*return%s*(%d+)"))
+        assert(packed, "sdk: could not read AudioUtil_GetInterfaceVersion() from AudioUtilAPI.cpp")
+        -- packed MMmmpp, e.g. 10100 -> 1.1.0
+        local iface = string.format("%d.%d.%d", math.floor(packed / 10000),
+            math.floor(packed / 100) % 100, packed % 100)
+        local papyrus = io.readfile(path.join(proj, "src", "PapyrusAPI.cpp"))
+            :match("API_VERSION%s*=%s*(%d+)")
+        assert(papyrus, "sdk: could not read API_VERSION from PapyrusAPI.cpp")
+        io.writefile(path.join(staging, "VERSIONS.txt"), table.concat({
+            "AudioUtil integration kit",
+            "",
+            "C++ interface version : " .. iface .. "  (AudioUtil_GetInterfaceVersion() == " .. packed .. ")",
+            "Papyrus API version   : " .. papyrus .. "  (AudioUtil.GetAPIVersion())",
+            "",
+            "Gate an optional integration on those, NOT on the mod version.",
+            "Packaged from AudioUtil " .. (project.version() or "dev") .. ".",
+            "" }, "\n"))
+
         local rel = path.join(proj, "Release")
         if not os.isdir(rel) then
             os.mkdir(rel)
         end
-        local out = path.join(rel,
-            "AudioUtil-API-" .. (project.version() or "dev") .. ".zip")
+        local out = path.join(rel, "AudioUtil-API-" .. iface .. ".zip")
         os.rm(out)
         os.execv("powershell", { "-NoProfile", "-Command",
             string.format("Compress-Archive -Path '%s\\*' -DestinationPath '%s' -Force",

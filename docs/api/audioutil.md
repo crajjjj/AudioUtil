@@ -225,9 +225,11 @@ Mouth-open strength, `0.0`–`2.0` (`1.0` = envelope as-is). For a consumer mod'
 
 ## Mouth claims
 
-Cross-mod jaw arbitration (API version **>= 8**), for **voice mods that play their own audio**.
+Cross-mod jaw arbitration (API version **>= 8**): one answer to *"is this actor talking right now?"*, so a mod driving the face can leave the mouth alone while a line runs.
 
-A mod that plays the player's (or an NPC's) dialogue line itself never makes the engine allocate that actor's facegen dialogue data, so nothing else in the game can tell a line is running — which is how a player-voice mod ends up fighting an expression mod for the same mouth. A **claim** is that mod saying so out loud:
+An actor's mouth belongs to whoever is speaking, but an expression preset carries phonemes alongside the brows, squint and mood — write both at once and the jaw fights itself. Asking was the hard part: [`IsLipSyncActive`](#islipsyncactive) answers for AudioUtil's own lines only, and the game's dialogue state covers ordinary NPC dialogue and player-voice mods that hand their lines to the game (DBVO speaks through `Player.SpeakSound`, so the engine allocates the actor's facegen dialogue data as usual) — but **not** a mod that plays the audio itself. That last case is the one that puts a talking face on screen, and it is invisible to everything: no dialogue data, no AudioUtil line, nothing to detect.
+
+So it announces itself. A **claim** is a mod saying "I am speaking through this actor now", and it shows up in [`IsMouthBusy`](#ismouthbusy) for every consumer:
 
 ```papyrus
 AudioUtil.ClaimMouth(akSpeaker, 3.94, "MyVoiceMod")   ; the line's audio length

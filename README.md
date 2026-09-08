@@ -77,7 +77,7 @@ xmake f -m release
 xmake                     # DLL only -> dist\SKSE\Plugins\
 xmake build papyrus       # Pyro: papyrus\Source\*.psc -> dist\Scripts + Release\AudioUtil.zip
 xmake build release       # same, but rebuilds the DLL first (fresh DLL in the zip)
-xmake build sdk           # integration kit -> Release\AudioUtil-API-<version>.zip
+xmake build sdk           # integration kit -> Release\AudioUtil-API-<C interface version>.zip
 ```
 
 `xmake build sdk` packages what OTHER mods build against - the C++ header
