@@ -186,17 +186,18 @@ target_end()
 
 -- Integration kit: xmake build sdk
 -- Zips the consumer-facing API surface -- the C++ header and the Papyrus scripts
--- other mods compile against -- into Release\AudioUtil-API-<interface version>.zip.
+-- other mods compile against -- into Release\AudioUtil-API-<mod version>+.zip.
 -- A separate, tiny download for MOD AUTHORS: no DLL, no config, no audio, so it
 -- can be built against without installing AudioUtil at all. The same files are
 -- in the repo; this just makes them linkable from a mod page.
 --
--- The archive is named for the API VERSION, not the mod version: the kit only
--- changes when the interface does, so a mod author can see at a glance whether a
--- newer download would give them anything. Both numbers are read from the source
--- of truth (the C interface from AudioUtilAPI.cpp, the Papyrus API_VERSION from
--- PapyrusAPI.cpp) and written into VERSIONS.txt inside the archive, so nothing
--- here can drift from what the DLL reports.
+-- The trailing "+" is the point of the name: this kit describes AudioUtil 0.9.19
+-- AND LATER, because the API only ever grows (exports are appended, never
+-- reordered or removed). So it reads as a minimum requirement rather than a
+-- second version number racing the mod's. The API versions a consumer actually
+-- gates on are read from the sources that define them (the C interface from
+-- AudioUtilAPI.cpp, the Papyrus API_VERSION from PapyrusAPI.cpp) and written into
+-- VERSIONS.txt inside the archive, so they cannot drift from what the DLL reports.
 target("sdk")
     set_kind("phony")
     set_default(false)
@@ -230,14 +231,18 @@ target("sdk")
             "Papyrus API version   : " .. papyrus .. "  (AudioUtil.GetAPIVersion())",
             "",
             "Gate an optional integration on those, NOT on the mod version.",
-            "Packaged from AudioUtil " .. (project.version() or "dev") .. ".",
+            "",
+            "Packaged from AudioUtil " .. (project.version() or "dev") .. ", and good for that",
+            "version and later: the API only grows, so a newer AudioUtil still answers",
+            "every call in here.",
             "" }, "\n"))
 
         local rel = path.join(proj, "Release")
         if not os.isdir(rel) then
             os.mkdir(rel)
         end
-        local out = path.join(rel, "AudioUtil-API-" .. iface .. ".zip")
+        local out = path.join(rel,
+            "AudioUtil-API-" .. (project.version() or "dev") .. "+.zip")
         os.rm(out)
         os.execv("powershell", { "-NoProfile", "-Command",
             string.format("Compress-Archive -Path '%s\\*' -DestinationPath '%s' -Force",

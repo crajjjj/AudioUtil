@@ -43,7 +43,7 @@ xmake                     # build DLL -> dist\SKSE\Plugins\AudioUtil.dll
 xmake build papyrus       # Pyro: papyrus\Source\*.psc -> dist\Scripts + Release\AudioUtil-<version>.zip
 xmake build release       # rebuilds the DLL first (add_deps AudioUtil), then runs Pyro
 xmake build lipsim        # zip tools\lipsim -> Release\AudioUtil-LipSim-<version>.zip (standalone authoring tool)
-xmake build sdk           # zip the integration kit -> Release\AudioUtil-API-<C interface version>.zip (header + .psc, no mod content)
+xmake build sdk           # zip the integration kit -> Release\AudioUtil-API-<version>+.zip (header + .psc + VERSIONS.txt, no mod content)
 ```
 
 - `scripts/pyro.lua` mirrors `papyrus\Source\*.psc` into `dist\Scripts\Source`, then runs `pyro.exe -i AudioUtil.ppj --game-path <game>`. Afterward it renames the ppj's `Release\AudioUtil.zip` to **`Release\AudioUtil-<version>.zip`** — the version is passed in from `xmake.lua` `PROJECT_VERSION` (single source of truth; the static `.ppj` can't template it).

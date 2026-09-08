@@ -1,13 +1,13 @@
 # AudioUtil integration kit
 
 Everything another mod needs to talk to AudioUtil, and nothing else. Shipped as
-`AudioUtil-API-<interface version>.zip` (built with `xmake build sdk`); the same files live in
-the AudioUtil repo, so you can also just copy them from there.
+`AudioUtil-API-<version>+.zip` (built with `xmake build sdk`); the same files live in the
+AudioUtil repo, so you can also just copy them from there.
 
-The archive is named for the **API version, not the mod version** — it only changes when the
-interface does, so the number tells you whether a newer download would give you anything.
-`VERSIONS.txt` inside carries both numbers to gate on: the C++ interface version and the
-Papyrus `GetAPIVersion()`.
+The **`+`** means what it looks like: the kit describes that AudioUtil version *and later*.
+The API only grows — exports are appended, never reordered or removed — so a kit stays valid
+for every newer release. `VERSIONS.txt` inside carries the two numbers to gate an optional
+integration on: the C++ interface version and the Papyrus `GetAPIVersion()`.
 
 ```
 cpp/AudioUtilAPI.h        C++ inter-plugin API (SKSE plugins)
