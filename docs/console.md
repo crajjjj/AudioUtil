@@ -60,6 +60,7 @@ install. Each plays at the player and reports the resulting instance handle
 | `autest voicetag <slot> <category> "<facts>"` | slot id, category, quoted fact string | [Tag-scored](tags.md) play from an explicit slot (`PlayVoiceFromSlotTagged`). Needs a `[tags]` vocabulary (base or overlay). |
 | `autest voicetagpc <category> "<facts>"` | category, quoted fact string | Tag-scored play through the player's resolved slot (`PlayVoiceTagged`). |
 | `autest sfx <name>` | sfx/category name | Play an SFX by name (`PlaySFX`). |
+| `autest claims` | — | List the live [mouth claims](api/audioutil.md#mouth-claims) — actor, owner tag, seconds left. For a mouth that stays still with no obvious owner. |
 
 ```
 autest play Sound\fx\MyMod\Moans\01.wav
@@ -68,6 +69,7 @@ autest voicepc BattleCry
 autest voicetag F1 BattleCry "angry intense"
 autest voicetagpc BattleCry "afraid"
 autest sfx MediumClap
+autest claims
 ```
 
 ## Exposing your own commands

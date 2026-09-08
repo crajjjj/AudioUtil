@@ -30,6 +30,13 @@ Target runtime: Skyrim SE 1.6.1170 (CommonLibSSE-NG, all-runtime build).
   their own mouth writes while `IsLipSyncActive(actor)` is true; mods that take over an actor's
   face entirely should pass `blockLipSync = true` on the voice lines they play for that actor
   while they own the face (a per-call opt-out — there is no standing per-actor block).
+- **Mouth claims** (API v8): cross-mod jaw arbitration. A voice mod that plays its own dialogue
+  audio — so the engine never allocates the actor's dialogue data and nothing else can tell a
+  line is running — calls `ClaimMouth(actor, seconds, "MyMod")` / `ReleaseMouth(...)`, and
+  AudioUtil keeps its own lipsync off that mouth for as long as the claim is live. Expression
+  mods ask `IsMouthBusy(actor)`, which answers for the engine's own dialogue, AudioUtil's
+  lipsync and any foreign claim in one call. The claim is a deadline (capped at 30 s), so a
+  lost release can't strand a mouth. Also exported for SKSE plugins (`AudioUtil_ClaimMouth`…).
 
 **Adding a voice slot** = create the folder tree + one `[[slot]]` entry in the TOML. That's it.
 
@@ -70,7 +77,13 @@ xmake f -m release
 xmake                     # DLL only -> dist\SKSE\Plugins\
 xmake build papyrus       # Pyro: papyrus\Source\*.psc -> dist\Scripts + Release\AudioUtil.zip
 xmake build release       # same, but rebuilds the DLL first (fresh DLL in the zip)
+xmake build sdk           # integration kit -> Release\AudioUtil-API-<version>.zip
 ```
+
+`xmake build sdk` packages what OTHER mods build against - the C++ header
+(`include\API\AudioUtilAPI.h`) and the `.psc` sources - with no DLL, config or audio in it,
+so an integration can be written and compiled without installing AudioUtil. Ship it as a
+separate download next to the mod archive.
 
 Requires VS 2022 (v143, C++23) and xmake ≥ 2.9.5. Papyrus compilation and release packaging
 are owned by Pyro via `AudioUtil.ppj` (`Zip="true"` + `<ZipFiles>`, same pattern as

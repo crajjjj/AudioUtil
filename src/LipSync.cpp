@@ -4,6 +4,7 @@
 #include "FuzCache.h"
 #include "GagState.h"
 #include "LipData.h"
+#include "MouthClaim.h"
 #include "TongueState.h"
 
 #include <cmath>
@@ -586,9 +587,11 @@ namespace LipSync
 					const bool gag = GagState::IsGagged(actor);
 					const bool tongue = !gag && TongueState::IsWearingTongue(actor);
 					const bool dlg = !gag && !tongue && g_blockInDialogue.load() && IsInDialogue(actor);
-					if (gag || tongue || dlg) {
+					const bool claimed = !gag && !tongue && !dlg && MouthClaim::IsClaimed(actor);
+					if (gag || tongue || dlg || claimed) {
 						logger::debug("LipSync: handover mid-line on {:08X} ({})",
-							a_entry.actorID, gag ? "gag" : tongue ? "tongue" : "dialogue");
+							a_entry.actorID,
+							gag ? "gag" : tongue ? "tongue" : dlg ? "dialogue" : "claim");
 						return true;
 					}
 				}
@@ -759,6 +762,12 @@ namespace LipSync
 		// in a dialogue with the player the game drives the mouth from the real
 		// voice file; stay off it (toggle: [lipsync] block_in_dialogue)
 		if (g_blockInDialogue.load() && IsInDialogue(a_actor)) {
+			return;
+		}
+		// another mod told us it is driving this mouth itself (a player-voice mod
+		// playing its own line). Symmetric with what we ask of expression mods:
+		// while a claim is live, we stay off the jaw too
+		if (MouthClaim::IsClaimed(a_actor)) {
 			return;
 		}
 		// a .fuz plays via its FuzCache-extracted file; when that is the decoded

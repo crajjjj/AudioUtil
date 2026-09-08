@@ -2,7 +2,7 @@ set_xmakever("3.0.0")  -- the commonlibsse-ng submodule requires 3.0
 
 -- Globals
 PROJECT_NAME = "AudioUtil"
-PROJECT_VERSION = "0.9.18"
+PROJECT_VERSION = "0.9.19"
 PROJECT_AUTHOR = "crajjjj"
 
 -- Project
@@ -181,6 +181,43 @@ target("lipsim")
                 staging, out) })
         os.rm(staging)
         print("lipsim package -> " .. out)
+    end)
+target_end()
+
+-- Integration kit: xmake build sdk
+-- Zips the consumer-facing API surface — the C++ header and the Papyrus scripts
+-- other mods compile against — into Release\AudioUtil-API-<version>.zip. A
+-- separate, tiny download for MOD AUTHORS: no DLL, no config, no audio, so it
+-- can be built against without installing AudioUtil at all. The same files are
+-- in the repo; this just makes them linkable from a mod page.
+target("sdk")
+    set_kind("phony")
+    set_default(false)
+    on_build(function (target)
+        import("core.project.project")
+        local proj = os.projectdir()
+        local staging = path.join(os.tmpdir(), "audioutil-sdk-pack")
+        os.rm(staging)
+        os.mkdir(path.join(staging, "cpp"))
+        os.mkdir(path.join(staging, "papyrus"))
+        os.cp(path.join(proj, "include", "API", "AudioUtilAPI.h"), path.join(staging, "cpp"))
+        os.cp(path.join(proj, "include", "API", "README.md"), staging)
+        -- the master .psc sources (papyrus\Source), not the generated dist mirror
+        for _, f in ipairs({ "AudioUtil.psc", "AudioUtilPPA.psc", "TomlUtil.psc" }) do
+            os.cp(path.join(proj, "papyrus", "Source", f), path.join(staging, "papyrus"))
+        end
+        local rel = path.join(proj, "Release")
+        if not os.isdir(rel) then
+            os.mkdir(rel)
+        end
+        local out = path.join(rel,
+            "AudioUtil-API-" .. (project.version() or "dev") .. ".zip")
+        os.rm(out)
+        os.execv("powershell", { "-NoProfile", "-Command",
+            string.format("Compress-Archive -Path '%s\\*' -DestinationPath '%s' -Force",
+                staging, out) })
+        os.rm(staging)
+        print("sdk package -> " .. out)
     end)
 target_end()
 

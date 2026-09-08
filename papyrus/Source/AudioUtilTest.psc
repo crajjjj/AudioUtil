@@ -194,6 +194,7 @@ Function SetPseudoLipMode(bool abEnabled) global native
 bool Function GetPseudoLipMode() global native
 Function SetLipLeadMs(int aiMs) global native
 int Function GetLipLeadMs() global native
+string Function GetMouthClaims() global native
 
 ; Toggle .lip-driven phoneme lipsync at runtime (vs the amplitude envelope).
 ; Affects newly started lines.  Usage:  autest lipfiles on|off|status
@@ -307,4 +308,12 @@ Function LipCap(string mode) global
     else
         Debug.Notification("lipcap: running=" + IsLipCapturing() + " (use start|stop)")
     endif
+EndFunction
+
+; List the live mouth claims - actor formid, owner tag and seconds left - for
+; the case where nobody appears to be driving a mouth that stays still.
+; A claim is another mod telling AudioUtil it is speaking that actor's line.
+; Usage:  autest claims
+string Function Claims() global
+    return GetMouthClaims()
 EndFunction

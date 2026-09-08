@@ -13,6 +13,7 @@
 #include "GagState.h"
 #include "InstanceManager.h"
 #include "LipSync.h"
+#include "MouthClaim.h"
 #include "TongueState.h"
 #include "PPABridge.h"
 #include "PapyrusAPI.h"
@@ -111,6 +112,7 @@ namespace
 		case MessagingInterface::kNewGame:
 			InstanceManager::StopAll();
 			LipSync::Reset();
+			MouthClaim::Reset();
 			CaptionManager::Reset();
 			break;
 		default:

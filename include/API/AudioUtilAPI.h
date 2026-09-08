@@ -19,13 +19,20 @@ namespace RE
 //
 //     auto h = GetModuleHandleA("AudioUtil.dll");                 // null if not installed
 //     if (h) {
-//         auto playFile = reinterpret_cast<int32_t (*)(const char*, RE::Actor*, float,
-//                             const char*, const char*)>(
+//         // decltype(&Fn) takes each pointer type straight from this header, so a
+//         // signature change here becomes a compile error in your plugin instead of a
+//         // silent mismatch. It inspects the declaration only - no link dependency.
+//         auto playFile = reinterpret_cast<decltype(&AudioUtil_PlayFile)>(
 //                             GetProcAddress(h, "AudioUtil_PlayFile"));
 //         if (playFile) {
 //             int32_t id = playFile("Sound\\FX\\MyMod\\whoosh.wav", actor, 1.0f, "", "");
 //         }
 //     }
+//
+// Resolving one export tells you AudioUtil is present, NOT that every export is: an
+// older build resolves AudioUtil_PlayFile and leaves a newer name null. Null-check the
+// specific pointer you are about to call, or gate a whole group on
+// AudioUtil_GetInterfaceVersion().
 //
 // -------------------------------------------------------------------------------------
 // SEMANTICS (identical to the Papyrus natives - same code path)
@@ -58,6 +65,14 @@ namespace RE
 // threads - call from the game thread, an SKSE task, or a VM thread. They are not
 // validated from arbitrary background threads. Do not call before kDataLoaded (the
 // audio engine and AudioUtil's config are not up yet).
+//
+// The mouth-claim group is looser, because it touches no engine state: ClaimMouth,
+// ReleaseMouth, IsMouthClaimed and GetMouthClaimOwner are pure in-memory work behind one
+// mutex, held only for that work and never across a call into the game or the Papyrus VM
+// - so they are safe from ANY thread (an audio callback, a decode worker). IsMouthBusy is
+// the exception: it reads the actor facegen dialogue data and AudioUtil live lipsync
+// entries, so give it the game thread / a VM thread like the rest. Claims are session
+// state - they are dropped on load and on new game.
 //
 // ABI: strings cross as null-terminated `const char*` (null tolerated = ""); actors as
 // `RE::Actor*`; everything else is POD. All functions are null-safe.
@@ -96,5 +111,41 @@ std::int32_t AudioUtil_PlayFile(const char* dataRelPath, RE::Actor* follow,
 // (subject to the global lipsync toggle and the gag/tongue/dialogue guards).
 std::int32_t AudioUtil_PlayFileWithLipSync(const char* dataRelPath, RE::Actor* follow,
 	float volume, const char* group, const char* channel);
+
+// ------------------------------------------------------------------------ Mouth claims
+// Cross-mod jaw arbitration (interface version >= 10100). A CLAIM says "something other
+// than AudioUtil is driving this actor's mouth for a spoken line right now" - for a voice
+// mod that plays its own audio, so the engine never allocates dialogue data and nothing
+// else can tell. It is symmetric: while a claim is live AudioUtil keeps its own lipsync
+// off that mouth, and expression mods asking AudioUtil_IsMouthBusy leave the phoneme half
+// of their presets alone. It is NOT an audio lock - playback, captions, ducking and volume
+// groups are untouched.
+
+// Claim `actor`'s mouth for `seconds` (the line's audio length). The claim is a DEADLINE,
+// not a flag, so a sender that dies mid-line cannot strand a mouth; it is clamped to 30s,
+// and a line longer than that should re-claim. `seconds` <= 0 gets 5s. `owner` is your own
+// short tag ("DBReV"): it keys the claim slot, so a re-claim replaces only your claim, and
+// a claim by another mod never displaces yours. Null/empty owner is a legal shared key.
+// Matching is case-insensitive. No-op for a null actor.
+void AudioUtil_ClaimMouth(RE::Actor* actor, float seconds, const char* owner);
+
+// Release your claim early - a skipped line, a scene cut. Idempotent and scoped: it clears
+// only the slot keyed by `owner`, never anyone else's.
+void AudioUtil_ReleaseMouth(RE::Actor* actor, const char* owner);
+
+// True while any foreign claim on this actor is live (claims only).
+bool AudioUtil_IsMouthClaimed(RE::Actor* actor);
+
+// The union predicate for expression / face mods - true when ANY of:
+//   - the engine is speaking a line through this actor (facegen dialogue data, which is
+//     what a Player.SpeakSound voice mod like DBVO produces),
+//   - AudioUtil is lipsyncing it (same as the Papyrus IsLipSyncActive),
+//   - a foreign claim is live.
+// One call covers all three; there is no need to test them separately.
+bool AudioUtil_IsMouthBusy(RE::Actor* actor);
+
+// Diagnostics: owner tag of the live claim with the furthest deadline, written into your
+// buffer (always null-terminated, truncated to fit). Returns chars written, 0 if unclaimed.
+std::uint32_t AudioUtil_GetMouthClaimOwner(RE::Actor* actor, char* buffer, std::uint32_t size);
 
 }  // extern "C"

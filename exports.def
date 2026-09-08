@@ -5,3 +5,8 @@ AudioUtil_GetVersion
 AudioUtil_GetInterfaceVersion
 AudioUtil_PlayFile
 AudioUtil_PlayFileWithLipSync
+AudioUtil_ClaimMouth
+AudioUtil_ReleaseMouth
+AudioUtil_IsMouthClaimed
+AudioUtil_IsMouthBusy
+AudioUtil_GetMouthClaimOwner

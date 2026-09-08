@@ -13,6 +13,7 @@
 #include "InstanceManager.h"
 #include "LipCapture.h"
 #include "LipSync.h"
+#include "MouthClaim.h"
 #include "PPABridge.h"
 #include "Tags.h"
 #include "TomlStore.h"
@@ -25,7 +26,7 @@ namespace PapyrusAPI
 		constexpr auto PPA_SCRIPT_NAME = "AudioUtilPPA";
 		constexpr auto TOML_SCRIPT_NAME = "TomlUtil";
 		constexpr auto TEST_SCRIPT_NAME = "AudioUtilTest";  // debug/calibration natives only
-		constexpr std::int32_t API_VERSION = 7;  // v7: IsGamePaused (v6: tag-scored playback)
+		constexpr std::int32_t API_VERSION = 8;  // v8: mouth claims (v7: IsGamePaused)
 
 		using VM = RE::BSScript::IVirtualMachine;
 
@@ -710,6 +711,38 @@ namespace PapyrusAPI
 			return a_actor && LipSync::IsActiveFor(a_actor);
 		}
 
+		// ---------- natives: mouth claims ----------
+		//
+		// Cross-mod jaw arbitration - see MouthClaim.h. IsLipSyncActive above keeps
+		// its old meaning (AUDIOUTIL is driving this mouth); the union predicate
+		// consumers want is IsMouthBusy.
+
+		void ClaimMouth(RE::StaticFunctionTag*, RE::Actor* a_actor, float a_seconds,
+			RE::BSFixedString a_owner)
+		{
+			MouthClaim::Claim(a_actor, a_seconds, a_owner.empty() ? ""sv : a_owner.c_str());
+		}
+
+		void ReleaseMouth(RE::StaticFunctionTag*, RE::Actor* a_actor, RE::BSFixedString a_owner)
+		{
+			MouthClaim::Release(a_actor, a_owner.empty() ? ""sv : a_owner.c_str());
+		}
+
+		bool IsMouthClaimed(RE::StaticFunctionTag*, RE::Actor* a_actor)
+		{
+			return MouthClaim::IsClaimed(a_actor);
+		}
+
+		bool IsMouthBusy(RE::StaticFunctionTag*, RE::Actor* a_actor)
+		{
+			return MouthClaim::IsBusy(a_actor);
+		}
+
+		RE::BSFixedString GetMouthClaimOwner(RE::StaticFunctionTag*, RE::Actor* a_actor)
+		{
+			return RE::BSFixedString(MouthClaim::Owner(a_actor));
+		}
+
 		// Opt a playing instance into lipsync after the fact: drive akActor's
 		// mouth from the clip's loudness, exactly like a PlayVoice line. For
 		// PlayFile/PlayFolder callers whose file IS a spoken line (their play
@@ -972,6 +1005,12 @@ namespace PapyrusAPI
 			return LipSync::LeadMs();
 		}
 
+		// live mouth claims (actor, owner, seconds left) - who is holding a jaw
+		RE::BSFixedString GetMouthClaims(RE::StaticFunctionTag*)
+		{
+			return RE::BSFixedString(MouthClaim::Describe());
+		}
+
 		// ---------- natives: TomlUtil (generic consumer-config surface) ----------
 		// Registered under its own script class so any mod can read TOML files
 		// through AudioUtil's DLL without touching the audio API.
@@ -1119,6 +1158,11 @@ namespace PapyrusAPI
 		REGISTERFUNC(StopAllAudio, SCRIPT_NAME);
 		REGISTERFUNC(StopChannel, SCRIPT_NAME);
 		REGISTERFUNC(IsLipSyncActive, SCRIPT_NAME);
+		REGISTERFUNC(ClaimMouth, SCRIPT_NAME);
+		REGISTERFUNC(ReleaseMouth, SCRIPT_NAME);
+		REGISTERFUNC(IsMouthClaimed, SCRIPT_NAME);
+		REGISTERFUNC(IsMouthBusy, SCRIPT_NAME);
+		REGISTERFUNC(GetMouthClaimOwner, SCRIPT_NAME);
 		REGISTERFUNC(StartLipSync, SCRIPT_NAME);
 		REGISTERFUNC(StopLipSync, SCRIPT_NAME);
 		REGISTERFUNC(SetLipSyncEnabled, SCRIPT_NAME);
@@ -1146,6 +1190,7 @@ namespace PapyrusAPI
 		REGISTERFUNC(GetPseudoLipMode, TEST_SCRIPT_NAME);
 		REGISTERFUNC(SetLipLeadMs, TEST_SCRIPT_NAME);
 		REGISTERFUNC(GetLipLeadMs, TEST_SCRIPT_NAME);
+		REGISTERFUNC(GetMouthClaims, TEST_SCRIPT_NAME);
 		REGISTERFUNC(IsConnected, PPA_SCRIPT_NAME);
 		REGISTERFUNC(SetEventRate, PPA_SCRIPT_NAME);
 		REGISTERFUNC(GetContext, PPA_SCRIPT_NAME);

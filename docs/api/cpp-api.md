@@ -1,8 +1,8 @@
 # C++ API (SKSE plugins)
 
-For **SKSE plugins written in C++**, AudioUtil exposes a small native inter-plugin API — the [`PlayFile` / `PlayFileWithLipSync`](audioutil.md#playfile) natives callable directly in C++ with no Papyrus round-trip. Use it when your own DLL wants to fire a loose audio file (a UI sound, a scripted line, a reactive one-shot) with AudioUtil's engine-level playback, captions and lipsync — instead of going through a script.
+For **SKSE plugins written in C++**, AudioUtil exposes a small native inter-plugin API — the [`PlayFile` / `PlayFileWithLipSync`](audioutil.md#playfile) natives, plus the [mouth-claim](audioutil.md#mouth-claims) group, callable directly in C++ with no Papyrus round-trip. Use it when your own DLL wants to fire a loose audio file (a UI sound, a scripted line, a reactive one-shot) with AudioUtil's engine-level playback, captions and lipsync — instead of going through a script.
 
-The single consumer header is **`include/API/AudioUtilAPI.h`** (self-contained — copy it into your project).
+The single consumer header is **`include/API/AudioUtilAPI.h`** (self-contained — copy it into your project). It also ships on its own as **`AudioUtil-API-<version>.zip`** (the integration kit: this header plus the `.psc` files, with no mod content), so you can build an integration without installing AudioUtil at all.
 
 !!! info "How to use the header"
     `AudioUtilAPI.h` is a **reference, not a library**: it gives you the documented signatures to cast `GetProcAddress` results to. There is no `.lib` and no import library anywhere, so copying it into your project adds **zero** build-time dependency on AudioUtil. (Including it is optional — hand-writing the few signatures you use works identically.)
@@ -10,7 +10,7 @@ The single consumer header is **`include/API/AudioUtilAPI.h`** (self-contained �
     Never call the `AudioUtil_*` names directly: they're declarations of functions that live in *our* DLL, so a direct call is an unresolved-external link error. Always call through a function pointer obtained from `GetProcAddress`, as shown below.
 
 !!! danger "The Papyrus API ≠ this API — but the exports mirror it exactly"
-    This C++ API covers the two file-playback natives only: every export is `AudioUtil_<PapyrusName>` and runs the **exact same code path** as the Papyrus native — same handles, groups, channels, caption sidecars and lipsync guards. Everything else (`PlayVoice`, `PlaySFX`, `PlayFolder`, handle/group/channel ops, lipsync control, introspection, TomlUtil) is **not** exported; for those, call the [Papyrus API](index.md). A handle returned here lives in the **same id space**, so script code can `AudioUtil.StopHandle()` / `IsHandlePlaying()` a sound your DLL started.
+    This C++ API covers the two file-playback natives and the five mouth-claim calls: every export is `AudioUtil_<PapyrusName>` and runs the **exact same code path** as the Papyrus native — same handles, groups, channels, caption sidecars and lipsync guards. Everything else (`PlayVoice`, `PlaySFX`, `PlayFolder`, handle/group/channel ops, lipsync control, introspection, TomlUtil) is **not** exported; for those, call the [Papyrus API](index.md). A handle returned here lives in the **same id space**, so script code can `AudioUtil.StopHandle()` / `IsHandlePlaying()` a sound your DLL started.
 
 ## Resolving the exports
 
@@ -92,12 +92,15 @@ Gate on both presence and version before using any export — `au.available()` c
 - **`AudioUtil_GetVersion()`** — packed `MMmmppp` mod/DLL version (`major*10000000 + minor*100000 + patch`, e.g. `909` for 0.9.9, `10000000` for 1.0.0). Tracks the release version automatically.
 - **`AudioUtil_GetInterfaceVersion()`** — the C API surface version, packed `MMmmpp` (`10000` == 1.0.0), bumped only when exports are added. Exports are **append-only** (never reordered or removed), so a value check is enough to feature-detect.
 
-The C API first shipped in AudioUtil **0.9.9** — on older installs the module handle resolves but every `GetProcAddress` returns null, which the per-pointer null checks handle for free.
+The C API first shipped in AudioUtil **0.9.9** (interface `10000`) — on older installs the module handle resolves but every `GetProcAddress` returns null, which the per-pointer null checks handle for free. The mouth-claim exports arrived in **0.9.19** (interface `10100`): gate them with `AudioUtil_GetInterfaceVersion() >= 10100`, or simply null-check each pointer.
 
 ## Threading & lifecycle
 
 !!! note "Same threads as the Papyrus natives"
-    These exports are the exact code path of the Papyrus natives, which run on Papyrus VM threads — call them from the game thread, an SKSE task, or a VM thread. They are **not** validated from arbitrary background threads. All arguments are null-safe (`nullptr` path returns `0`; `nullptr` group/channel mean `""`).
+    The playback exports are the exact code path of the Papyrus natives, which run on Papyrus VM threads — call them from the game thread, an SKSE task, or a VM thread. They are **not** validated from arbitrary background threads. All arguments are null-safe (`nullptr` path returns `0`; `nullptr` group/channel mean `""`).
+
+!!! note "The mouth claims are safe from any thread"
+    `AudioUtil_ClaimMouth`, `AudioUtil_ReleaseMouth`, `AudioUtil_IsMouthClaimed` and `AudioUtil_GetMouthClaimOwner` touch no engine state: they are in-memory work behind a single mutex, never held across a call into the game or the Papyrus VM, so a voice mod can claim and release straight from its own audio/decode worker. **`AudioUtil_IsMouthBusy` is the exception** — it reads the actor's facegen dialogue data and AudioUtil's live lipsync entries, so give it the game thread like the playback calls. Claims are session state: they are dropped on `kPreLoadGame`/`kNewGame` along with playing sounds.
 
 Playing sounds stop automatically on `kPreLoadGame`/`kNewGame` (AudioUtil stops all audio and resets lipsync), so handles don't survive a load — don't cache them across saves.
 
@@ -121,3 +124,8 @@ Identical to the Papyrus natives, so the [Papyrus reference](audioutil.md#playfi
 | `uint32_t AudioUtil_GetInterfaceVersion()` | Packed C API version (`MMmmpp`) |
 | `int32_t AudioUtil_PlayFile(const char* dataRelPath, RE::Actor* follow, float volume, const char* group, const char* channel)` | Instance handle (`> 0`) or `0`; never drives the mouth |
 | `int32_t AudioUtil_PlayFileWithLipSync(const char* dataRelPath, RE::Actor* follow, float volume, const char* group, const char* channel)` | Same, plus voice-call lipsync on `follow` |
+| `void AudioUtil_ClaimMouth(RE::Actor* actor, float seconds, const char* owner)` | — ([mouth claims](audioutil.md#mouth-claims); deadline capped at 30 s, `owner` keys the claim) |
+| `void AudioUtil_ReleaseMouth(RE::Actor* actor, const char* owner)` | — (clears only this owner's claim) |
+| `bool AudioUtil_IsMouthClaimed(RE::Actor* actor)` | Is any foreign claim live on this actor |
+| `bool AudioUtil_IsMouthBusy(RE::Actor* actor)` | Engine dialogue **or** AudioUtil lipsync **or** a live claim |
+| `uint32_t AudioUtil_GetMouthClaimOwner(RE::Actor* actor, char* buffer, uint32_t size)` | Chars written into `buffer` (owner tag, always null-terminated) |

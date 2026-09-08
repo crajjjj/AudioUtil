@@ -271,7 +271,52 @@ Function StopChannel(string channel) global native
 
 ; True while AudioUtil is driving this actor's mouth (a voice line with a
 ; readable envelope is playing and lipsync is enabled).
+; Note this answers for AudioUtil only — for "is anything at all moving this
+; mouth", including the engine's own dialogue and other mods, see IsMouthBusy.
 bool Function IsLipSyncActive(Actor akActor) global native
+
+; ===================== NATIVE — mouth claims =====================
+; Cross-mod jaw arbitration, for voice mods that play their own audio.
+;
+; A CLAIM says "something other than AudioUtil is driving this actor's mouth for
+; a spoken line right now". It matters because a mod that plays the line itself
+; never makes the engine allocate the actor's dialogue data, so nothing else can
+; tell a line is running — the case that made a player-voice mod fight expression
+; mods for the player's face.
+;
+; The claim is symmetric: while it is live AudioUtil keeps its own lipsync off
+; that mouth too. It is NOT an audio lock — playback, captions, ducking and
+; volume groups are untouched.
+
+; Claim akActor's mouth for afSeconds (the line's audio length). The claim is a
+; DEADLINE, not a flag: a sender that dies mid-line can't strand a mouth. Capped
+; at 30s — a longer line re-claims. afSeconds <= 0 gets 5s.
+; asOwner is your own short tag ("DBReV"); it keys the claim, so a re-claim
+; replaces only YOUR claim and another mod's claim never displaces it.
+Function ClaimMouth(Actor akActor, float afSeconds, string asOwner = "") global native
+
+; Release your claim early — a skipped line, a scene cut. Idempotent and scoped:
+; it clears only the claim keyed by asOwner, never another mod's.
+Function ReleaseMouth(Actor akActor, string asOwner = "") global native
+
+; True while any foreign claim on this actor is live (claims only).
+bool Function IsMouthClaimed(Actor akActor) global native
+
+; The one predicate an expression mod wants — true when ANY of:
+;   * the engine is speaking a line through this actor (its facegen dialogue
+;     data, which is what a Player.SpeakSound voice mod such as DBVO produces),
+;   * AudioUtil is lipsyncing it (same as IsLipSyncActive),
+;   * a mod has claimed the mouth (ClaimMouth above).
+; Apply your expression without its phoneme half while this is true, and the
+; mouth is left to whoever is speaking:
+;   if AudioUtil.IsMouthBusy(akActor)
+;       ; brows / squint / eyes / mood only
+;   endif
+bool Function IsMouthBusy(Actor akActor) global native
+
+; Diagnostics: the owner tag of the live claim with the furthest deadline, or ""
+; when nothing has claimed this mouth. Console: autest claims
+string Function GetMouthClaimOwner(Actor akActor) global native
 
 ; Opt an already-playing instance into lipsync: drive akActor's mouth from the
 ; clip's loudness, exactly like a PlayVoice line. PlayFile already lipsyncs by

@@ -12,7 +12,7 @@ All name and key matching (categories, slots, groups, SFX names) is **case- and 
 int Function GetAPIVersion() global native
 ```
 
-API version of the loaded DLL, for compatibility checks. `0` = DLL not installed. Increases only when signatures/behavior change incompatibly. Currently `6` (v2 added `GetSlotVariation`, v3 `GetResolvingSlot`, v4 `GetHandlePath`, v5 captions, v6 the tag-scored natives).
+API version of the loaded DLL, for compatibility checks. `0` = DLL not installed. Increases only when signatures/behavior change incompatibly. Currently `8` (v2 added `GetSlotVariation`, v3 `GetResolvingSlot`, v4 `GetHandlePath`, v5 captions, v6 the tag-scored natives, v7 `IsGamePaused`, v8 the mouth claims).
 
 ### `ReloadConfig`
 
@@ -222,6 +222,75 @@ Mouth-open strength, `0.0`–`2.0` (`1.0` = envelope as-is). For a consumer mod'
 
 !!! tip "Owning an actor's face across many lines"
     There is no standing per-actor lipsync block. If your mod takes over an actor's face (an ahegao / expression overlay), pass **`blockLipSync = true`** on each [`PlayVoice`](#playvoice) for that actor while the face is up — decide it per call from your own face-ownership state. Because it's decided per line rather than latched, there's no state to leak or to be cleared on load, and two systems that both play lines for the same actor can't clobber each other's block. For a whole category that should never lipsync (oral SFX, climax pools), list it in [`[lipsync] block_categories`](../config/reference.md#lipsync) instead.
+
+## Mouth claims
+
+Cross-mod jaw arbitration (API version **>= 8**), for **voice mods that play their own audio**.
+
+A mod that plays the player's (or an NPC's) dialogue line itself never makes the engine allocate that actor's facegen dialogue data, so nothing else in the game can tell a line is running — which is how a player-voice mod ends up fighting an expression mod for the same mouth. A **claim** is that mod saying so out loud:
+
+```papyrus
+AudioUtil.ClaimMouth(akSpeaker, 3.94, "MyVoiceMod")   ; the line's audio length
+; ... play the line, drive the mouth from its .lip ...
+AudioUtil.ReleaseMouth(akSpeaker, "MyVoiceMod")
+```
+
+The claim is **symmetric**: while it is live, AudioUtil keeps its own lipsync off that mouth too — a line already playing is handed over the moment the claim lands (dropped where it is, not faded shut, like a gag being equipped). It is **not an audio lock** — playback, captions, ducking and volume groups are untouched. All of it is DLL-side state: nothing enters the save, and every claim is dropped on load and on new game.
+
+### `ClaimMouth`
+
+```papyrus
+Function ClaimMouth(Actor akActor, float afSeconds, string asOwner = "") global native
+```
+
+Claim `akActor`'s mouth for `afSeconds` — the line's audio length. The claim is a **deadline, not a flag**, so a sender that dies mid-line (a crash, a scene cut, a listener that never releases) cannot strand a mouth: it expires on its own. Capped at **30 s**; a longer line should re-claim as it goes. `afSeconds <= 0` gets 5 s.
+
+`asOwner` is your own short tag — it **keys** the claim, so a re-claim replaces only *your* claim, and another mod claiming the same actor never displaces it. Matching is case-insensitive; an empty tag is a legal key shared by anonymous callers.
+
+### `ReleaseMouth`
+
+```papyrus
+Function ReleaseMouth(Actor akActor, string asOwner = "") global native
+```
+
+Release your claim early — a skipped line, a scene cut. Idempotent and **scoped**: it clears only the slot keyed by `asOwner`, never another mod's. Send it as soon as the audio actually stops, which on a skipped line is well before the announced length.
+
+### `IsMouthBusy`
+
+```papyrus
+bool Function IsMouthBusy(Actor akActor) global native
+```
+
+The predicate an **expression mod** wants. True when any of:
+
+- the **engine** is speaking a line through this actor — its facegen dialogue data, which is what a `Player.SpeakSound` voice mod (DBVO) produces, and what every ordinary NPC dialogue line produces;
+- **AudioUtil** is lipsyncing it (same answer as [`IsLipSyncActive`](#islipsyncactive));
+- a mod has **claimed** the mouth.
+
+One call covers all three — there is no need to test them separately, and no reason to reach for `IsLipSyncActive` for this question:
+
+```papyrus
+if AudioUtil.IsMouthBusy(akActor)
+    ; apply the expression WITHOUT its phoneme half: brows, squint, eyes and mood
+    ; still land, the mouth is left to whoever is speaking
+endif
+```
+
+Note the deliberate split from [`IsLipSyncActive`](#islipsyncactive), which keeps its narrower meaning (*AudioUtil* is driving this mouth) so existing consumers that branch on it are unaffected.
+
+### `IsMouthClaimed` / `GetMouthClaimOwner`
+
+```papyrus
+bool Function IsMouthClaimed(Actor akActor) global native
+string Function GetMouthClaimOwner(Actor akActor) global native
+```
+
+Claims only, without the engine/AudioUtil tiers — note `IsMouthClaimed` counts **your own** claim too, so it answers "is this mouth claimed", not "is it claimed by someone else"; a mod that both claims and queries already knows about its own claim. `GetMouthClaimOwner` returns the owner tag of the live claim with the furthest deadline; `""` means nothing holds this mouth (a claim made with an empty tag reports as `<anonymous>`, so an empty result is never an anonymous claim). Diagnostics — for a mouth that stays still and nobody seems to own, `autest claims` lists every live claim with its owner and remaining seconds.
+
+!!! tip "From C++"
+    The same five calls are exported for SKSE plugins (`AudioUtil_ClaimMouth`, `AudioUtil_ReleaseMouth`, `AudioUtil_IsMouthClaimed`, `AudioUtil_IsMouthBusy`, `AudioUtil_GetMouthClaimOwner`), resolved at runtime with `GetProcAddress` — no link-time dependency. Feature-detect with `AudioUtil_GetInterfaceVersion() >= 10100`, and null-check the specific pointer you call (an older AudioUtil resolves the old names and leaves these null). See `include/API/AudioUtilAPI.h`.
+
+    Unlike the playback exports, the claim calls touch no engine state — `ClaimMouth`, `ReleaseMouth`, `IsMouthClaimed` and `GetMouthClaimOwner` are in-memory work behind one mutex and are safe from **any** thread, which is what a voice mod driving audio off its own worker needs. `IsMouthBusy` is the exception: it reads facegen dialogue data, so call it from the game thread.
 
 ## Captions
 

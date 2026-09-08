@@ -212,3 +212,6 @@ subs:
         type: String
         required: true
         help: milliseconds (-300..300) | status
+  - name: claims
+    func: Claims
+    help: List the live mouth claims (actor, owner, seconds left) - who is holding a jaw

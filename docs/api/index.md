@@ -11,7 +11,7 @@ AudioUtil exposes three `Hidden` script namespaces, all backed by the one DLL. Y
 The source scripts (`Scripts\Source\AudioUtil.psc` etc.) ship with the mod and carry the same documentation inline.
 
 !!! info "Calling from another SKSE plugin (C++)?"
-    The `PlayFile` / `PlayFileWithLipSync` natives are also exported as a native C++ inter-plugin API — same code path, no Papyrus round-trip, resolved at runtime with `GetProcAddress` (no link-time dependency). See [C++ API (SKSE plugins)](cpp-api.md).
+    The `PlayFile` / `PlayFileWithLipSync` natives and the [mouth-claim](audioutil.md#mouth-claims) calls are also exported as a native C++ inter-plugin API — same code path, no Papyrus round-trip, resolved at runtime with `GetProcAddress` (no link-time dependency). See [C++ API (SKSE plugins)](cpp-api.md).
 
 ## Is the DLL installed?
 
@@ -24,7 +24,7 @@ if AudioUtil.GetAPIVersion() == 0
 endif
 ```
 
-The current API version is **5** for `AudioUtil` (v2 added `GetSlotVariation`, v3 `GetResolvingSlot`, v4 `GetHandlePath`, v5 captions) and **2** for `TomlUtil` (v2 added the typed writers). The version increases only when signatures or behavior change **incompatibly**.
+The current API version is **8** for `AudioUtil` (v2 added `GetSlotVariation`, v3 `GetResolvingSlot`, v4 `GetHandlePath`, v5 captions, v6 the tag-scored natives, v7 `IsGamePaused`, v8 the mouth claims) and **2** for `TomlUtil` (v2 added the typed writers). The version increases only when signatures or behavior change **incompatibly**.
 
 !!! note "Adding optional params doesn't bump the version"
     Papyrus fills defaulted trailing parameters automatically, so a new optional argument on an existing native (e.g. `blockLipSync` on `PlayVoice`) is backward-compatible and does **not** raise `GetAPIVersion()`. Guard on `>= N` only for genuinely new behavior, and be prepared for a missing-native error if you call a function an older install never registered.
