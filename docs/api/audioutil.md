@@ -280,14 +280,34 @@ endif
 
 Note the deliberate split from [`IsLipSyncActive`](#islipsyncactive), which keeps its narrower meaning (*AudioUtil* is driving this mouth) so existing consumers that branch on it are unaffected.
 
-### `IsMouthClaimed` / `GetMouthClaimOwner`
+### `IsMouthClaimed` / `GetMouthClaimOwner` / `GetMouthClaimTimeLeft`
 
 ```papyrus
 bool Function IsMouthClaimed(Actor akActor) global native
 string Function GetMouthClaimOwner(Actor akActor) global native
+float Function GetMouthClaimTimeLeft(Actor akActor) global native
 ```
 
-Claims only, without the engine/AudioUtil tiers — note `IsMouthClaimed` counts **your own** claim too, so it answers "is this mouth claimed", not "is it claimed by someone else"; a mod that both claims and queries already knows about its own claim. `GetMouthClaimOwner` returns the owner tag of the live claim with the furthest deadline; `""` means nothing holds this mouth (a claim made with an empty tag reports as `<anonymous>`, so an empty result is never an anonymous claim). Diagnostics — for a mouth that stays still and nobody seems to own, `autest claims` lists every live claim with its owner and remaining seconds.
+`GetMouthClaimTimeLeft` is the seconds left on that claim (`0.0` when unclaimed). Claims only, without the engine/AudioUtil tiers — note `IsMouthClaimed` counts **your own** claim too, so it answers "is this mouth claimed", not "is it claimed by someone else"; a mod that both claims and queries already knows about its own claim. `GetMouthClaimOwner` returns the owner tag of the live claim with the furthest deadline; `""` means nothing holds this mouth (a claim made with an empty tag reports as `<anonymous>`, so an empty result is never an anonymous claim). Diagnostics — for a mouth that stays still and nobody seems to own, `autest claims` lists every live claim with its owner and remaining seconds.
+
+### `GetClaimedActors`
+
+```papyrus
+Actor[] Function GetClaimedActors() global native
+```
+
+Every actor holding a live claim right now (API version **>= 9**; empty when none). With the two calls above it gives you the whole claim listing as data — for an MCM debug page, a log line, your own overlay — with no text to parse:
+
+```papyrus
+Actor[] held = AudioUtil.GetClaimedActors()
+int i = 0
+while i < held.Length
+    Debug.Trace(held[i].GetDisplayName() + " <- " + AudioUtil.GetMouthClaimOwner(held[i]) + " (" + AudioUtil.GetMouthClaimTimeLeft(held[i]) + "s)")
+    i += 1
+endwhile
+```
+
+Actors whose form no longer resolves are dropped rather than handed back as `None`, and the list is capped at Papyrus's 128-element array limit — a claim list that long means a mod is looping its claims, which `autest claims` will show you.
 
 !!! tip "From C++"
     The same five calls are exported for SKSE plugins (`AudioUtil_ClaimMouth`, `AudioUtil_ReleaseMouth`, `AudioUtil_IsMouthClaimed`, `AudioUtil_IsMouthBusy`, `AudioUtil_GetMouthClaimOwner`), resolved at runtime with `GetProcAddress` — no link-time dependency. Feature-detect with `AudioUtil_GetInterfaceVersion() >= 10100`, and null-check the specific pointer you call (an older AudioUtil resolves the old names and leaves these null). See `include/API/AudioUtilAPI.h`.

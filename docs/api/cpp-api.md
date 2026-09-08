@@ -92,7 +92,7 @@ Gate on both presence and version before using any export — `au.available()` c
 - **`AudioUtil_GetVersion()`** — packed `MMmmppp` mod/DLL version (`major*10000000 + minor*100000 + patch`, e.g. `909` for 0.9.9, `10000000` for 1.0.0). Tracks the release version automatically.
 - **`AudioUtil_GetInterfaceVersion()`** — the C API surface version, packed `MMmmpp` (`10000` == 1.0.0), bumped only when exports are added. Exports are **append-only** (never reordered or removed), so a value check is enough to feature-detect.
 
-The C API first shipped in AudioUtil **0.9.9** (interface `10000`) — on older installs the module handle resolves but every `GetProcAddress` returns null, which the per-pointer null checks handle for free. The mouth-claim exports arrived in **0.9.19** (interface `10100`): gate them with `AudioUtil_GetInterfaceVersion() >= 10100`, or simply null-check each pointer.
+The C API first shipped in AudioUtil **0.9.9** (interface `10000`) — on older installs the module handle resolves but every `GetProcAddress` returns null, which the per-pointer null checks handle for free. The mouth-claim exports, listing included, arrived in **0.9.19** (interface `10200`): gate on `AudioUtil_GetInterfaceVersion() >= 10200`, or simply null-check each pointer.
 
 ## Threading & lifecycle
 
@@ -100,7 +100,7 @@ The C API first shipped in AudioUtil **0.9.9** (interface `10000`) — on older 
     The playback exports are the exact code path of the Papyrus natives, which run on Papyrus VM threads — call them from the game thread, an SKSE task, or a VM thread. They are **not** validated from arbitrary background threads. All arguments are null-safe (`nullptr` path returns `0`; `nullptr` group/channel mean `""`).
 
 !!! note "The mouth claims are safe from any thread"
-    `AudioUtil_ClaimMouth`, `AudioUtil_ReleaseMouth`, `AudioUtil_IsMouthClaimed` and `AudioUtil_GetMouthClaimOwner` touch no engine state: they are in-memory work behind a single mutex, never held across a call into the game or the Papyrus VM, so a voice mod can claim and release straight from its own audio/decode worker. **`AudioUtil_IsMouthBusy` is the exception** — it reads the actor's facegen dialogue data and AudioUtil's live lipsync entries, so give it the game thread like the playback calls. Claims are session state: they are dropped on `kPreLoadGame`/`kNewGame` along with playing sounds.
+    `AudioUtil_ClaimMouth`, `AudioUtil_ReleaseMouth`, `AudioUtil_IsMouthClaimed`, `AudioUtil_GetMouthClaimOwner` and `AudioUtil_GetMouthClaimTimeLeft` touch no engine state: they are in-memory work behind a single mutex, never held across a call into the game or the Papyrus VM, so a voice mod can claim and release straight from its own audio/decode worker. **`AudioUtil_IsMouthBusy` and `AudioUtil_GetClaimedActors` are the exceptions** — the first reads the actor's facegen dialogue data and AudioUtil's live lipsync entries, the second resolves form ids through the form table, so give those two the game thread like the playback calls. Claims are session state: they are dropped on `kPreLoadGame`/`kNewGame` along with playing sounds.
 
 Playing sounds stop automatically on `kPreLoadGame`/`kNewGame` (AudioUtil stops all audio and resets lipsync), so handles don't survive a load — don't cache them across saves.
 
@@ -129,3 +129,5 @@ Identical to the Papyrus natives, so the [Papyrus reference](audioutil.md#playfi
 | `bool AudioUtil_IsMouthClaimed(RE::Actor* actor)` | Is any foreign claim live on this actor |
 | `bool AudioUtil_IsMouthBusy(RE::Actor* actor)` | Engine dialogue **or** AudioUtil lipsync **or** a live claim |
 | `uint32_t AudioUtil_GetMouthClaimOwner(RE::Actor* actor, char* buffer, uint32_t size)` | Chars written into `buffer` (owner tag, always null-terminated) |
+| `float AudioUtil_GetMouthClaimTimeLeft(RE::Actor* actor)` | Seconds left on the claim, `0.0` when unclaimed |
+| `uint32_t AudioUtil_GetClaimedActors(RE::Actor** out, uint32_t max)` | Claim count; fills `out` with up to `max` claimed actors (`out = nullptr` counts only) |

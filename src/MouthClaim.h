@@ -40,8 +40,9 @@ namespace MouthClaim
 	// Is any foreign claim on this actor still live? (Claims only — see IsBusy.)
 	bool IsClaimed(RE::Actor* a_actor);
 
-	// Owner tag of the live claim with the furthest deadline, or "" — diagnostics,
-	// so a held jaw can name its holder.
+	// Owner tag of the live claim with the furthest deadline, or "" when nothing holds
+	// this mouth — diagnostics, so a held jaw can name its holder. A claim made with an
+	// empty owner tag reports as "<anonymous>", so "" always means UNCLAIMED.
 	std::string Owner(RE::Actor* a_actor);
 
 	// Is the game itself speaking a line through this actor? True while the engine
@@ -55,6 +56,14 @@ namespace MouthClaim
 	// The union predicate for expression mods: engine dialogue, or AudioUtil
 	// lipsyncing this actor, or a live foreign claim. One call, all three cases.
 	bool IsBusy(RE::Actor* a_actor);
+
+	// Seconds until this actor's furthest claim expires, 0.0 when unclaimed. With
+	// Owner() this is enough for a consumer to render its own claim display.
+	float TimeLeft(RE::Actor* a_actor);
+
+	// Every actor with a live claim right now, as form ids (the caller resolves them —
+	// this layer never touches the form table). Swept like every other query.
+	std::vector<RE::FormID> ClaimedActorIDs();
 
 	// One line per live claim (actor, owner, seconds left) for `autest claims`.
 	std::string Describe();

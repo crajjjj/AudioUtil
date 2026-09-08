@@ -69,10 +69,11 @@ namespace RE
 // The mouth-claim group is looser, because it touches no engine state: ClaimMouth,
 // ReleaseMouth, IsMouthClaimed and GetMouthClaimOwner are pure in-memory work behind one
 // mutex, held only for that work and never across a call into the game or the Papyrus VM
-// - so they are safe from ANY thread (an audio callback, a decode worker). IsMouthBusy is
-// the exception: it reads the actor facegen dialogue data and AudioUtil live lipsync
-// entries, so give it the game thread / a VM thread like the rest. Claims are session
-// state - they are dropped on load and on new game.
+// - so they are safe from ANY thread (an audio callback, a decode worker). IsMouthBusy
+// and GetClaimedActors are the exceptions: the first reads the actor facegen dialogue
+// data and AudioUtil live lipsync entries, the second resolves form ids through the form
+// table, so give those two the game thread / a VM thread like the rest. Claims are
+// session state - they are dropped on load and on new game.
 //
 // ABI: strings cross as null-terminated `const char*` (null tolerated = ""); actors as
 // `RE::Actor*`; everything else is POD. All functions are null-safe.
@@ -133,7 +134,10 @@ void AudioUtil_ClaimMouth(RE::Actor* actor, float seconds, const char* owner);
 // only the slot keyed by `owner`, never anyone else's.
 void AudioUtil_ReleaseMouth(RE::Actor* actor, const char* owner);
 
-// True while any foreign claim on this actor is live (claims only).
+// True while a claim on this actor is live (claims only - not engine dialogue or
+// AudioUtil's own lipsync). NOTE this counts YOUR claim too: it answers "is this mouth
+// claimed", not "is it claimed by someone else". A mod that both claims and queries
+// already knows about its own claim - track it locally rather than asking here.
 bool AudioUtil_IsMouthClaimed(RE::Actor* actor);
 
 // The union predicate for expression / face mods - true when ANY of:
@@ -145,7 +149,23 @@ bool AudioUtil_IsMouthClaimed(RE::Actor* actor);
 bool AudioUtil_IsMouthBusy(RE::Actor* actor);
 
 // Diagnostics: owner tag of the live claim with the furthest deadline, written into your
-// buffer (always null-terminated, truncated to fit). Returns chars written, 0 if unclaimed.
+// buffer (always null-terminated, truncated to fit). Returns chars written; 0 (an empty
+// string) means nothing holds this mouth. A claim made with an empty owner tag reports as
+// "<anonymous>", so an empty result is never an anonymous claim.
 std::uint32_t AudioUtil_GetMouthClaimOwner(RE::Actor* actor, char* buffer, std::uint32_t size);
+
+// Seconds until this actor's claim runs out; 0.0 when nothing holds the mouth.
+float AudioUtil_GetMouthClaimTimeLeft(RE::Actor* actor);
+
+// Enumerate the actors that currently hold a claim, so a listing can be built without
+// parsing text. Writes up to `max` into `out` and returns how many claims there are;
+// pass out = nullptr to ask for the count first, then call again with a buffer:
+//
+//     uint32_t n = getClaimed(nullptr, 0);
+//     std::vector<RE::Actor*> held(n);
+//     n = getClaimed(held.data(), n);   // never writes more than `max`
+//
+// Actors whose form no longer resolves are skipped. Interface version >= 10200.
+std::uint32_t AudioUtil_GetClaimedActors(RE::Actor** out, std::uint32_t max);
 
 }  // extern "C"

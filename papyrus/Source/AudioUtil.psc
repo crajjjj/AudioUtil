@@ -299,7 +299,9 @@ Function ClaimMouth(Actor akActor, float afSeconds, string asOwner = "") global 
 ; it clears only the claim keyed by asOwner, never another mod's.
 Function ReleaseMouth(Actor akActor, string asOwner = "") global native
 
-; True while any foreign claim on this actor is live (claims only).
+; True while a claim on this actor is live (claims only — not engine dialogue or
+; AudioUtil's own lipsync). Note this counts YOUR OWN claim too: it answers "is this
+; mouth claimed", not "is it claimed by someone else".
 bool Function IsMouthClaimed(Actor akActor) global native
 
 ; The one predicate an expression mod wants — true when ANY of:
@@ -315,8 +317,29 @@ bool Function IsMouthClaimed(Actor akActor) global native
 bool Function IsMouthBusy(Actor akActor) global native
 
 ; Diagnostics: the owner tag of the live claim with the furthest deadline, or ""
-; when nothing has claimed this mouth. Console: autest claims
+; when nothing holds this mouth (a claim made with an empty tag reports as
+; "<anonymous>", so "" always means unclaimed). Console: autest claims
 string Function GetMouthClaimOwner(Actor akActor) global native
+
+; Seconds until this actor's claim runs out, 0.0 when nothing holds the mouth.
+; With GetMouthClaimOwner this is the whole state of one claim.
+float Function GetMouthClaimTimeLeft(Actor akActor) global native
+
+; Every actor with a live claim right now (empty array when none). Together with
+; the two calls above, this is a claim listing you can render yourself — an MCM
+; debug page, a log line — with no text to parse:
+;
+;   Actor[] held = AudioUtil.GetClaimedActors()
+;   int i = 0
+;   while i < held.Length
+;       Debug.Trace(held[i].GetDisplayName() + " <- " + AudioUtil.GetMouthClaimOwner(held[i]) \
+;           + " (" + AudioUtil.GetMouthClaimTimeLeft(held[i]) + "s)")
+;       i += 1
+;   endwhile
+;
+; Actors whose form no longer resolves are dropped rather than returned as None.
+; Requires API version >= 9.
+Actor[] Function GetClaimedActors() global native
 
 ; Opt an already-playing instance into lipsync: drive akActor's mouth from the
 ; clip's loudness, exactly like a PlayVoice line. PlayFile already lipsyncs by

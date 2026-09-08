@@ -25,7 +25,7 @@ std::uint32_t AudioUtil_GetVersion()
 
 std::uint32_t AudioUtil_GetInterfaceVersion()
 {
-	return 10100;  // 1.1.0 - mouth claims
+	return 10200;  // 1.2.0 - claim listing
 }
 
 // ---------------------------------------------------------------------------- Playback
@@ -83,6 +83,30 @@ std::uint32_t AudioUtil_GetMouthClaimOwner(RE::Actor* actor, char* buffer, std::
 	std::memcpy(buffer, owner.data(), written);
 	buffer[written] = '\0';
 	return written;
+}
+
+float AudioUtil_GetMouthClaimTimeLeft(RE::Actor* actor)
+{
+	return MouthClaim::TimeLeft(actor);
+}
+
+std::uint32_t AudioUtil_GetClaimedActors(RE::Actor** out, std::uint32_t max)
+{
+	const auto ids = MouthClaim::ClaimedActorIDs();
+	std::uint32_t written = 0;
+	for (const auto formID : ids) {
+		auto* actor = RE::TESForm::LookupByID<RE::Actor>(formID);
+		if (!actor) {
+			continue;  // unloaded/deleted since the claim landed
+		}
+		if (out && written < max) {
+			out[written] = actor;
+		}
+		++written;
+	}
+	// out == nullptr is the "how many?" call; otherwise never report more than
+	// the caller's buffer actually holds
+	return (out && written > max) ? max : written;
 }
 
 }  // extern "C"

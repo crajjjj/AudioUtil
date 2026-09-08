@@ -26,7 +26,7 @@ namespace PapyrusAPI
 		constexpr auto PPA_SCRIPT_NAME = "AudioUtilPPA";
 		constexpr auto TOML_SCRIPT_NAME = "TomlUtil";
 		constexpr auto TEST_SCRIPT_NAME = "AudioUtilTest";  // debug/calibration natives only
-		constexpr std::int32_t API_VERSION = 8;  // v8: mouth claims (v7: IsGamePaused)
+		constexpr std::int32_t API_VERSION = 9;  // v9: claim listing (v8: mouth claims)
 
 		using VM = RE::BSScript::IVirtualMachine;
 
@@ -743,6 +743,32 @@ namespace PapyrusAPI
 			return RE::BSFixedString(MouthClaim::Owner(a_actor));
 		}
 
+		float GetMouthClaimTimeLeft(RE::StaticFunctionTag*, RE::Actor* a_actor)
+		{
+			return MouthClaim::TimeLeft(a_actor);
+		}
+
+		// Every actor with a live claim. With GetMouthClaimOwner + GetMouthClaimTimeLeft
+		// this is the whole picture, so a consumer can render its own claim display
+		// (an MCM debug page) without parsing a text dump. Papyrus arrays cap at 128;
+		// a claim list that long means something is looping, so truncating is fine.
+		std::vector<RE::Actor*> GetClaimedActors(RE::StaticFunctionTag*)
+		{
+			constexpr std::size_t   PAPYRUS_ARRAY_MAX = 128;
+			std::vector<RE::Actor*> out;
+			for (const auto formID : MouthClaim::ClaimedActorIDs()) {
+				// a claimed actor can have been unloaded/deleted since; skip those
+				// rather than handing script a None it has to filter
+				if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(formID)) {
+					out.push_back(actor);
+					if (out.size() >= PAPYRUS_ARRAY_MAX) {
+						break;
+					}
+				}
+			}
+			return out;
+		}
+
 		// Opt a playing instance into lipsync after the fact: drive akActor's
 		// mouth from the clip's loudness, exactly like a PlayVoice line. For
 		// PlayFile/PlayFolder callers whose file IS a spoken line (their play
@@ -1163,6 +1189,8 @@ namespace PapyrusAPI
 		REGISTERFUNC(IsMouthClaimed, SCRIPT_NAME);
 		REGISTERFUNC(IsMouthBusy, SCRIPT_NAME);
 		REGISTERFUNC(GetMouthClaimOwner, SCRIPT_NAME);
+		REGISTERFUNC(GetMouthClaimTimeLeft, SCRIPT_NAME);
+		REGISTERFUNC(GetClaimedActors, SCRIPT_NAME);
 		REGISTERFUNC(StartLipSync, SCRIPT_NAME);
 		REGISTERFUNC(StopLipSync, SCRIPT_NAME);
 		REGISTERFUNC(SetLipSyncEnabled, SCRIPT_NAME);

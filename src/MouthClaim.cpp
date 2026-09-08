@@ -131,6 +131,42 @@ namespace MouthClaim
 		return furthest->display.empty() ? std::string{ kAnonymousOwner } : furthest->display;
 	}
 
+	float TimeLeft(RE::Actor* a_actor)
+	{
+		if (!a_actor) {
+			return 0.0f;
+		}
+		const auto       now = std::chrono::steady_clock::now();
+		std::scoped_lock lock{ g_lock };
+		const auto*      slots = SweepLocked(a_actor->GetFormID(), now);
+		if (!slots) {
+			return 0.0f;
+		}
+		const auto furthest = std::max_element(slots->begin(), slots->end(),
+			[](const Slot& a, const Slot& b) { return a.deadline < b.deadline; });
+		const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+			furthest->deadline - now).count();
+		return static_cast<float>(ms) / 1000.0f;
+	}
+
+	std::vector<RE::FormID> ClaimedActorIDs()
+	{
+		const auto              now = std::chrono::steady_clock::now();
+		std::scoped_lock        lock{ g_lock };
+		std::vector<RE::FormID> out;
+		out.reserve(g_claims.size());
+		for (auto it = g_claims.begin(); it != g_claims.end();) {
+			std::erase_if(it->second, [&](const Slot& s) { return s.deadline <= now; });
+			if (it->second.empty()) {
+				it = g_claims.erase(it);
+				continue;
+			}
+			out.push_back(it->first);
+			++it;
+		}
+		return out;
+	}
+
 	bool IsEngineDialogue(RE::Actor* a_actor)
 	{
 		if (!a_actor) {
