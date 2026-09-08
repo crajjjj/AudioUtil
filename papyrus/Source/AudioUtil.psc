@@ -338,7 +338,7 @@ float Function GetMouthClaimTimeLeft(Actor akActor) global native
 ;   endwhile
 ;
 ; Actors whose form no longer resolves are dropped rather than returned as None.
-; Requires API version >= 9.
+; Requires API version >= 8.
 Actor[] Function GetClaimedActors() global native
 
 ; Opt an already-playing instance into lipsync: drive akActor's mouth from the

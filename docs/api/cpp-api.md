@@ -92,7 +92,7 @@ Gate on both presence and version before using any export — `au.available()` c
 - **`AudioUtil_GetVersion()`** — packed `MMmmppp` mod/DLL version (`major*10000000 + minor*100000 + patch`, e.g. `909` for 0.9.9, `10000000` for 1.0.0). Tracks the release version automatically.
 - **`AudioUtil_GetInterfaceVersion()`** — the C API surface version, packed `MMmmpp` (`10000` == 1.0.0), bumped only when exports are added. Exports are **append-only** (never reordered or removed), so a value check is enough to feature-detect.
 
-The C API first shipped in AudioUtil **0.9.9** (interface `10000`) — on older installs the module handle resolves but every `GetProcAddress` returns null, which the per-pointer null checks handle for free. The mouth-claim exports, listing included, arrived in **0.9.19** (interface `10200`): gate on `AudioUtil_GetInterfaceVersion() >= 10200`, or simply null-check each pointer.
+The C API first shipped in AudioUtil **0.9.9** (interface `10000`) — on older installs the module handle resolves but every `GetProcAddress` returns null, which the per-pointer null checks handle for free. The mouth-claim exports, listing included, arrived in **0.9.19** (interface `10100`): gate on `AudioUtil_GetInterfaceVersion() >= 10100`, or simply null-check each pointer.
 
 ## Threading & lifecycle
 

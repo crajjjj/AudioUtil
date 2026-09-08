@@ -296,7 +296,7 @@ float Function GetMouthClaimTimeLeft(Actor akActor) global native
 Actor[] Function GetClaimedActors() global native
 ```
 
-Every actor holding a live claim right now (API version **>= 9**; empty when none). With the two calls above it gives you the whole claim listing as data — for an MCM debug page, a log line, your own overlay — with no text to parse:
+Every actor holding a live claim right now (API version **>= 8**; empty when none). With the two calls above it gives you the whole claim listing as data — for an MCM debug page, a log line, your own overlay — with no text to parse:
 
 ```papyrus
 Actor[] held = AudioUtil.GetClaimedActors()
@@ -310,7 +310,7 @@ endwhile
 Actors whose form no longer resolves are dropped rather than handed back as `None`, and the list is capped at Papyrus's 128-element array limit — a claim list that long means a mod is looping its claims, which `autest claims` will show you.
 
 !!! tip "From C++"
-    All seven calls are exported for SKSE plugins (`AudioUtil_ClaimMouth`, `AudioUtil_ReleaseMouth`, `AudioUtil_IsMouthClaimed`, `AudioUtil_IsMouthBusy`, `AudioUtil_GetMouthClaimOwner`, `AudioUtil_GetMouthClaimTimeLeft`, `AudioUtil_GetClaimedActors`), resolved at runtime with `GetProcAddress` — no link-time dependency. Feature-detect with `AudioUtil_GetInterfaceVersion() >= 10200`, and null-check the specific pointer you call (an older AudioUtil resolves the old names and leaves these null). `AudioUtil_GetClaimedActors` fills a caller-supplied buffer and returns the **total** claim count, so a return larger than your buffer means it was truncated. See `include/API/AudioUtilAPI.h`.
+    All seven calls are exported for SKSE plugins (`AudioUtil_ClaimMouth`, `AudioUtil_ReleaseMouth`, `AudioUtil_IsMouthClaimed`, `AudioUtil_IsMouthBusy`, `AudioUtil_GetMouthClaimOwner`, `AudioUtil_GetMouthClaimTimeLeft`, `AudioUtil_GetClaimedActors`), resolved at runtime with `GetProcAddress` — no link-time dependency. Feature-detect with `AudioUtil_GetInterfaceVersion() >= 10100`, and null-check the specific pointer you call (an older AudioUtil resolves the old names and leaves these null). `AudioUtil_GetClaimedActors` fills a caller-supplied buffer and returns the **total** claim count, so a return larger than your buffer means it was truncated. See `include/API/AudioUtilAPI.h`.
 
     Unlike the playback exports, the claim calls touch no engine state — `ClaimMouth`, `ReleaseMouth`, `IsMouthClaimed` and `GetMouthClaimOwner` are in-memory work behind one mutex and are safe from **any** thread, which is what a voice mod driving audio off its own worker needs. `IsMouthBusy` is the exception: it reads facegen dialogue data, so call it from the game thread.
 

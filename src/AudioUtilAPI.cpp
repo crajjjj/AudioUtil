@@ -25,7 +25,7 @@ std::uint32_t AudioUtil_GetVersion()
 
 std::uint32_t AudioUtil_GetInterfaceVersion()
 {
-	return 10200;  // 1.2.0 - claim listing
+	return 10100;  // 1.1.0 - mouth claims (claim, release, query, listing)
 }
 
 // ---------------------------------------------------------------------------- Playback

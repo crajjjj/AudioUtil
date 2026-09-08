@@ -176,7 +176,7 @@ float AudioUtil_GetMouthClaimTimeLeft(RE::Actor* actor);
 //         held.resize(total < n ? total : n);
 //     }
 //
-// Actors whose form no longer resolves are skipped. Interface version >= 10200.
+// Actors whose form no longer resolves are skipped. Interface version >= 10100.
 std::uint32_t AudioUtil_GetClaimedActors(RE::Actor** out, std::uint32_t max);
 
 }  // extern "C"

@@ -26,7 +26,7 @@ namespace PapyrusAPI
 		constexpr auto PPA_SCRIPT_NAME = "AudioUtilPPA";
 		constexpr auto TOML_SCRIPT_NAME = "TomlUtil";
 		constexpr auto TEST_SCRIPT_NAME = "AudioUtilTest";  // debug/calibration natives only
-		constexpr std::int32_t API_VERSION = 9;  // v9: claim listing (v8: mouth claims)
+		constexpr std::int32_t API_VERSION = 8;  // v8: mouth claims + claim listing (v7: IsGamePaused)
 
 		using VM = RE::BSScript::IVirtualMachine;
 

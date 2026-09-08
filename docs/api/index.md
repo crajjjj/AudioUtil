@@ -24,7 +24,7 @@ if AudioUtil.GetAPIVersion() == 0
 endif
 ```
 
-The current API version is **9** for `AudioUtil` (v2 added `GetSlotVariation`, v3 `GetResolvingSlot`, v4 `GetHandlePath`, v5 captions, v6 the tag-scored natives, v7 `IsGamePaused`, v8 the mouth claims, v9 the claim listing) and **2** for `TomlUtil` (v2 added the typed writers). The version increases only when signatures or behavior change **incompatibly**.
+The current API version is **8** for `AudioUtil` (v2 added `GetSlotVariation`, v3 `GetResolvingSlot`, v4 `GetHandlePath`, v5 captions, v6 the tag-scored natives, v7 `IsGamePaused`, v8 the mouth claims and their listing) and **2** for `TomlUtil` (v2 added the typed writers). The version increases only when signatures or behavior change **incompatibly**.
 
 !!! note "Adding optional params doesn't bump the version"
     Papyrus fills defaulted trailing parameters automatically, so a new optional argument on an existing native (e.g. `blockLipSync` on `PlayVoice`) is backward-compatible and does **not** raise `GetAPIVersion()`. Guard on `>= N` only for genuinely new behavior, and be prepared for a missing-native error if you call a function an older install never registered.
