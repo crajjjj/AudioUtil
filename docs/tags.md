@@ -183,14 +183,16 @@ brackets sparingly.
 
 A pool that wins does not own the category until the scene ends. When its
 shuffle deck runs out, the next draw comes from the **next pool down the
-ladder**, and the winner is reshuffled to lead again:
+ladder**, and the winner is reshuffled to lead again. Taking the `BattleCry`
+folder above, for a request carrying `angry`:
 
 ```
-Penetrated Comments    [intense] one clip          ← best pool for a request carrying `intense`
-    eleven untagged clips       ← the floor
+BattleCry\
+    angry\      one clip       <- the best qualifying pool
+    (untagged)   eleven clips   <- the floor
 
-draws:  A   b   A   g   A   d   A   k  ...
-            ^ the floor covers the gap while the intense pool reshuffles
+draws:   A   b   A   g   A   d   A   k  ...
+             ^ the floor covers the gap while `angry` reshuffles
 ```
 
 So a one-clip pool alternates with the pool beneath it rather than replaying
@@ -200,8 +202,8 @@ for the facts, the lower ones are just less specific, which is what their
 ranking means.
 
 This is why a thin pool is a soft failure rather than a hard one: tagging a
-single clip `intense` gets you that clip roughly every other intense line, not
-that clip forever. Recording two or three per pool is still much better. With
+single clip `angry` gets you that clip roughly every other angry line, not that
+clip forever. Recording two or three per pool is still much better. With
 [`voice_log`](config/reference.md#general) on, a yielded draw is marked `v` in
 the pool column, so you can see which of your pools are being padded out.
 
