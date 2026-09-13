@@ -154,6 +154,15 @@ namespace Config
 		// and cheap once cached (a disk-exists check per file). Base-only global.
 		bool prewarmFuz{ false };
 
+		// Pack-author playback transcript (see VoiceLog): "off" (default),
+		// "player" (the PC's lines only) or "all". Writes a second log file,
+		// <SKSE logs>\AudioUtil_Voices.log, one line per voice line: the category
+		// a consumer asked for, its facts, where resolution landed and the exact
+		// file that played. Kept as the raw string so Config stays free of the
+		// VoiceLog header (Tags -> Config would be a cycle); VoiceLog parses it.
+		// Base-only global; runtime override: `autest voicelog`.
+		std::string voiceLog{ "off" };
+
 		// Whether IsGamePaused() reports a FROZEN WORLD (RE::Main::freezeTime) in
 		// addition to a real menu-mode pause. That flag is what the ImGui overlay
 		// menus set (SKSE Menu Framework's GameLock) - they never enter menu mode,

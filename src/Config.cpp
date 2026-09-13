@@ -1,5 +1,7 @@
 #include "Config.h"
 
+#include "VoiceLog.h"
+
 #include <toml++/toml.hpp>
 
 #include <algorithm>
@@ -185,6 +187,19 @@ namespace Config
 				settings->fuzSlots = (*general)["fuz_slots"].value_or(settings->fuzSlots);
 				settings->pauseOnFreezeTime =
 					(*general)["pause_on_freeze_time"].value_or(settings->pauseOnFreezeTime);
+
+				// validated here (not in VoiceLog) so a typo is reported next to the
+				// rest of the config errors rather than silently logging nothing
+				if (const auto mode = (*general)["voice_log"].value<std::string>()) {
+					if (VoiceLog::ParseMode(*mode)) {
+						settings->voiceLog = *mode;
+					} else {
+						logger::warn("[general] voice_log '{}' is not off/player/all — keeping '{}'",
+							*mode, settings->voiceLog);
+					}
+				} else if (const auto on = (*general)["voice_log"].value<bool>()) {
+					settings->voiceLog = *on ? "all" : "off";
+				}
 
 				if (const auto level = (*general)["log_level"].value<std::string>()) {
 					const auto lvl = spdlog::level::from_str(*level);

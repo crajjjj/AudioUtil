@@ -59,6 +59,16 @@ prewarm_fuz = false
 # if you would rather keep voices going while a scene is frozen for screenshots.
 # false = menu-mode pauses only.
 pause_on_freeze_time = true
+# Pack-author voice log. Writes a SECOND log file next to AudioUtil.log -
+# AudioUtil_Voices.log - holding one line per voice line: the category a consumer
+# asked for, the facts it carried, the slot+folder resolution actually landed on,
+# and the exact wav that played. It answers the one question AudioUtil.log cannot:
+# "my pack HAS a folder for this beat, so why did I hear a stock moan?" - a line
+# that resolved out of the speaker's own slot is marked, so a category-name or
+# alias mismatch reads as a column of '!' instead of as unexplained silence.
+# "off" (default) | "player" (the PC's lines only - the usual authoring case) |
+# "all" (every speaker). Runtime toggle, no reload: `autest voicelog player`.
+voice_log = "off"
 # sfx_slot = "SFX0"           # [[slot]] PlaySFX resolves before the [sfx] table ("" = table only)
 default_female_slot = ""      # slot for unrouted female actors ("" = none; an overlay sets it)
 default_male_slot = ""         # slot for unrouted male actors ("" = none)

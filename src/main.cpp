@@ -17,6 +17,7 @@
 #include "TongueState.h"
 #include "PPABridge.h"
 #include "PapyrusAPI.h"
+#include "VoiceLog.h"
 
 using namespace SKSE;
 using namespace SKSE::log;
@@ -103,6 +104,7 @@ namespace
 			InstanceManager::ApplyConfigGroupVolumes();
 			LipSync::ApplyConfig();
 			CaptionManager::ApplyConfig();
+			VoiceLog::ApplyConfig();
 			FuzSlots::Configure(Config::Get()->fuzSlots);
 			FuzCache::EnforceCacheCap();
 			PPABridge::TryConnect();

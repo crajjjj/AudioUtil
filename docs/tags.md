@@ -148,11 +148,13 @@ For `PlayVoiceTagged(actor, category, facts)`:
 2. Within the folder, every distinct effective tag set is a **pool** (untagged
    files form the tagless pool). A pool **qualifies** iff *all* its tags
    appear among the facts.
-3. The qualifying pool with the **highest weight sum** wins; ties go to the
-   pool with more tokens, then deterministically by token order. The untagged
-   pool scores 0 — the always-valid floor.
-4. The winning pool's own **shuffle bag** picks the file (no repeats until
-   that pool's deck empties).
+3. The qualifying pools are ranked by **weight sum**, highest first; ties go to
+   the pool with more tokens, then deterministically by token order. The
+   untagged pool scores 0 — the always-valid floor at the bottom of the ladder.
+4. The top pool's own **shuffle bag** picks the file (no repeats until that
+   pool's deck empties) — but it **leads, it does not monopolize**. When its
+   deck runs out it yields one line to the pool below and is reshuffled to
+   lead again. See [Running out of lines](#running-out-of-lines).
 
 Worked example, against the folder above:
 
@@ -173,8 +175,35 @@ Two practical corollaries for callers:
   still plays.
 
 And one for pack authors: **keep pools chunky.** Ten files sharing one tag set
-cycle nicely; ten files with ten unique sets are ten one-file pools and
-audible repeats. Tag at the folder level first, reach for brackets sparingly.
+cycle nicely; ten files with ten unique sets are ten one-file pools, each far
+thinner than the beat that draws it. Tag at the folder level first, reach for
+brackets sparingly.
+
+### Running out of lines
+
+A pool that wins does not own the category until the scene ends. When its
+shuffle deck runs out, the next draw comes from the **next pool down the
+ladder**, and the winner is reshuffled to lead again:
+
+```
+Penetrated Comments    [intense] one clip          ← best pool for a request carrying `intense`
+    eleven untagged clips       ← the floor
+
+draws:  A   b   A   g   A   d   A   k  ...
+            ^ the floor covers the gap while the intense pool reshuffles
+```
+
+So a one-clip pool alternates with the pool beneath it rather than replaying
+itself; a two-clip pool keeps two draws in three, a five-clip pool five in six.
+A yielded line is never *wrong* — every pool on the ladder already qualifies
+for the facts, the lower ones are just less specific, which is what their
+ranking means.
+
+This is why a thin pool is a soft failure rather than a hard one: tagging a
+single clip `intense` gets you that clip roughly every other intense line, not
+that clip forever. Recording two or three per pool is still much better. With
+[`voice_log`](config/reference.md#general) on, a yielded draw is marked `v` in
+the pool column, so you can see which of your pools are being padded out.
 
 ## 4. The natives
 

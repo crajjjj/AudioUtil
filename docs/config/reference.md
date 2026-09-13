@@ -25,6 +25,7 @@ voice_attenuation = true      # distance-based volume falloff for follow-positio
 attenuation_near = 200.0      # full volume within this distance (~3 m)
 attenuation_far = 1800.0      # volume reaches the floor at/beyond this distance (~26 m)
 attenuation_floor = 0.05      # minimum volume factor for far sounds (0.0 = silent)
+voice_log = "off"             # pack-author transcript: off | player | all
 ```
 
 | Key | Type | Default | Meaning |
@@ -44,6 +45,7 @@ attenuation_floor = 0.05      # minimum volume factor for far sounds (0.0 = sile
 | `attenuation_near` | float | `200.0` | Full volume within this distance (game units, ~70/m — so ~3 m). |
 | `attenuation_far` | float | `1800.0` | Volume reaches `attenuation_floor` at/beyond this distance (~26 m). Between `near` and `far` the curve is an inverse-distance rolloff (−6 dB per doubling, the point-source law) renormalized to land on the floor at `far`. |
 | `attenuation_floor` | float | `0.05` | Minimum volume factor for far sounds (`0.0` = silent beyond `attenuation_far`). |
+| `voice_log` | string | `"off"` | Pack-author playback transcript. Writes a **second** log file beside `AudioUtil.log` — `AudioUtil_Voices.log` — with **one line per voice line**: the category a consumer asked for, the facts it carried, the slot + folder resolution actually landed on, and the exact wav that played. It answers the question `AudioUtil.log` cannot: *"my pack has a folder for this beat, so why did I hear a stock moan?"* A line that resolved **out of the speaker's own slot** is marked `!`, so a category-name or alias mismatch reads as a column of `!` instead of as unexplained silence; `MISS` lines record calls where nothing played at all. `"player"` logs the player character only (the usual authoring case), `"all"` every speaker. Toggle live with [`autest voicelog`](../console.md) — no reload; re-running it restarts the file, so it can capture a single scene. |
 | `fuz_cache_max_mb` | int | `256` | Size cap for `Sound\AudioUtilFuzCache\` (each played `.fuz` decodes its audio there once, as PCM wav — see [`PlayFile`](../api/audioutil.md#playfile)). Checked once per launch and on `ReloadConfig`; oldest files deleted first. ~88 KB per second of audio, so the default holds on the order of a thousand voice lines. `0` = unlimited. Deleting the folder by hand is always safe — it rebuilds on demand. |
 
 ## `[ppa]`

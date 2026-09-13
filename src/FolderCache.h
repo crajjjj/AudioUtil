@@ -21,9 +21,19 @@ namespace FolderCache
 	// table). Flat scan — no tag subfolders.
 	std::string ResolveDirKey(std::string_view a_dataRelativeFolder);
 
-	// shuffle-bag pick from the best-scoring pool that qualifies for a_facts
-	// (0 = the untagged pool, i.e. legacy behavior); data-relative path or empty
-	std::string PickNext(const std::string& a_folderKey, Tags::Mask a_facts = 0);
+	// Shuffle-bag pick across the pools that qualify for a_facts (0 = the untagged
+	// pool only, i.e. legacy behavior), ranked best-scoring first. The best pool
+	// LEADS but does not monopolize: when its deck runs out it yields one line to
+	// the ladder below and reshuffles to lead again, so a one-line pool can no
+	// longer replay the same clip for a whole scene. Every pool on the ladder
+	// already qualifies, so a yielded line is less specific, never wrong-tone.
+	// Data-relative path, or empty when nothing qualifies.
+	// a_poolTags, when given, receives the tag set of the pool the pick came from
+	// (0 = the untagged floor) and a_descended whether that pool was below the best
+	// one — which pool answered is exactly what a voicepack author needs to see in
+	// the voice log, and it is knowable only in here.
+	std::string PickNext(const std::string& a_folderKey, Tags::Mask a_facts = 0,
+		Tags::Mask* a_poolTags = nullptr, bool* a_descended = nullptr);
 
 	// total files across ALL pools of the key (tag-blind, for introspection)
 	int FileCount(const std::string& a_folderKey);

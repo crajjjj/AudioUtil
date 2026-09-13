@@ -195,6 +195,8 @@ bool Function GetPseudoLipMode() global native
 Function SetLipLeadMs(int aiMs) global native
 int Function GetLipLeadMs() global native
 string Function GetMouthClaims() global native
+Function SetVoiceLogMode(string asMode) global native
+string Function GetVoiceLogMode() global native
 
 ; Toggle .lip-driven phoneme lipsync at runtime (vs the amplitude envelope).
 ; Affects newly started lines.  Usage:  autest lipfiles on|off|status
@@ -316,4 +318,23 @@ EndFunction
 ; Usage:  autest claims
 string Function Claims() global
     return GetMouthClaims()
+EndFunction
+
+; Turn the pack-author voice log on/off at runtime, without editing the TOML and
+; reloading. Writes <SKSE logs>\AudioUtil_Voices.log: one line per voice line -
+; the category the consumer asked for, its facts, where resolution actually
+; landed and the exact file played. "player" logs only the PC's lines (what a
+; voicepack author is usually auditing), "all" adds every NPC.
+; Running this ALWAYS restarts the file - even if the mode is already what you
+; asked for - so `autest voicelog player` right before the scene you care about
+; gives you a transcript of just that scene.
+; "on" is accepted as a synonym for "all", as on the other autest toggles.
+; Usage:  autest voicelog off|player|all|status
+Function VoiceLog(string mode) global
+    if mode == "" || mode == "status"
+        Debug.Notification("voice log: " + GetVoiceLogMode())
+    else
+        SetVoiceLogMode(mode)
+        Debug.Notification("voice log: " + GetVoiceLogMode() + " (SKSE logs/AudioUtil_Voices.log)")
+    endif
 EndFunction

@@ -984,72 +984,128 @@ namespace FolderCache
 		return { seen.begin(), seen.end() };
 	}
 
-	std::string PickNext(const std::string& a_folderKey, Tags::Mask a_facts)
+	namespace
 	{
-		std::scoped_lock lock{ g_lock };
-		const auto it = g_folders.find(a_folderKey);
-		if (it == g_folders.end()) {
-			return {};
-		}
-
-		// pool selection: among nonempty pools whose constraints the facts cover,
-		// the highest weight-sum wins; ties go to the more specific set (more
-		// tokens), then the lowest mask (pools are mask-sorted at scan, so this is
-		// deterministic per install). facts = 0 -> only the untagged pool
-		// qualifies = the pre-tags behavior, one code path for both.
-		// no score sentinel: the FIRST qualifying pool seeds the comparison, so a
-		// vocabulary with a zero or negative axis weight still picks a pool rather
-		// than reporting "playable" (HasQualifying) and then returning nothing.
-		Pool* best = nullptr;
-		int   bestScore = 0;
-		int   bestBits = 0;
-		for (auto& pool : it->second.pools) {
-			if (pool.files.empty() || !Tags::Qualifies(pool.tags, a_facts)) {
-				continue;
+		// (Re)fill a pool's shuffle deck. Avoids an immediate repeat across refills:
+		// compare the file PATH, not the deck index, so a clip listed more than once
+		// (deliberate weighting) still never plays back-to-back. Swap in the first
+		// entry that's a genuinely different clip; if every entry is the same file
+		// there's nothing else in THIS pool to play (the ladder below is what covers
+		// that case now).
+		void RefillDeck(Pool& a_pool)
+		{
+			a_pool.deck.resize(a_pool.files.size());
+			for (std::size_t i = 0; i < a_pool.deck.size(); ++i) {
+				a_pool.deck[i] = i;
 			}
-			const int score = Tags::Score(pool.tags);
-			const int bits = std::popcount(pool.tags);
-			if (!best || score > bestScore || (score == bestScore && bits > bestBits)) {
-				best = &pool;
-				bestScore = score;
-				bestBits = bits;
-			}
-		}
-		if (!best) {
-			return {};
-		}
-		auto& pool = *best;
-
-		if (pool.files.size() == 1) {
-			return pool.files[0];
-		}
-
-		if (pool.deck.empty()) {
-			pool.deck.resize(pool.files.size());
-			for (std::size_t i = 0; i < pool.deck.size(); ++i) {
-				pool.deck[i] = i;
-			}
-			std::shuffle(pool.deck.begin(), pool.deck.end(), g_rng);
-			// avoid an immediate repeat across refills. Compare the file PATH, not
-			// the deck index, so a clip listed more than once (deliberate weighting)
-			// still never plays back-to-back. Swap in the first entry that's a
-			// genuinely different clip; if every entry is the same file there's
-			// nothing else to play and a repeat is unavoidable.
-			if (pool.lastPlayed != SIZE_MAX &&
-				pool.files[pool.deck.back()] == pool.files[pool.lastPlayed]) {
-				for (auto d = pool.deck.begin(); d + 1 != pool.deck.end(); ++d) {
-					if (pool.files[*d] != pool.files[pool.lastPlayed]) {
-						std::swap(*d, pool.deck.back());
+			std::shuffle(a_pool.deck.begin(), a_pool.deck.end(), g_rng);
+			if (a_pool.lastPlayed != SIZE_MAX && a_pool.deck.size() > 1 &&
+				a_pool.files[a_pool.deck.back()] == a_pool.files[a_pool.lastPlayed]) {
+				for (auto d = a_pool.deck.begin(); d + 1 != a_pool.deck.end(); ++d) {
+					if (a_pool.files[*d] != a_pool.files[a_pool.lastPlayed]) {
+						std::swap(*d, a_pool.deck.back());
 						break;
 					}
 				}
 			}
 		}
 
-		const auto index = pool.deck.back();
-		pool.deck.pop_back();
-		pool.lastPlayed = index;
-		return pool.files[index];
+		const std::string& DrawFrom(Pool& a_pool)
+		{
+			const auto index = a_pool.deck.back();
+			a_pool.deck.pop_back();
+			a_pool.lastPlayed = index;
+			return a_pool.files[index];
+		}
+	}
+
+	std::string PickNext(const std::string& a_folderKey, Tags::Mask a_facts,
+		Tags::Mask* a_poolTags, bool* a_descended)
+	{
+		std::scoped_lock lock{ g_lock };
+		if (a_descended) {
+			*a_descended = false;
+		}
+		const auto it = g_folders.find(a_folderKey);
+		if (it == g_folders.end()) {
+			return {};
+		}
+
+		// Rank the qualifying pools best-first: highest weight-sum, ties to the more
+		// specific set (more tokens), then the lowest mask (pools are mask-sorted at
+		// scan, so this is deterministic per install). A pool qualifies iff the
+		// request's facts cover its constraints, so facts = 0 (legacy) leaves exactly
+		// one candidate — the untagged floor — and everything below reduces to the
+		// plain single-pool shuffle bag it has always been.
+		std::vector<Pool*> ladder;
+		for (auto& pool : it->second.pools) {
+			if (!pool.files.empty() && Tags::Qualifies(pool.tags, a_facts)) {
+				ladder.push_back(&pool);
+			}
+		}
+		if (ladder.empty()) {
+			return {};
+		}
+		std::stable_sort(ladder.begin(), ladder.end(), [](const Pool* a_lhs, const Pool* a_rhs) {
+			const int ls = Tags::Score(a_lhs->tags), rs = Tags::Score(a_rhs->tags);
+			if (ls != rs) {
+				return ls > rs;
+			}
+			return std::popcount(a_lhs->tags) > std::popcount(a_rhs->tags);
+		});
+
+		// The best pool LEADS, but it does not hold the category hostage. It used to:
+		// whichever pool scored highest won every draw forever, so a one-line pool
+		// (an author tags a single clip `intense` and leaves the rest of the folder
+		// untagged) replayed that one clip for the whole stage. Now, when the best
+		// pool's deck runs out it yields ONE line to the ladder below and is reshuffled
+		// to lead again — so a 1-file best pool alternates with the next pool down, a
+		// 2-file one keeps 2 draws in 3, a 5-file one 5 in 6. Tone is never wrong: every
+		// pool here already qualifies (constraints ⊆ facts), the lower ones are just
+		// less specific, which is exactly what the ladder ordering means.
+		//
+		// "Deck empty" alone can't trigger the yield — a pool's deck is also empty
+		// before its FIRST fill. lastPlayed separates the two: set on every draw and
+		// never cleared, so empty deck + lastPlayed set = drained, and the yield
+		// happens at most once in a row (the gap draw reshuffles the leader).
+		Pool* leader = ladder.front();
+		Pool* draw = nullptr;
+		if (!leader->deck.empty() || leader->lastPlayed == SIZE_MAX) {
+			draw = leader;
+		} else if (ladder.size() > 1) {
+			// one line from the ladder below: the highest-scoring pool that still has
+			// cards, so the gaps walk down the ladder top-first and each lower pool is
+			// itself consumed as a shuffle bag before the next one is opened.
+			for (std::size_t i = 1; i < ladder.size() && !draw; ++i) {
+				if (!ladder[i]->deck.empty()) {
+					draw = ladder[i];
+				}
+			}
+			if (!draw) {
+				for (std::size_t i = 1; i < ladder.size(); ++i) {
+					RefillDeck(*ladder[i]);
+				}
+				draw = ladder[1];
+			}
+			if (a_descended) {
+				*a_descended = true;
+			}
+		} else {
+			draw = leader;  // nothing below to yield to — the one-pool bag, as before
+		}
+
+		if (draw->deck.empty()) {
+			RefillDeck(*draw);
+		}
+		if (a_poolTags) {
+			*a_poolTags = draw->tags;
+		}
+		const auto file = DrawFrom(*draw);
+		// reshuffle the leader now so it heads the next draw, not the gap pool again
+		if (draw != leader && leader->deck.empty()) {
+			RefillDeck(*leader);
+		}
+		return file;
 	}
 
 	int FileCount(const std::string& a_folderKey)

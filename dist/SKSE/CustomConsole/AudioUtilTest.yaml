@@ -215,3 +215,11 @@ subs:
   - name: claims
     func: Claims
     help: List the live mouth claims (actor, owner, seconds left) - who is holding a jaw
+  - name: voicelog
+    func: VoiceLog
+    help: Pack-author voice log to SKSE logs/AudioUtil_Voices.log - one line per voice line (category, facts, where it resolved, exact file)
+    args:
+      - name: mode
+        type: String
+        required: true
+        help: off | player | all (or on) | status - re-running it restarts the file, so it can capture one scene

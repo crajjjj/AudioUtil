@@ -61,6 +61,7 @@ install. Each plays at the player and reports the resulting instance handle
 | `autest voicetagpc <category> "<facts>"` | category, quoted fact string | Tag-scored play through the player's resolved slot (`PlayVoiceTagged`). |
 | `autest sfx <name>` | sfx/category name | Play an SFX by name (`PlaySFX`). |
 | `autest claims` | — | List the live [mouth claims](api/audioutil.md#mouth-claims) — actor, owner tag, seconds left. For a mouth that stays still with no obvious owner. |
+| `autest voicelog off\|player\|all\|status` | mode | Turn the [pack-author voice log](config/reference.md#general) on/off live (`[general] voice_log` without a reload). Writes `AudioUtil_Voices.log` in the SKSE log folder: one line per voice line — category asked for, facts, where resolution landed, exact file. Always restarts the file — even when the mode is already what you asked for — so running it right before the scene you care about gives a transcript of just that scene. |
 
 ```
 autest play Sound\fx\MyMod\Moans\01.wav
@@ -70,6 +71,7 @@ autest voicetag F1 BattleCry "angry intense"
 autest voicetagpc BattleCry "afraid"
 autest sfx MediumClap
 autest claims
+autest voicelog player
 ```
 
 ## Exposing your own commands

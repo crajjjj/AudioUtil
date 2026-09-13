@@ -17,6 +17,7 @@
 #include "PPABridge.h"
 #include "Tags.h"
 #include "TomlStore.h"
+#include "VoiceLog.h"
 
 namespace PapyrusAPI
 {
@@ -329,24 +330,35 @@ namespace PapyrusAPI
 		// a_speaker: actor a caption sidecar is attributed to — the raw speaker,
 		// independent of the voice_3d follow gating and the lipsync block (a
 		// mouth-still line still shows its caption)
+		// a_log, when given, makes this play a line in the pack-author voice log —
+		// the request it came from is known only to the callers above, and the file
+		// it landed on only down here, so the record is stitched at this seam.
 		std::int32_t PlayFromKey(const std::string& a_folderKey, RE::Actor* a_follow,
 			float a_volume, const std::string& a_group, const std::string& a_channel,
 			RE::Actor* a_mouth = nullptr, bool a_noInterrupt = false,
 			RE::Actor* a_speaker = nullptr, Tags::Mask a_facts = 0,
-			bool a_blockCaption = false)
+			bool a_blockCaption = false, const VoiceLog::Request* a_log = nullptr)
 		{
+			const auto miss = [&](std::string_view a_reason) {
+				if (a_log) {
+					VoiceLog::Miss(*a_log, a_reason);
+				}
+				return 0;
+			};
 			if (a_folderKey.empty()) {
-				return 0;
+				return miss("no folder, alias, fallback or fallback slot");
 			}
-			const auto file = FolderCache::PickNext(a_folderKey, a_facts);
+			Tags::Mask poolTags = 0;
+			bool       descended = false;
+			const auto file = FolderCache::PickNext(a_folderKey, a_facts, &poolTags, &descended);
 			if (file.empty()) {
-				return 0;
+				return miss("folder has no qualifying pool");
 			}
 			InstanceManager::SweepNow();  // free slots of lines that already stopped
 			int slot = -1;
 			auto handle = AudioEngine::PlayPath(file, a_follow, a_volume, &slot);
 			if (!handle.IsValid()) {
-				return 0;  // PlayPath released any acquired slot on failure
+				return miss("engine refused the file");  // PlayPath released any acquired slot
 			}
 			const auto id = InstanceManager::Register(handle, a_volume, a_group, file, a_follow, slot);
 			if (!a_channel.empty()) {
@@ -354,7 +366,7 @@ namespace PapyrusAPI
 				// still playing, drop this one (it's within startup grace, silent)
 				if (!InstanceManager::PlayOnChannel(a_channel, id, a_noInterrupt)) {
 					InstanceManager::Stop(id);
-					return 0;
+					return miss("channel busy (voice_no_interrupt)");
 				}
 			}
 			if (a_mouth) {
@@ -362,6 +374,9 @@ namespace PapyrusAPI
 			}
 			if (!a_blockCaption) {
 				CaptionManager::Start(a_speaker ? a_speaker : a_follow, file, handle, id);
+			}
+			if (a_log) {
+				VoiceLog::Pick(*a_log, a_folderKey, file, poolTags, descended, id);
 			}
 			return id;
 		}
@@ -406,6 +421,7 @@ namespace PapyrusAPI
 			InstanceManager::ApplyConfigGroupVolumes();
 			LipSync::ApplyConfig();
 			CaptionManager::ApplyConfig();
+			VoiceLog::ApplyConfig();
 			FuzCache::EnforceCacheCap();
 			PPABridge::SetEventRateMs(Config::Get()->ppaEventRateMs);
 			return ok;
@@ -423,8 +439,10 @@ namespace PapyrusAPI
 			const auto* slot = ResolveSlotForActor(*settings, a_actor);
 			if (!slot) {
 				logger::warn("PlayVoice: no slot resolvable for actor");
+				VoiceLog::Miss({ a_actor, {}, a_category, a_facts, false }, "actor routes to no slot");
 				return 0;
 			}
+			VoiceLog::Request log{ a_actor, slot->id, a_category, a_facts, false };
 			auto key = ResolveGaggedKey(*settings, *slot, a_category, a_actor, a_facts);
 			if (key.empty()) {
 				// last resort: non-voice scene sounds (PullOutGape, Smack, ...) live in
@@ -432,11 +450,13 @@ namespace PapyrusAPI
 				// real [[slot]], so its categories can carry tag pools too, and
 				// PlayFromKey picks with these same facts.
 				key = ResolveSfxKey(*settings, a_category, a_facts);
+				log.viaSfx = !key.empty();
 			}
 			// no-interrupt early-out: cheap pre-check to avoid building a sound we'd
 			// drop (the atomic claim in PlayFromKey closes the check/claim race)
 			if (settings->voiceNoInterrupt && a_channel[0] != '\0' &&
 				InstanceManager::IsChannelBusy(a_channel)) {
+				VoiceLog::Miss(log, "channel busy (voice_no_interrupt)");
 				return 0;
 			}
 			// 3D-follow only when voice3D is on; either way the mouth actor drives lipsync
@@ -446,7 +466,7 @@ namespace PapyrusAPI
 				settings->lipsyncBlockCategories.contains(Config::Normalize(a_category));
 			return PlayFromKey(key, follow, a_volume, a_group, a_channel,
 				blockLip ? nullptr : a_actor, settings->voiceNoInterrupt, a_actor, a_facts,
-				a_blockCaption);
+				a_blockCaption, &log);
 		}
 
 		std::int32_t PlayVoice(RE::StaticFunctionTag*, RE::Actor* a_actor,
@@ -479,11 +499,14 @@ namespace PapyrusAPI
 			const auto* slot = Config::FindSlot(*settings, a_slot);
 			if (!slot) {
 				logger::warn("PlayVoiceFromSlot: unknown slot '{}'", a_slot);
+				VoiceLog::Miss({ a_follow, a_slot, a_category, a_facts, false }, "no such slot");
 				return 0;
 			}
+			VoiceLog::Request log{ a_follow, slot->id, a_category, a_facts, false };
 			const auto key = ResolveGaggedKey(*settings, *slot, a_category, a_follow, a_facts);
 			if (settings->voiceNoInterrupt && a_channel[0] != '\0' &&
 				InstanceManager::IsChannelBusy(a_channel)) {
+				VoiceLog::Miss(log, "channel busy (voice_no_interrupt)");
 				return 0;
 			}
 			RE::Actor* follow = settings->voice3D ? a_follow : nullptr;
@@ -491,7 +514,7 @@ namespace PapyrusAPI
 				settings->lipsyncBlockCategories.contains(Config::Normalize(a_category));
 			return PlayFromKey(key, follow, a_volume, a_group, a_channel,
 				blockLip ? nullptr : a_follow, settings->voiceNoInterrupt, a_follow, a_facts,
-				a_blockCaption);
+				a_blockCaption, &log);
 		}
 
 		std::int32_t PlayVoiceFromSlot(RE::StaticFunctionTag*, RE::BSFixedString a_slot,
@@ -1031,6 +1054,28 @@ namespace PapyrusAPI
 			return LipSync::LeadMs();
 		}
 
+		// runtime voice-log control (autest voicelog) - "off" | "player" | "all"
+		void SetVoiceLogMode(RE::StaticFunctionTag*, RE::BSFixedString a_mode)
+		{
+			if (const auto mode = VoiceLog::ParseMode(a_mode.c_str())) {
+				VoiceLog::SetMode(*mode);
+			} else {
+				logger::warn("voicelog: '{}' is not off/player/all", a_mode.c_str());
+			}
+		}
+
+		RE::BSFixedString GetVoiceLogMode(RE::StaticFunctionTag*)
+		{
+			switch (VoiceLog::CurrentMode()) {
+			case VoiceLog::Mode::Player:
+				return RE::BSFixedString{ "player" };
+			case VoiceLog::Mode::All:
+				return RE::BSFixedString{ "all" };
+			default:
+				return RE::BSFixedString{ "off" };
+			}
+		}
+
 		// live mouth claims (actor, owner, seconds left) - who is holding a jaw
 		RE::BSFixedString GetMouthClaims(RE::StaticFunctionTag*)
 		{
@@ -1219,6 +1264,8 @@ namespace PapyrusAPI
 		REGISTERFUNC(SetLipLeadMs, TEST_SCRIPT_NAME);
 		REGISTERFUNC(GetLipLeadMs, TEST_SCRIPT_NAME);
 		REGISTERFUNC(GetMouthClaims, TEST_SCRIPT_NAME);
+		REGISTERFUNC(SetVoiceLogMode, TEST_SCRIPT_NAME);
+		REGISTERFUNC(GetVoiceLogMode, TEST_SCRIPT_NAME);
 		REGISTERFUNC(IsConnected, PPA_SCRIPT_NAME);
 		REGISTERFUNC(SetEventRate, PPA_SCRIPT_NAME);
 		REGISTERFUNC(GetContext, PPA_SCRIPT_NAME);
