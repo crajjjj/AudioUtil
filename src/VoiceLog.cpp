@@ -3,6 +3,7 @@
 #include <format>
 #include <fstream>
 
+#include "CaptionManager.h"
 #include "Config.h"
 
 namespace VoiceLog
@@ -77,6 +78,39 @@ namespace VoiceLog
 			}
 		}
 
+		// The caption sidecar's text, flattened to one line. Sidecar text is
+		// author-written and free-form, so a newline or a '|' in it would either
+		// forge a log row or break the column layout — neither is worth a
+		// surprise in a file people grep. Quoted so an empty-vs-absent transcript
+		// stays visible, and capped: this is a transcript column, not the script.
+		std::string Transcript(const std::string& a_file)
+		{
+			auto text = CaptionManager::TextForFile(a_file);
+			if (text.empty()) {
+				return {};
+			}
+			for (auto& c : text) {
+				if (c == '\r' || c == '\n' || c == '\t') {
+					c = ' ';
+				} else if (c == '|') {
+					c = '/';
+				}
+			}
+			constexpr std::size_t kMax = 300;
+			if (text.size() > kMax) {
+				// back off to a UTF-8 boundary: sidecars carry non-Latin languages
+				// (ru is a shipped key), and cutting mid-sequence writes a broken
+				// character into a file the author reads
+				std::size_t cut = kMax;
+				while (cut > 0 && (static_cast<unsigned char>(text[cut]) & 0xC0) == 0x80) {
+					--cut;
+				}
+				text.resize(cut);
+				text += "...";
+			}
+			return " | \"" + text + '"';
+		}
+
 		bool Wants(RE::Actor* a_speaker)
 		{
 			switch (g_mode) {
@@ -116,7 +150,7 @@ namespace VoiceLog
 			WriteLine("# mode: " + std::string(g_mode == Mode::Player ? "player" : "all") +
 				"   (set [general] voice_log, or `autest voicelog off|player|all`)");
 			WriteLine("#");
-			WriteLine("# time | speaker | slot | category asked for | facts | via | file played | pool | handle");
+			WriteLine("# time | speaker | slot | category asked for | facts | via | file played | pool | handle | transcript");
 			WriteLine("#");
 			WriteLine("# 'via' is the column that matters: the <slot>/<category> resolution ACTUALLY landed");
 			WriteLine("# on, and how far it had to go to get there:");
@@ -127,6 +161,9 @@ namespace VoiceLog
 			WriteLine("# A 'v' before the pool name means the best-scoring pool that qualified had run");
 			WriteLine("# out of lines this draw and yielded one to the ladder below it - so a one-clip");
 			WriteLine("# tagged pool alternates with the floor instead of repeating itself all scene.");
+			WriteLine("# 'transcript' is the line's caption sidecar text, quoted, in the configured");
+			WriteLine("# caption language - present only for a wav that ships a same-stem .toml, and");
+			WriteLine("# logged whether or not captions themselves are switched on.");
 			WriteLine("# 'MISS' means nothing played at all, with the reason.");
 			WriteLine("#");
 			logger::info("voice log: writing {}", path.string());
@@ -219,12 +256,12 @@ namespace VoiceLog
 		const std::string pool = std::string(a_descended ? "v " : "") +
 			(a_poolTags ? Tags::Describe(a_poolTags) : "untagged");
 
-		WriteLine(std::format("{} | {} | {} | {} | {} | {}{}/{}{} | {} | {} | id={}",
+		WriteLine(std::format("{} | {} | {} | {} | {} | {}{}/{}{} | {} | {} | id={}{}",
 			Stamp(), SpeakerName(a_req.speaker),
 			OrDash(a_req.slot), a_req.category,
 			Tags::Describe(a_req.facts),
 			mark, viaSlot, viaCategory, a_req.viaSfx ? " (sfx)" : "",
-			a_file, pool, a_id));
+			a_file, pool, a_id, Transcript(a_file)));
 	}
 
 	void Miss(const Request& a_req, std::string_view a_reason)

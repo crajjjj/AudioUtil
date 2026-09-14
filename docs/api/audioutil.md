@@ -12,7 +12,7 @@ All name and key matching (categories, slots, groups, SFX names) is **case- and 
 int Function GetAPIVersion() global native
 ```
 
-API version of the loaded DLL, for compatibility checks. `0` = DLL not installed. Increases only when signatures/behavior change incompatibly. Currently `8` (v2 added `GetSlotVariation`, v3 `GetResolvingSlot`, v4 `GetHandlePath`, v5 captions, v6 the tag-scored natives, v7 `IsGamePaused`, v8 the mouth claims).
+API version of the loaded DLL, for compatibility checks. `0` = DLL not installed. Increases only when signatures/behavior change incompatibly. Currently `9` (v2 added `GetSlotVariation`, v3 `GetResolvingSlot`, v4 `GetHandlePath`, v5 captions, v6 the tag-scored natives, v7 `IsGamePaused`, v8 the mouth claims, v9 the PPA penetration site).
 
 ### `ReloadConfig`
 

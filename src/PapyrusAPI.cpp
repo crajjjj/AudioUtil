@@ -27,7 +27,7 @@ namespace PapyrusAPI
 		constexpr auto PPA_SCRIPT_NAME = "AudioUtilPPA";
 		constexpr auto TOML_SCRIPT_NAME = "TomlUtil";
 		constexpr auto TEST_SCRIPT_NAME = "AudioUtilTest";  // debug/calibration natives only
-		constexpr std::int32_t API_VERSION = 8;  // v8: mouth claims + claim listing (v7: IsGamePaused)
+		constexpr std::int32_t API_VERSION = 9;  // v9: PPA penetration site (v8: mouth claims + listing)
 
 		using VM = RE::BSScript::IVirtualMachine;
 
@@ -886,6 +886,27 @@ namespace PapyrusAPI
 			return snapshot ? snapshot->depth : 0.0f;
 		}
 
+		// Where, rather than what kind of scene — and unlike GetContext this one
+		// follows PPA's own mid-scene redirect. See AudioUtilPPA.psc for the value
+		// table; 0 (None) is "no measurement", same ambiguity as GetContext's 0.
+		std::int32_t GetPenetrationSite(RE::StaticFunctionTag*, RE::Actor* a_receiver)
+		{
+			const auto snapshot = PPABridge::GetFor(a_receiver);
+			return snapshot ? static_cast<std::int32_t>(snapshot->site) : 0;
+		}
+
+		std::int32_t GetPenetrationSites(RE::StaticFunctionTag*, RE::Actor* a_receiver)
+		{
+			const auto snapshot = PPABridge::GetFor(a_receiver);
+			return snapshot ? static_cast<std::int32_t>(snapshot->siteMask) : 0;
+		}
+
+		std::int32_t GetSelfPenetrationSite(RE::StaticFunctionTag*, RE::Actor* a_receiver)
+		{
+			const auto snapshot = PPABridge::GetFor(a_receiver);
+			return snapshot ? static_cast<std::int32_t>(snapshot->selfSite) : 0;
+		}
+
 		float GetVaginalOpening(RE::StaticFunctionTag*, RE::Actor* a_receiver)
 		{
 			const auto snapshot = PPABridge::GetFor(a_receiver);
@@ -1270,6 +1291,9 @@ namespace PapyrusAPI
 		REGISTERFUNC(SetEventRate, PPA_SCRIPT_NAME);
 		REGISTERFUNC(GetContext, PPA_SCRIPT_NAME);
 		REGISTERFUNC(GetDepth, PPA_SCRIPT_NAME);
+		REGISTERFUNC(GetPenetrationSite, PPA_SCRIPT_NAME);
+		REGISTERFUNC(GetPenetrationSites, PPA_SCRIPT_NAME);
+		REGISTERFUNC(GetSelfPenetrationSite, PPA_SCRIPT_NAME);
 		REGISTERFUNC(GetVaginalOpening, PPA_SCRIPT_NAME);
 		REGISTERFUNC(GetAnalOpening, PPA_SCRIPT_NAME);
 		a_vm->RegisterFunction("GetAPIVersion"sv, TOML_SCRIPT_NAME, Toml::GetAPIVersion, true);

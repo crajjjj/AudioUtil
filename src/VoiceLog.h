@@ -8,7 +8,8 @@ namespace VoiceLog
 	// Pack-author playback log — a second, deliberately boring log file
 	// (<SKSE logs>\AudioUtil_Voices.log) holding ONE LINE PER VOICE LINE:
 	// who spoke, the category the consumer asked for, the facts it carried, where
-	// resolution actually landed, and the exact file that played.
+	// resolution actually landed, the exact file that played, and its caption
+	// transcript when the file ships one.
 	//
 	// It exists because AudioUtil.log cannot answer the only question a voicepack
 	// author has — "my pack has a folder for this beat; why did I hear a stock

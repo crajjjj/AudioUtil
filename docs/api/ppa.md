@@ -104,3 +104,82 @@ float Function GetAnalOpening(Actor akReceiver) global native
 ```
 
 Current opening values reported by PPA. Per its author these are **"magic unsigned numbers"** with exactly one contract: `0.0` = closed, larger = more open, **no defined scale or units**. The two orifices use different internal scales, so thresholds must be **per-orifice and calibrated empirically** — log real values in a scene; never hardcode range assumptions. The author discourages casual consumption of these; use only for a specific purpose.
+
+### `GetPenetrationSite` / `GetPenetrationSites` / `GetSelfPenetrationSite`
+
+```papyrus
+int Function GetPenetrationSite(Actor akReceiver) global native
+int Function GetPenetrationSites(Actor akReceiver) global native
+int Function GetSelfPenetrationSite(Actor akReceiver) global native
+```
+
+Requires API version **>= 9**; guard with `GetAPIVersion()` on older installs, or
+the call cannot bind.
+
+**Where**, as opposed to `GetContext`'s *what kind of scene*. The context bits are
+scene classification and stay fixed the way a SexLab tag does; these report the
+live `PenetrationSite` PPA tracks per partner, which is what its own in-scene
+redirect menu rewrites. If a scene starts vaginal and the player switches hole,
+the context bits do not move but these do.
+
+| value | site |
+|---|---|
+| `0` | None — no measurement (see below) |
+| `1` | Mouth |
+| `2` | Anus |
+| `3` | Vagina |
+| `4` | Both |
+| `5` | HandL |
+| `6` | HandR |
+| `7` | Hands |
+
+These are **ordinals, not bit flags** — compare with `==`, never `Math.LogicalAnd`.
+`0` carries the same deliberate ambiguity as `GetContext`'s `0`: PPA not connected,
+actor unknown, or nothing happening. "No measurement available", not a definite no.
+
+`GetPenetrationSite` is the **deepest partner's** site — where this actor is being
+taken. Note it is a narrower pick than `GetDepth`, which also counts
+self-interaction and partners reporting no site, so the two can describe different
+interactions: never read `GetDepth() > 0 && GetPenetrationSite() == 2` as "anal,
+this deep".
+
+`GetPenetrationSites` is **every partner's site at once**, as a bitmask, so a DP
+reports both. A site's bit is `1` shifted left by its ordinal, so there is no bit
+`0` and a mask of `0` means no site reported:
+
+| site ordinal | value | site |
+|---|---|---|
+| 1 | `2` | Mouth |
+| 2 | `4` | Anus |
+| 3 | `8` | Vagina |
+| 4 | `16` | Both |
+| 5 | `32` | HandL |
+| 6 | `64` | HandR |
+| 7 | `128` | Hands |
+
+Test the **value** column, never the ordinal — Anus is ordinal `2` but value `4`:
+
+```papyrus
+int sites = AudioUtilPPA.GetPenetrationSites(actorref)
+bool oral = Math.LogicalAnd(sites, 2) == 2
+```
+
+`GetSelfPenetrationSite` is **self-penetration** — the hole the receiver is using on
+*themselves* (masturbation). Per PPA's docs that site is on the receiver too, like
+the two above; it is a different **act**, not a different body, which is why it is
+reported separately rather than merged into the mask.
+
+!!! warning "Poll these — do not wait for an event"
+    `AudioUtilPPA_Update` carries only depth and the context bitmask, so the site
+    is **not in the payload**. Unlike a context change, a site change does **not**
+    bypass the event throttle: the site is live per-frame data and can flicker, so
+    bypassing on it would fire an event per frame per receiver — the VM overload
+    the throttle exists to prevent. The getters read the cached snapshot, which is
+    refreshed on every PPA tick, so they are always current no matter when the last
+    event fired.
+
+!!! note "Liveness is assumed, not documented"
+    PPA's published docs describe `site` as the "target site of penetration" but do
+    not state that it follows a mid-scene redirect, nor do they document callback
+    frequency. Treat a site as a hint that improves a choice, not as ground truth to
+    gate a whole branch on.

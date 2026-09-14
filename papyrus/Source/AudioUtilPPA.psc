@@ -108,3 +108,78 @@ float Function GetDepth(Actor akReceiver) global native
 ; casual consumption of these.
 float Function GetVaginalOpening(Actor akReceiver) global native
 float Function GetAnalOpening(Actor akReceiver) global native
+
+; -----------------------------------------------------------------------------
+; WHERE, as opposed to GetContext's WHAT KIND OF SCENE.
+;
+; GetContext reports the plugin's scene CLASSIFICATION, which is fixed for the
+; scene the way a SexLab tag is. These report the live PenetrationSite the
+; plugin tracks per partner - which is what its own in-scene redirect menu
+; rewrites. If a scene starts vaginal and the player switches hole, the context
+; bits do NOT move but these do.
+;
+;   value  site
+;       0  None      (no measurement - see the ambiguity note below)
+;       1  Mouth
+;       2  Anus
+;       3  Vagina
+;       4  Both
+;       5  HandL
+;       6  HandR
+;       7  Hands
+;
+; These are ORDINALS, not bit flags - compare with ==, never Math.LogicalAnd.
+; The bitmask form is GetPenetrationSites() below.
+;
+; 0 carries the same deliberate ambiguity as GetContext's 0: plugin not
+; connected, actor unknown, or nothing happening. "No measurement available",
+; not a definite no.
+;
+; NOTE these are read off the third-party plugin's per-frame data, whose site
+; semantics its author has not documented for us the way the context bits were
+; (see docs/ppa-api-assumptions.md). Treat a site as a hint that improves a
+; line choice, not as ground truth to gate a whole branch on.
+;
+; Deepest partner's site - where THIS actor is being taken.
+;
+; NOT the same pick as GetDepth(): depth also counts self-interaction and
+; partners reporting no site, so the two can describe different interactions.
+; Do NOT read "GetDepth() > 0 && GetPenetrationSite() == 2" as "anal, this
+; deep" - the depth may belong to something else entirely.
+int Function GetPenetrationSite(Actor akReceiver) global native
+
+; Every partner's site at once, as a bitmask - DP reports both. A site's bit is
+; 1 shifted left by its ORDINAL from the table above, so site 0 (None) has no
+; bit and a mask of 0 means "no site reported":
+;
+;   site ordinal  value  site
+;              1      2  Mouth
+;              2      4  Anus
+;              3      8  Vagina
+;              4     16  Both
+;              5     32  HandL
+;              6     64  HandR
+;              7    128  Hands
+;
+; Test the VALUE column, never the ordinal: Anus is ordinal 2 but value 4.
+;
+; Like GetContext, a returned value is the SUM of its active bits - decompose
+; it with Math.LogicalAnd, never compare the whole value:
+;
+;   int sites = AudioUtilPPA.GetPenetrationSites(actorref)
+;   bool oral = Math.LogicalAnd(sites, 2) == 2
+;
+; POLL this - do not wait for an event. AudioUtilPPA_Update carries only depth
+; and the context bitmask, so the site is not in the payload, and unlike a
+; context change a site change does NOT bypass the throttle (it is live
+; per-frame data and would fire an event per frame). The getters above read the
+; cached snapshot, which is updated on every plugin tick and is therefore always
+; current no matter when the last event fired - so a mid-scene redirect is
+; visible immediately to a caller that asks.
+int Function GetPenetrationSites(Actor akReceiver) global native
+
+; Self-penetration: the hole the receiver is using on THEMSELVES (masturbation).
+; Still a site on this actor, like the two above, but a different act - being
+; taken by a partner and doing it yourself are never merged into one answer.
+; 0 for most actors. Same value table.
+int Function GetSelfPenetrationSite(Actor akReceiver) global native

@@ -77,13 +77,40 @@ namespace PPABridge
 			snapshot.vaginalOpening = a_event->vaginalOpening;
 			snapshot.ending = a_event->ending;
 
+			// depth keeps its established meaning (deepest of anything touching
+			// this receiver, their own interaction included). Both site sources
+			// name a hole on THIS receiver — a partner's `site` is where that
+			// partner is penetrating them, selfInteraction's is where they are
+			// penetrating themselves — but they are different ACTS, so being
+			// taken and masturbating stay in separate fields rather than merging
+			// into one mask a consumer cannot take apart again.
 			float depth = 0.0f;
 			if (a_event->selfInteraction) {
 				depth = std::max(depth, a_event->selfInteraction->penetrationDepth);
+				snapshot.selfSite = static_cast<std::uint8_t>(a_event->selfInteraction->site);
 			}
 			if (a_event->actors) {
+				float deepestPartner = -1.0f;
 				for (std::uint32_t i = 0; i < a_event->actorCount; ++i) {
-					depth = std::max(depth, a_event->actors[i].penetrationDepth);
+					const auto& partner = a_event->actors[i];
+					depth = std::max(depth, partner.penetrationDepth);
+					// `site` is a third-party enum we do not control: a future PPA
+					// enumerator (or a garbage byte) shifted straight into the mask
+					// is a bogus bit at best and UB past 31 at worst, and the
+					// version/size handshake cannot catch an ADDED enumerator. Range
+					// it against the values we actually understand instead.
+					const auto siteValue = static_cast<std::uint32_t>(partner.site);
+					if (partner.site == PPA::PenetrationSite::None ||
+						siteValue > static_cast<std::uint32_t>(PPA::PenetrationSite::Hands)) {
+						continue;
+					}
+					snapshot.siteMask |= 1u << siteValue;
+					// ">" not ">=": ties keep the first partner, so a steady scene
+					// doesn't flip the reported site between equal-depth partners
+					if (partner.penetrationDepth > deepestPartner) {
+						deepestPartner = partner.penetrationDepth;
+						snapshot.site = static_cast<std::uint8_t>(partner.site);
+					}
 				}
 			}
 			snapshot.depth = depth;
@@ -102,7 +129,19 @@ namespace PPABridge
 
 				if (snapshot.ending) {
 					sendEnd = true;
-				} else if (now - state.lastSentMs >= rate || state.lastSentContext != snapshot.context) {
+				} else if (now - state.lastSentMs >= rate ||
+						   state.lastSentContext != snapshot.context) {
+					// Only the CONTEXT bypasses the throttle. A site change looks
+					// like it deserves the same treatment and does not: context is
+					// scene classification and changes a handful of times a scene,
+					// while the site is live per-frame data that can flicker (a
+					// site dropping to None between thrusts and back) — bypassing
+					// on it would fire an event per frame per receiver, the exact
+					// VM overload the 1 s floor exists to prevent. Nor would it buy
+					// anything: the event payload is depth + context, so a consumer
+					// cannot see the site in it anyway and must poll
+					// GetPenetrationSite, which reads the snapshot below and is
+					// always current regardless of when events fire.
 					state.lastSentMs = now;
 					state.lastSentContext = snapshot.context;
 					sendUpdate = true;
