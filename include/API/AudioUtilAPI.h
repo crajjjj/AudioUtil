@@ -67,13 +67,16 @@ namespace RE
 // audio engine and AudioUtil's config are not up yet).
 //
 // The mouth-claim group is looser, because it touches no engine state: ClaimMouth,
-// ReleaseMouth, IsMouthClaimed and GetMouthClaimOwner are pure in-memory work behind one
-// mutex, held only for that work and never across a call into the game or the Papyrus VM
-// - so they are safe from ANY thread (an audio callback, a decode worker). IsMouthBusy
-// and GetClaimedActors are the exceptions: the first reads the actor facegen dialogue
-// data and AudioUtil live lipsync entries, the second resolves form ids through the form
-// table, so give those two the game thread / a VM thread like the rest. Claims are
-// session state - they are dropped on load and on new game.
+// ReleaseMouth, IsMouthClaimed, GetMouthClaimOwner and GetMouthClaimTimeLeft are pure
+// in-memory work on AudioUtil's own state, behind AudioUtil's own mutexes, never held
+// across a call into the game or the Papyrus VM - so they are safe from ANY thread (an
+// audio callback, a decode worker). ClaimMouth additionally hands the mouth over by
+// dropping AudioUtil's in-flight lipsync entry for that actor, which takes a second
+// AudioUtil mutex; that is still no engine call, and the two locks are never nested.
+// IsMouthBusy and GetClaimedActors are the exceptions: the first reads the actor facegen
+// dialogue data and AudioUtil live lipsync entries, the second resolves form ids through
+// the form table, so give those two the game thread / a VM thread like the rest. Claims
+// are session state - they are dropped on load and on new game.
 //
 // ABI: strings cross as null-terminated `const char*` (null tolerated = ""); actors as
 // `RE::Actor*`; everything else is POD. All functions are null-safe.
@@ -159,9 +162,12 @@ float AudioUtil_GetMouthClaimTimeLeft(RE::Actor* actor);
 
 // Enumerate the actors that currently hold a claim, so a listing can be built without
 // parsing text. Writes at most `max` entries into `out` and ALWAYS returns the total
-// number of live claims - so a return greater than `max` means your buffer was too
-// small and the extras were not written. out = nullptr (with max = 0) is the count-only
-// call. A fixed buffer needs one call:
+// number of RESOLVABLE claims - every claim whose actor form still resolves, written or
+// not - so a return greater than `max` means your buffer was too small and the extras
+// were not written. A claim on an actor the form table no longer resolves (unloaded or
+// deleted since the claim landed) is skipped and counts toward neither, so this can read
+// lower than the live-claim count `autest claims` prints. out = nullptr (with max = 0)
+// is the count-only call. A fixed buffer needs one call:
 //
 //     RE::Actor* held[16];
 //     uint32_t   total = getClaimed(held, 16);
@@ -176,7 +182,7 @@ float AudioUtil_GetMouthClaimTimeLeft(RE::Actor* actor);
 //         held.resize(total < n ? total : n);
 //     }
 //
-// Actors whose form no longer resolves are skipped. Interface version >= 10100.
+// Interface version >= 10100.
 std::uint32_t AudioUtil_GetClaimedActors(RE::Actor** out, std::uint32_t max);
 
 }  // extern "C"

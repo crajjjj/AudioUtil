@@ -35,6 +35,14 @@ namespace FolderCache
 	std::string PickNext(const std::string& a_folderKey, Tags::Mask a_facts = 0,
 		Tags::Mask* a_poolTags = nullptr, bool* a_descended = nullptr);
 
+	// the category half of a_folderKey in its authored spelling (the TOML key, or the
+	// on-disk folder name for a scanned category). Folder keys are normalized and
+	// normalizing is one-way, so a caller that DISPLAYS a key - the voice log, which
+	// pack authors grep against their own folder names - has to come back through here
+	// rather than print the key. Falls back to the key's own category half when the
+	// folder is unknown or was registered without a name (PlayFolder / sfx dir keys).
+	std::string DisplayCategory(const std::string& a_folderKey);
+
 	// total files across ALL pools of the key (tag-blind, for introspection)
 	int FileCount(const std::string& a_folderKey);
 

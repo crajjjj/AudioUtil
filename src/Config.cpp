@@ -425,8 +425,9 @@ namespace Config
 				}
 				if (const auto* categories = (*table)["categories"].as_table()) {
 					for (auto&& [catName, catValue] : *categories) {
+						auto norm = Normalize(catName.str());
 						if (const auto* files = catValue.as_array()) {
-							auto& list = slot.categories[Normalize(catName.str())];
+							auto& list = slot.categories[norm];
 							for (const auto& file : *files) {
 								if (const auto path = file.value<std::string>()) {
 									list.push_back(*path);
@@ -434,8 +435,11 @@ namespace Config
 							}
 						} else if (const auto dir = catValue.value<std::string>()) {
 							// string value = one folder to scan (vs array = file list)
-							slot.categoryDirs[Normalize(catName.str())] = *dir;
+							slot.categoryDirs[norm] = *dir;
+						} else {
+							continue;  // neither form: nothing registered, nothing to name
 						}
+						slot.categoryNames[std::move(norm)] = std::string{ catName.str() };
 					}
 				}
 				if (slot.id.empty() || (slot.root.empty() && slot.categories.empty() && slot.categoryDirs.empty())) {

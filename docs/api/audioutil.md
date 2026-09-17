@@ -12,7 +12,7 @@ All name and key matching (categories, slots, groups, SFX names) is **case- and 
 int Function GetAPIVersion() global native
 ```
 
-API version of the loaded DLL, for compatibility checks. `0` = DLL not installed. Increases only when signatures/behavior change incompatibly. Currently `9` (v2 added `GetSlotVariation`, v3 `GetResolvingSlot`, v4 `GetHandlePath`, v5 captions, v6 the tag-scored natives, v7 `IsGamePaused`, v8 the mouth claims, v9 the PPA penetration site).
+API version of the loaded DLL, for compatibility checks. `0` = DLL not installed. Increases only when signatures/behavior change incompatibly. Currently `10` (v2 added `GetSlotVariation`, v3 `GetResolvingSlot`, v4 `GetHandlePath`, v5 captions, v6 the tag-scored natives, v7 `IsGamePaused`, v8 the mouth claims, v9 the PPA penetration site, v10 the one-call PPA snapshot).
 
 ### `ReloadConfig`
 
@@ -310,9 +310,9 @@ endwhile
 Actors whose form no longer resolves are dropped rather than handed back as `None`, and the list is capped at Papyrus's 128-element array limit — a claim list that long means a mod is looping its claims, which `autest claims` will show you.
 
 !!! tip "From C++"
-    All seven calls are exported for SKSE plugins (`AudioUtil_ClaimMouth`, `AudioUtil_ReleaseMouth`, `AudioUtil_IsMouthClaimed`, `AudioUtil_IsMouthBusy`, `AudioUtil_GetMouthClaimOwner`, `AudioUtil_GetMouthClaimTimeLeft`, `AudioUtil_GetClaimedActors`), resolved at runtime with `GetProcAddress` — no link-time dependency. Feature-detect with `AudioUtil_GetInterfaceVersion() >= 10100`, and null-check the specific pointer you call (an older AudioUtil resolves the old names and leaves these null). `AudioUtil_GetClaimedActors` fills a caller-supplied buffer and returns the **total** claim count, so a return larger than your buffer means it was truncated. See `include/API/AudioUtilAPI.h`.
+    All seven calls are exported for SKSE plugins (`AudioUtil_ClaimMouth`, `AudioUtil_ReleaseMouth`, `AudioUtil_IsMouthClaimed`, `AudioUtil_IsMouthBusy`, `AudioUtil_GetMouthClaimOwner`, `AudioUtil_GetMouthClaimTimeLeft`, `AudioUtil_GetClaimedActors`), resolved at runtime with `GetProcAddress`, with no link-time dependency. Feature-detect with `AudioUtil_GetInterfaceVersion() >= 10100`, and null-check the specific pointer you call (an older AudioUtil resolves the old names and leaves these null). `AudioUtil_GetClaimedActors` fills a caller-supplied buffer and returns the total **resolvable** claim count (claims whose actor form no longer resolves are skipped and counted in neither), so a return larger than your buffer means it was truncated. See `include/API/AudioUtilAPI.h`.
 
-    Unlike the playback exports, the claim calls touch no engine state — `ClaimMouth`, `ReleaseMouth`, `IsMouthClaimed` and `GetMouthClaimOwner` are in-memory work behind one mutex and are safe from **any** thread, which is what a voice mod driving audio off its own worker needs. `IsMouthBusy` is the exception: it reads facegen dialogue data, so call it from the game thread.
+    Unlike the playback exports, the claim calls touch no engine state: `ClaimMouth`, `ReleaseMouth`, `IsMouthClaimed`, `GetMouthClaimOwner` and `GetMouthClaimTimeLeft` are in-memory work on AudioUtil's own state, behind AudioUtil's own mutexes, and are safe from **any** thread, which is what a voice mod driving audio off its own worker needs. (`ClaimMouth` also drops AudioUtil's in-flight lipsync entry for that actor to hand the mouth over, which takes a second AudioUtil mutex - still no engine call, and the two locks are never nested.) `IsMouthBusy` and `GetClaimedActors` are the exceptions: the first reads facegen dialogue data, the second resolves form ids, so call those two from the game thread.
 
 ## Captions
 

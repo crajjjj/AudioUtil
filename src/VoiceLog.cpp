@@ -5,6 +5,7 @@
 
 #include "CaptionManager.h"
 #include "Config.h"
+#include "FolderCache.h"
 
 namespace VoiceLog
 {
@@ -58,9 +59,12 @@ namespace VoiceLog
 			return out;
 		}
 
-		// which slot the folder key came out of, in its configured spelling. The
-		// key is "<normalized slot>/<resolved category>"; FindSlot normalizes both
-		// sides, so a display id comes back when the slot is still configured.
+		// The folder key, back in the spelling its author wrote. The key is
+		// "<normalized slot>/<normalized category>" and normalizing is one-way, so
+		// both halves have to be looked back up: FindSlot recovers the slot id,
+		// DisplayCategory the TOML key or on-disk folder name. Printing the key raw
+		// would defeat the column - an author greps this file for THEIR folder name,
+		// and "penetratedcommentsvictimintense" matches nothing they ever typed.
 		void SplitKey(const std::string& a_key, std::string& a_slot, std::string& a_category)
 		{
 			const auto slash = a_key.find('/');
@@ -70,7 +74,7 @@ namespace VoiceLog
 				return;
 			}
 			a_slot = a_key.substr(0, slash);
-			a_category = a_key.substr(slash + 1);
+			a_category = FolderCache::DisplayCategory(a_key);
 			if (const auto settings = Config::Get()) {
 				if (const auto* slot = Config::FindSlot(*settings, a_slot)) {
 					a_slot = slot->id;

@@ -84,27 +84,38 @@ namespace PPABridge
 			// penetrating themselves — but they are different ACTS, so being
 			// taken and masturbating stay in separate fields rather than merging
 			// into one mask a consumer cannot take apart again.
+			//
+			// `site` is a third-party enum we do not control, so every site that
+			// reaches a consumer is ranged against the values we actually understand
+			// first - see the partner loop below, which this must stay in step with.
+			// A future PPA enumerator would otherwise be published verbatim as a site
+			// ordinal outside the documented 0-7 table, and a consumer's `== site`
+			// ladder falls through silently on an act that IS happening.
+			const auto knownSite = [](PPA::PenetrationSite a_site) {
+				const auto value = static_cast<std::uint32_t>(a_site);
+				return a_site != PPA::PenetrationSite::None &&
+				       value <= static_cast<std::uint32_t>(PPA::PenetrationSite::Hands);
+			};
+
 			float depth = 0.0f;
 			if (a_event->selfInteraction) {
 				depth = std::max(depth, a_event->selfInteraction->penetrationDepth);
-				snapshot.selfSite = static_cast<std::uint8_t>(a_event->selfInteraction->site);
+				if (knownSite(a_event->selfInteraction->site)) {
+					snapshot.selfSite = static_cast<std::uint8_t>(a_event->selfInteraction->site);
+				}
 			}
 			if (a_event->actors) {
 				float deepestPartner = -1.0f;
 				for (std::uint32_t i = 0; i < a_event->actorCount; ++i) {
 					const auto& partner = a_event->actors[i];
 					depth = std::max(depth, partner.penetrationDepth);
-					// `site` is a third-party enum we do not control: a future PPA
-					// enumerator (or a garbage byte) shifted straight into the mask
-					// is a bogus bit at best and UB past 31 at worst, and the
-					// version/size handshake cannot catch an ADDED enumerator. Range
-					// it against the values we actually understand instead.
-					const auto siteValue = static_cast<std::uint32_t>(partner.site);
-					if (partner.site == PPA::PenetrationSite::None ||
-						siteValue > static_cast<std::uint32_t>(PPA::PenetrationSite::Hands)) {
+					// an unknown enumerator (or a garbage byte) shifted straight into
+					// the mask is a bogus bit at best and UB past 31 at worst, and the
+					// version/size handshake cannot catch an ADDED enumerator.
+					if (!knownSite(partner.site)) {
 						continue;
 					}
-					snapshot.siteMask |= 1u << siteValue;
+					snapshot.siteMask |= 1u << static_cast<std::uint32_t>(partner.site);
 					// ">" not ">=": ties keep the first partner, so a steady scene
 					// doesn't flip the reported site between equal-depth partners
 					if (partner.penetrationDepth > deepestPartner) {

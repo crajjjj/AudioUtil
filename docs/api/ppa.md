@@ -6,7 +6,7 @@ The core player API in [AudioUtil](audioutil.md) works independently of this scr
 
 ## How it works
 
-While connected, AudioUtil listens to PPA's interaction events, keeps a **per-receiver snapshot** (depth, context bitmask, opening values) in the DLL, and fires throttled mod events:
+While connected, AudioUtil listens to PPA's interaction events, keeps a **per-receiver snapshot** (depth, context bitmask, penetration sites, opening values) in the DLL, and fires throttled mod events:
 
 | Event | When |
 |-------|------|
@@ -183,3 +183,53 @@ reported separately rather than merged into the mask.
     not state that it follows a mid-scene redirect, nor do they document callback
     frequency. Treat a site as a hint that improves a choice, not as ground truth to
     gate a whole branch on.
+
+### `GetSnapshot`
+
+```papyrus
+float[] Function GetSnapshot(Actor akReceiver) global native
+```
+
+Requires API version **>= 10**; guard with `GetAPIVersion()` on older installs, or
+the call cannot bind.
+
+The whole per-receiver snapshot in **one** call, for a consumer that asks several
+questions about the same moment. A voice scheduler reading depth + context + site
+per line pays three VM round-trips through the scalar getters; this is one. The
+values come from the same cache those getters read, taken together, so the slots
+always describe a single consistent snapshot rather than three reads that could
+straddle a PPA tick.
+
+Returns an **empty array** when there is no measurement - plugin not connected,
+actor unknown, or nothing tracked. That is the same deliberate ambiguity as the
+scalar getters' `0`, so test `length` before reading. Otherwise **7 floats**:
+
+| slot | value | see |
+|---|---|---|
+| `[0]` | depth | [`GetDepth`](#getdepth) |
+| `[1]` | context bitmask | [`GetContext`](#getcontext) |
+| `[2]` | penetration site ordinal | [`GetPenetrationSite`](#getpenetrationsite-getpenetrationsites-getselfpenetrationsite) |
+| `[3]` | sites bitmask | [`GetPenetrationSites`](#getpenetrationsite-getpenetrationsites-getselfpenetrationsite) |
+| `[4]` | self-penetration site | [`GetSelfPenetrationSite`](#getpenetrationsite-getpenetrationsites-getselfpenetrationsite) |
+| `[5]` | vaginal opening | [`GetVaginalOpening`](#getvaginalopening-getanalopening) - magic number |
+| `[6]` | anal opening | [`GetAnalOpening`](#getvaginalopening-getanalopening) - magic number |
+
+The layout is **append-only**: a later version may add slots, but these never move.
+
+The int-valued slots are exact - their ranges sit far below float's `2^24` integer
+ceiling - so cast back with `as int` before any bit test:
+
+```papyrus
+float[] snap = AudioUtilPPA.GetSnapshot(actorref)
+if snap.length > 0
+    int ctx   = snap[1] as int
+    int site  = snap[2] as int
+    bool anal = Math.LogicalAnd(ctx, 2) == 2 && snap[0] > 0.0
+endif
+```
+
+!!! tip "One call or several?"
+    Reading a single field stays cheaper through its scalar getter. Reach for
+    `GetSnapshot` from the second field onward - and always when the fields must
+    agree with each other, since the scalar getters are separate reads of a cache
+    PPA refreshes every tick.

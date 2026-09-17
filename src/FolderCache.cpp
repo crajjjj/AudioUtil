@@ -41,6 +41,13 @@ namespace FolderCache
 		{
 			std::vector<Pool> pools;  // invariant: pools[0] exists and has tags == 0
 
+			// this folder in its authored spelling: the TOML category key, the on-disk
+			// folder name for a scanned category, the [sfx] name, or the data-relative
+			// path for a PlayFolder dir key. The folder KEY is normalized and
+			// normalizing is one-way, so this is the only place the spelling an author
+			// greps for survives - see DisplayCategory.
+			std::string display;
+
 			Folder() { pools.emplace_back(); }
 
 			Pool& PoolFor(Tags::Mask a_tags)
@@ -148,13 +155,14 @@ namespace FolderCache
 		// scan one directory (non-recursive, no tag semantics) into g_folders
 		// under a_key — for [sfx] folders and PlayFolder dir keys. Caller holds g_lock.
 		bool ScanDir(const std::string& a_key, const std::filesystem::path& a_dir,
-			const std::filesystem::path& a_dataRoot)
+			const std::filesystem::path& a_dataRoot, std::string_view a_display)
 		{
 			std::error_code ec;
 			if (!std::filesystem::is_directory(a_dir, ec)) {
 				return false;
 			}
 			Folder folder;
+			folder.display = std::string{ a_display };
 			std::size_t unmappable = 0;
 			for (const auto& entry : std::filesystem::directory_iterator(a_dir, ec)) {
 				if (entry.is_regular_file(ec) && IsAudioFile(entry.path())) {
@@ -230,13 +238,14 @@ namespace FolderCache
 		// one axis) is EXCLUDED — a bad tag must degrade to silence-with-a-log,
 		// never to playing in the wrong context. Caller holds g_lock.
 		bool ScanCategoryDir(const std::string& a_key, const std::filesystem::path& a_dir,
-			const std::filesystem::path& a_dataRoot)
+			const std::filesystem::path& a_dataRoot, std::string_view a_display)
 		{
 			std::error_code ec;
 			if (!std::filesystem::is_directory(a_dir, ec)) {
 				return false;
 			}
 			Folder folder;
+			folder.display = std::string{ a_display };
 			std::size_t unmappable = 0;
 			// no [tags] vocabulary loaded = the tag layer is dormant: ignore
 			// subfolders and tag carriers entirely (exactly the pre-tags scan),
@@ -375,6 +384,13 @@ namespace FolderCache
 			// how many category folders THIS slot contributed (explicit + scanned).
 			// Used below to flag a pack slot whose `path` exists but scanned empty.
 			std::size_t slotFolders = 0;
+			// the spelling the author wrote for a normalized category, for the voice
+			// log's benefit; the normalized key itself when the slot never named it.
+			const auto authored = [&slot](const std::string& a_category) -> std::string {
+				const auto it = slot.categoryNames.find(a_category);
+				return it != slot.categoryNames.end() ? it->second : a_category;
+			};
+
 			// explicit [slot.categories] first: trusted as-is (no filesystem check,
 			// so they can point at BSA-packed audio the engine resolves at play time)
 			for (const auto& [category, files] : slot.categories) {
@@ -389,6 +405,7 @@ namespace FolderCache
 				// explicit lists are untagged (pool 0): they're the BSA-capable hand-
 				// written form, and a BSA path has no scannable tag carriers anyway
 				Folder folder;
+				folder.display = authored(category);
 				folder.pools[0].files.reserve(files.size());
 				for (auto file : files) {
 					std::replace(file.begin(), file.end(), '/', '\\');
@@ -419,7 +436,7 @@ namespace FolderCache
 						slot.id, category, folder);
 					continue;
 				}
-				if (ScanCategoryDir(key, dir, dataRoot)) {
+				if (ScanCategoryDir(key, dir, dataRoot, authored(category))) {
 					++voiceFolders;
 					++slotFolders;
 				} else {
@@ -453,7 +470,7 @@ namespace FolderCache
 						slot.id, category, catName);
 					continue;
 				}
-				if (ScanCategoryDir(key, entry.path(), dataRoot)) {
+				if (ScanCategoryDir(key, entry.path(), dataRoot, catName)) {
 					++voiceFolders;
 					++slotFolders;
 				}
@@ -483,7 +500,7 @@ namespace FolderCache
 			// [sfx] values are full Data-relative paths, same as slot paths
 			std::filesystem::path dir = dataRoot / folder;
 			const auto key = "sfx/" + name;
-			if (ScanDir(key, dir, dataRoot)) {
+			if (ScanDir(key, dir, dataRoot, name)) {
 				++sfxFolders;
 			} else {
 				logger::warn("SFX '{}': no audio files in {}", name, dir.string());
@@ -941,7 +958,7 @@ namespace FolderCache
 		std::scoped_lock lock{ g_lock };
 		if (!HasKey(key)) {
 			const auto dataRoot = DataRoot();
-			if (!ScanDir(key, dataRoot / cleaned, dataRoot)) {
+			if (!ScanDir(key, dataRoot / cleaned, dataRoot, cleaned)) {
 				if (!g_missLogged[key]) {
 					g_missLogged[key] = true;
 					logger::warn("PlayFolder: no audio files in {}", cleaned);
@@ -1023,6 +1040,12 @@ namespace FolderCache
 		Tags::Mask* a_poolTags, bool* a_descended)
 	{
 		std::scoped_lock lock{ g_lock };
+		// both out-params are defined on EVERY path, including the misses below - a
+		// caller that reads them after an empty return gets "untagged floor, did not
+		// descend", never whatever was in its variable.
+		if (a_poolTags) {
+			*a_poolTags = 0;
+		}
 		if (a_descended) {
 			*a_descended = false;
 		}
@@ -1106,6 +1129,21 @@ namespace FolderCache
 			RefillDeck(*leader);
 		}
 		return file;
+	}
+
+	std::string DisplayCategory(const std::string& a_folderKey)
+	{
+		// the key's own category half is the fallback, so an unknown key still reads
+		// as something rather than blank - it is just normalized, as it always was.
+		const auto slash = a_folderKey.find('/');
+		auto       fallback = slash == std::string::npos ? a_folderKey : a_folderKey.substr(slash + 1);
+
+		std::scoped_lock lock{ g_lock };
+		const auto       it = g_folders.find(a_folderKey);
+		if (it == g_folders.end() || it->second.display.empty()) {
+			return fallback;
+		}
+		return it->second.display;
 	}
 
 	int FileCount(const std::string& a_folderKey)

@@ -45,6 +45,32 @@ namespace MouthClaim
 			}
 			return &slots;
 		}
+
+		// the live claim that expires LAST, which is the one every single-answer query
+		// reports (a second mod's claim never displaces the first, so "who holds this
+		// mouth" is the furthest deadline). null when nothing holds it. Caller holds g_lock.
+		const Slot* FurthestLocked(RE::FormID a_actorID,
+			std::chrono::steady_clock::time_point a_now)
+		{
+			const auto* slots = SweepLocked(a_actorID, a_now);
+			if (!slots) {
+				return nullptr;
+			}
+			return &*std::max_element(slots->begin(), slots->end(),
+				[](const Slot& a, const Slot& b) { return a.deadline < b.deadline; });
+		}
+
+		// SweepLocked across the WHOLE map, for the two listing queries. Expiry lives
+		// in one place on purpose: four hand-rolled sweeps were four places to forget,
+		// and one forgotten leaves two queries reporting a claim the others dropped.
+		// Caller holds g_lock.
+		void SweepAllLocked(std::chrono::steady_clock::time_point a_now)
+		{
+			for (auto it = g_claims.begin(); it != g_claims.end();) {
+				std::erase_if(it->second, [&](const Slot& s) { return s.deadline <= a_now; });
+				it = it->second.empty() ? g_claims.erase(it) : std::next(it);
+			}
+		}
 	}
 
 	void Claim(RE::Actor* a_actor, float a_seconds, std::string_view a_owner)
@@ -119,12 +145,10 @@ namespace MouthClaim
 			return {};
 		}
 		std::scoped_lock lock{ g_lock };
-		const auto*      slots = SweepLocked(a_actor->GetFormID(), std::chrono::steady_clock::now());
-		if (!slots) {
+		const auto*      furthest = FurthestLocked(a_actor->GetFormID(), std::chrono::steady_clock::now());
+		if (!furthest) {
 			return {};
 		}
-		const auto furthest = std::max_element(slots->begin(), slots->end(),
-			[](const Slot& a, const Slot& b) { return a.deadline < b.deadline; });
 		// an anonymous claim (empty owner key) is still a claim - report it as the
 		// same placeholder Describe() prints, so an empty return means UNCLAIMED and
 		// nothing else. Callers use "" as their "nobody holds this mouth" test.
@@ -138,12 +162,10 @@ namespace MouthClaim
 		}
 		const auto       now = std::chrono::steady_clock::now();
 		std::scoped_lock lock{ g_lock };
-		const auto*      slots = SweepLocked(a_actor->GetFormID(), now);
-		if (!slots) {
+		const auto*      furthest = FurthestLocked(a_actor->GetFormID(), now);
+		if (!furthest) {
 			return 0.0f;
 		}
-		const auto furthest = std::max_element(slots->begin(), slots->end(),
-			[](const Slot& a, const Slot& b) { return a.deadline < b.deadline; });
 		const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
 			furthest->deadline - now).count();
 		return static_cast<float>(ms) / 1000.0f;
@@ -153,16 +175,11 @@ namespace MouthClaim
 	{
 		const auto              now = std::chrono::steady_clock::now();
 		std::scoped_lock        lock{ g_lock };
+		SweepAllLocked(now);
 		std::vector<RE::FormID> out;
 		out.reserve(g_claims.size());
-		for (auto it = g_claims.begin(); it != g_claims.end();) {
-			std::erase_if(it->second, [&](const Slot& s) { return s.deadline <= now; });
-			if (it->second.empty()) {
-				it = g_claims.erase(it);
-				continue;
-			}
-			out.push_back(it->first);
-			++it;
+		for (const auto& entry : g_claims) {
+			out.push_back(entry.first);
 		}
 		return out;
 	}
@@ -186,21 +203,16 @@ namespace MouthClaim
 	{
 		const auto       now = std::chrono::steady_clock::now();
 		std::scoped_lock lock{ g_lock };
-		std::string      out;
-		for (auto it = g_claims.begin(); it != g_claims.end();) {
-			std::erase_if(it->second, [&](const Slot& s) { return s.deadline <= now; });
-			if (it->second.empty()) {
-				it = g_claims.erase(it);
-				continue;
-			}
-			for (const auto& slot : it->second) {
+		SweepAllLocked(now);
+		std::string out;
+		for (const auto& [actorID, slots] : g_claims) {
+			for (const auto& slot : slots) {
 				const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
 					slot.deadline - now).count();
-				out += std::format("{:08X} '{}' {:.1f}s\n", it->first,
+				out += std::format("{:08X} '{}' {:.1f}s\n", actorID,
 					slot.display.empty() ? kAnonymousOwner : std::string_view{ slot.display },
 					static_cast<float>(left) / 1000.0f);
 			}
-			++it;
 		}
 		return out.empty() ? "no live mouth claims" : out;
 	}

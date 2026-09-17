@@ -25,6 +25,12 @@ namespace Config
 		// files only - BSA-packed audio needs the file-list form above.
 		std::unordered_map<std::string, std::string> categoryDirs;
 
+		// normalized category -> the spelling the author actually wrote in the TOML,
+		// for both maps above. Normalizing is one-way (it strips case and spacing),
+		// but the voice log is a transcript pack authors grep against their own
+		// folder/key names, so the authored spelling has to survive the scan.
+		std::unordered_map<std::string, std::string> categoryNames;
+
 		// optional slot consulted per-category when this slot resolves a
 		// category to nothing - lets a scanned pack slot backfill from a stock
 		// slot (chains allowed, capped at 4 hops)
