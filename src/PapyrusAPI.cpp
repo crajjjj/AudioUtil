@@ -27,7 +27,7 @@ namespace PapyrusAPI
 		constexpr auto PPA_SCRIPT_NAME = "AudioUtilPPA";
 		constexpr auto TOML_SCRIPT_NAME = "TomlUtil";
 		constexpr auto TEST_SCRIPT_NAME = "AudioUtilTest";  // debug/calibration natives only
-		constexpr std::int32_t API_VERSION = 9;  // v9: PPA penetration site (v8: mouth claims + listing)
+		constexpr std::int32_t API_VERSION = 10;  // v10: PPA one-call snapshot (v9: penetration site, v8: mouth claims)
 
 		using VM = RE::BSScript::IVirtualMachine;
 
@@ -919,6 +919,34 @@ namespace PapyrusAPI
 			return snapshot ? snapshot->anusOpening : 0.0f;
 		}
 
+		// The whole per-receiver snapshot in ONE call (API v10) — for a consumer
+		// that asks several questions about one moment (a voice scheduler reads
+		// depth + context + site per spoken line; separate natives are separate
+		// VM round-trips into the same mutex-guarded map). Empty array = no
+		// measurement (not connected, actor unknown, nothing tracked) — the same
+		// deliberate ambiguity as the scalar getters' 0. All slots float; the
+		// integer fields are exact (their ranges sit far below float's 2^24
+		// integer ceiling). Layout is append-only, mirrored in AudioUtilPPA.psc:
+		//   [0] depth  [1] context bitmask  [2] penetration site
+		//   [3] sites bitmask  [4] self-penetration site
+		//   [5] vaginal opening  [6] anal opening
+		std::vector<float> GetSnapshot(RE::StaticFunctionTag*, RE::Actor* a_receiver)
+		{
+			const auto snapshot = PPABridge::GetFor(a_receiver);
+			if (!snapshot) {
+				return {};
+			}
+			return {
+				snapshot->depth,
+				static_cast<float>(snapshot->context),
+				static_cast<float>(snapshot->site),
+				static_cast<float>(snapshot->siteMask),
+				static_cast<float>(snapshot->selfSite),
+				snapshot->vaginalOpening,
+				snapshot->anusOpening
+			};
+		}
+
 		// ---------- natives: debug ----------
 
 		std::int32_t DebugPlayFile(RE::StaticFunctionTag*, RE::BSFixedString a_path,
@@ -1296,6 +1324,7 @@ namespace PapyrusAPI
 		REGISTERFUNC(GetSelfPenetrationSite, PPA_SCRIPT_NAME);
 		REGISTERFUNC(GetVaginalOpening, PPA_SCRIPT_NAME);
 		REGISTERFUNC(GetAnalOpening, PPA_SCRIPT_NAME);
+		REGISTERFUNC(GetSnapshot, PPA_SCRIPT_NAME);
 		a_vm->RegisterFunction("GetAPIVersion"sv, TOML_SCRIPT_NAME, Toml::GetAPIVersion, true);
 		a_vm->RegisterFunction("GetInt"sv, TOML_SCRIPT_NAME, Toml::GetInt, true);
 		a_vm->RegisterFunction("GetFloat"sv, TOML_SCRIPT_NAME, Toml::GetFloat, true);

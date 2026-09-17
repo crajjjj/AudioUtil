@@ -183,3 +183,32 @@ int Function GetPenetrationSites(Actor akReceiver) global native
 ; taken by a partner and doing it yourself are never merged into one answer.
 ; 0 for most actors. Same value table.
 int Function GetSelfPenetrationSite(Actor akReceiver) global native
+
+; The whole per-receiver snapshot in ONE call (AudioUtil API v10) - for a
+; consumer that asks several questions about the same moment. A voice scheduler
+; reading depth + context + site per line pays three VM round-trips through the
+; scalar getters above; this is one. The values are the same cache the scalar
+; getters read, taken together, so the slots always describe one snapshot.
+;
+; Returns an EMPTY array when there is no measurement - plugin not connected,
+; actor unknown, or nothing tracked - the same deliberate ambiguity as the
+; scalar getters' 0. Test arr.length before reading. Otherwise 7 floats
+; (append-only layout - later versions may add slots, never move these):
+;
+;   [0] depth                     (see GetDepth)
+;   [1] context bitmask           (see GetContext - decompose with LogicalAnd)
+;   [2] penetration site ordinal  (see GetPenetrationSite)
+;   [3] sites bitmask             (see GetPenetrationSites)
+;   [4] self-penetration site     (see GetSelfPenetrationSite)
+;   [5] vaginal opening           (see GetVaginalOpening - magic number)
+;   [6] anal opening              (see GetAnalOpening - magic number)
+;
+; The int-valued slots are exact (their ranges sit far below float's 2^24
+; integer ceiling); cast back with `as int` before bit tests:
+;
+;   float[] snap = AudioUtilPPA.GetSnapshot(actorref)
+;   if snap.length > 0
+;       int ctx = snap[1] as int
+;       int site = snap[2] as int
+;   endif
+float[] Function GetSnapshot(Actor akReceiver) global native
