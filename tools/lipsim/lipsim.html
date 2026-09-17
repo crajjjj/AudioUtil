@@ -127,7 +127,8 @@
       <div class="row"><label>closure strength</label><input type="range" id="p_close" min="0" max="1" step="0.05" value="0.85"><span class="val"></span></div>
       <div class="row"><label>speechiness</label><input type="range" id="p_speech" min="0" max="1" step="0.05" value="0.30"><span class="val"></span></div>
       <div class="row"><label>jaw base</label><input type="range" id="p_jawBase" min="0" max="1" step="0.05" value="0.5"><span class="val"></span></div>
-      <div class="row"><label>lip jaw boost</label><input type="range" id="p_lipJawBoost" min="0" max="1" step="0.05" value="0"><span class="val"></span></div>
+      <div class="row"><label>lip jaw boost</label><input type="range" id="p_lipJawBoost" min="0" max="1" step="0.05" value="0.5"><span class="val"></span></div>
+      <div class="row"><label>frame interpolation</label><input type="range" id="p_frameInterp" min="0" max="1" step="0.05" value="0.30"><span class="val"></span></div>
       <div class="row"><label>attack_ms</label><input type="range" id="p_attack" min="5" max="200" step="5" value="30"><span class="val"></span></div>
       <div class="row"><label>release_ms</label><input type="range" id="p_release" min="5" max="400" step="5" value="90"><span class="val"></span></div>
       <div class="row"><label>seed variant</label><input type="range" id="p_variant" min="0" max="9" step="1" value="0"><span class="val"></span></div>
@@ -206,6 +207,9 @@ const MODIFIERS = ["BlinkL","BlinkR","BrowDnL","BrowDnR","BrowInL","BrowInR","Br
                    "LookDn","LookL","LookR","LookUp","SquintL","SquintR","HeadPitch","HeadRoll","HeadYaw"];
 const CHANNELS = 33, PHONEME_CHANNELS = 16, FPS = 30, STRIDE = 33;
 const PH = Object.fromEntries(PHONEMES.map((n, i) => [n, i]));
+// mirrors LipData::g_frameInterp ([lipsync] frame_interpolation, game default 0.3)
+let g_frameInterp = 0.3;
+const setFrameInterp = v => { g_frameInterp = Math.min(1, Math.max(0, +v || 0)); };
 
 function makeAnim(frames) {
   const values = Array.from({ length: CHANNELS }, () => null);  // null = resting channel
@@ -216,7 +220,11 @@ function makeAnim(frames) {
       if (!s || t < 0) return 0;
       const pos = t * FPS, i = Math.floor(pos);
       if (i + 1 >= s.length) return i < s.length ? s[i] : 0;
-      return s[i] + (s[i + 1] - s[i]) * (pos - i);
+      // mirrors LipData::Anim::Sample ([lipsync] frame_interpolation): 0 holds
+      // each 30 fps frame, 1 fully lerps, between travels that fraction of the
+      // delta inside the frame and steps the rest at the boundary
+      if (g_frameInterp <= 0) return s[i];  // hold: the frame's value plays verbatim
+      return s[i] + (s[i + 1] - s[i]) * (pos - i) * g_frameInterp;
     },
     hasModifiers() {
       for (let ch = PHONEME_CHANNELS; ch < CHANNELS; ch++)
@@ -557,6 +565,7 @@ const params = () => ({
   attackMs: +$("p_attack").value, releaseMs: +$("p_release").value,
   gain: +$("p_gain").value, variant: +$("p_variant").value, speechiness: +$("p_speech").value,
   jawBase: +$("p_jawBase").value, lipJawBoost: +$("p_lipJawBoost").value,
+  frameInterp: +$("p_frameInterp").value,
 });
 
 /* ---------- file loading ---------- */
@@ -781,6 +790,7 @@ function activeMode() {
 
 function rebuild() {
   const p = params();
+  setFrameInterp(p.frameInterp);
   const mode = activeMode();
   updateModeBtns();
   state.activeAnim = null;
@@ -932,11 +942,14 @@ function renderTimeline() {
     const data = state.audio.buffer.getChannelData(0);
     tctx.strokeStyle = "#3d5a80";
     tctx.beginPath();
+    // dur is max(anim, audio), so a lip longer than its wav must leave the
+    // tail of the lane empty rather than stretch the wave across it
+    const durRatio = dur / state.audio.buffer.duration;
     for (let x = 0; x < plotW; x++) {
-      const s0 = Math.floor(x / plotW * (state.audio.buffer.duration / dur) * data.length);
-      const s1 = Math.floor((x + 1) / plotW * (state.audio.buffer.duration / dur) * data.length);
+      const s0 = Math.min(Math.floor(x / plotW * durRatio * data.length), data.length);
+      const s1 = Math.min(Math.floor((x + 1) / plotW * durRatio * data.length), data.length);
       let lo = 0, hi = 0;
-      for (let s = s0; s < Math.min(s1, data.length); s += 8) { lo = Math.min(lo, data[s]); hi = Math.max(hi, data[s]); }
+      for (let s = s0; s < s1; s += 8) { lo = Math.min(lo, data[s]); hi = Math.max(hi, data[s]); }
       tctx.moveTo(labelW + x + 0.5, ruler + waveH / 2 - hi * waveH * 0.48);
       tctx.lineTo(labelW + x + 0.5, ruler + waveH / 2 - lo * waveH * 0.48);
     }
@@ -2121,7 +2134,8 @@ window.addEventListener("keydown", e => {
 
 // ---------- settings persistence ----------
 const PERSIST_SLIDERS = ["p_minLevel", "p_voicedFloor", "p_valley", "p_minSyl", "p_gap",
-                         "p_close", "p_speech", "p_jawBase", "p_lipJawBoost", "p_attack", "p_release", "p_variant", "p_gain"];
+                         "p_close", "p_speech", "p_jawBase", "p_lipJawBoost", "p_frameInterp",
+                         "p_attack", "p_release", "p_variant", "p_gain"];
 const PERSIST_CHECKS = ["flipV", "driveMods", "showMods", "loop"];
 function saveSettings() {
   const s = { rate: state.rate, mode: state.mode, pseudoOpen: $("pseudoDetails").open };
@@ -2197,6 +2211,7 @@ const PSEUDO_HINTS = {
   p_gap: "silence (30 fps frames) that earns a lip closure before the next syllable — 5 ≈ 165 ms; lower = close on every pause, higher = only between phrases",
   p_close: "how firmly the lips press shut between moans (BMP peak, 0–1)",
   p_speech: "0 = open-mouth MOAN vowels only (Aah/Oh/Ooh/Eh/Eee/I); 1 = full 16-phoneme SPEECH palette (adds N/D/T/K/R/F/Th/Sh consonants) weighted by real vanilla lips. Raise for spoken lines, keep low for moans",
+  p_frameInterp: "LIP + PSEUDO: how far a value travels toward the next 30 fps frame inside the current one. 0 = stepped playback (hold each frame), 1 = full lerp (smooth). The game defaults to 0.3 - whether the ENGINE lerps or steps its own lip playback is unverified, so this is the A/B knob",
   p_lipJawBoost: "LIP MODE (.lip/.fuz curves): drive the jaw with this fraction of the frame's strongest channel - authored speech holds the jaw low ~80% of the time, so accurate lips read closed at game distance. 0 = verbatim",
   p_jawBase: "continuous Aah under-layer — this fraction of the envelope always drives the jaw beneath the vowel picks. 0 = vowels replace the jaw entirely (mouth can sit still on narrow vowels); higher = steadier envelope-style jaw",
   p_attack: "how fast the mouth opens toward a louder level — lower = snappier onsets",
@@ -2346,7 +2361,8 @@ pseudo_gap_frames = ${p.gapFrames}
 pseudo_closure = ${p.close}
 pseudo_speechiness = ${p.speechiness}
 pseudo_jaw_base = ${p.jawBase}
-lip_jaw_boost = ${p.lipJawBoost}`;
+lip_jaw_boost = ${p.lipJawBoost}
+frame_interpolation = ${p.frameInterp}`;
   navigator.clipboard.writeText(text).then(() => setStatus("constants copied to clipboard"));
 });
 
