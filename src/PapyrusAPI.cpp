@@ -656,14 +656,17 @@ namespace PapyrusAPI
 			return slot ? slot->id.c_str() : "";
 		}
 
-		// Optional per-slot schema label: "B" for a pack using the alternate
-		// folder/category layout, "A" otherwise (default, and for unknown slots).
+		// Optional per-slot schema label, exactly as Config parsed it: "A", "B" or
+		// "D" ("A" for a slot that doesn't set it, and for an unknown slot id).
 		// AudioUtil does not interpret it - consumers gate their own routing on it.
+		// Config already normalizes the value, so hand it back verbatim: a previous
+		// build clamped it to A/B here, so a "D" pack read back as "A" and its
+		// consumer routed every line down the A layout (fixed 0.9.24).
 		RE::BSFixedString GetSlotVariation(RE::StaticFunctionTag*, RE::BSFixedString a_slot)
 		{
 			const auto settings = Config::Get();
 			const auto* slot = Config::FindSlot(*settings, a_slot.c_str());
-			return (slot && slot->variation == "B") ? "B" : "A";
+			return slot ? slot->variation.c_str() : "A";
 		}
 
 		std::int32_t GetCategoryFileCount(RE::StaticFunctionTag*, RE::BSFixedString a_slot,

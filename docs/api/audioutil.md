@@ -375,7 +375,7 @@ Which slot id `PlayVoice` would resolve for this actor right now (`"M4"`, `"F1"`
 string Function GetSlotVariation(string slot) global native
 ```
 
-The optional [`variation`](../config/reference.md#slot) schema label a slot declares: `"B"` for a pack using the alternate folder/category layout, `"A"` otherwise (default, and for an unknown slot id). **AudioUtil does not interpret it** — it exists only so a consumer whose packs ship in more than one layout can read it per resolved slot (usually via `GetSlotForActor` first) and gate its own category routing. Returns `"A"` for any slot that doesn't set it.
+The optional [`variation`](../config/reference.md#slot) schema label a slot declares, as parsed: `"B"` for a pack using the alternate folder/category layout, `"D"` for the tagged layout, `"A"` otherwise (default, and for an unknown slot id). **AudioUtil does not interpret it**: it exists only so a consumer whose packs ship in more than one layout can read it per resolved slot (usually via `GetSlotForActor` first) and gate its own category routing. Returns `"A"` for any slot that doesn't set it. Before 0.9.24 the native clamped the value to `"A"`/`"B"`, so a `"D"` slot read back as `"A"`.
 
 ### `GetCategoryFileCount`
 
