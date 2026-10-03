@@ -937,7 +937,14 @@ namespace PapyrusAPI
 		{
 			const auto snapshot = PPABridge::GetFor(a_receiver);
 			if (!snapshot) {
-				return {};
+				// all zeros, never an empty vector: a zero-length result reaches the VM as a
+				// None-typed value (CommonLib's PackValue leaves the Variable None when the
+				// engine refuses the zero-length CreateArray) and the calling script then logs
+				// "Cannot cast from None to Float[]" on every call - SLO VE saw ~100 a session
+				// on its female-partner lines, each one a partner PPA was not tracking. Zeros
+				// read exactly like the scalar getters' nothing-measured (depth 0, site 0,
+				// context 0), so the one-call contract stays "test the slots".
+				return std::vector<float>(7, 0.0f);
 			}
 			return {
 				snapshot->depth,

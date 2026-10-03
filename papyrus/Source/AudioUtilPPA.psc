@@ -190,10 +190,13 @@ int Function GetSelfPenetrationSite(Actor akReceiver) global native
 ; scalar getters above; this is one. The values are the same cache the scalar
 ; getters read, taken together, so the slots always describe one snapshot.
 ;
-; Returns an EMPTY array when there is no measurement - plugin not connected,
-; actor unknown, or nothing tracked - the same deliberate ambiguity as the
-; scalar getters' 0. Test arr.length before reading. Otherwise 7 floats
-; (append-only layout - later versions may add slots, never move these):
+; Always 7 floats (append-only layout - later versions may add slots, never
+; move these). With no measurement - plugin not connected, actor unknown, or
+; nothing tracked - every slot is 0, the same deliberate ambiguity as the
+; scalar getters' 0. (0.9.24 and earlier returned an EMPTY array instead; the
+; VM received that as None and logged "Cannot cast from None to Float[]" in
+; the calling script on every call, so keep an arr.length guard if you still
+; support those builds - it is harmless on this one.)
 ;
 ;   [0] depth                     (see GetDepth)
 ;   [1] context bitmask           (see GetContext - decompose with LogicalAnd)

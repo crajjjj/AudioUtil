@@ -200,9 +200,11 @@ values come from the same cache those getters read, taken together, so the slots
 always describe a single consistent snapshot rather than three reads that could
 straddle a PPA tick.
 
-Returns an **empty array** when there is no measurement - plugin not connected,
-actor unknown, or nothing tracked. That is the same deliberate ambiguity as the
-scalar getters' `0`, so test `length` before reading. Otherwise **7 floats**:
+Always **7 floats**. With no measurement - plugin not connected, actor unknown, or
+nothing tracked - every slot is `0`, the same deliberate ambiguity as the scalar
+getters' `0`. (Before 0.9.25 the native returned an **empty array** instead, which
+reached Papyrus as `None` and logged `Cannot cast from None to Float[]` in the
+caller on every call; a `length` guard stays harmless on either build.)
 
 | slot | value | see |
 |---|---|---|
