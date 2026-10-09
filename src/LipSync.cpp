@@ -51,7 +51,18 @@ namespace LipSync
 			}
 		};
 
-		std::unordered_map<std::string, std::shared_ptr<const Envelope>> g_envelopeCache;
+		// One parsed file, with the size and write time of the bytes it was read
+		// from. A path is not a stable identity: a plugin that generates audio
+		// rewrites a placeholder wav between plays (the trick FuzSlots uses), and
+		// the mouth has to follow the audio that is in the file now.
+		struct CachedEnvelope
+		{
+			std::shared_ptr<const Envelope> envelope;  // nullptr = known miss
+			std::uintmax_t                  size = 0;
+			std::filesystem::file_time_type written{};
+		};
+
+		std::unordered_map<std::string, CachedEnvelope> g_envelopeCache;
 		std::mutex g_envelopeLock;
 
 		template <class T>
@@ -194,13 +205,21 @@ namespace LipSync
 
 		std::shared_ptr<const Envelope> GetEnvelope(const std::string& a_dataRelPath)
 		{
+			const auto file = std::filesystem::current_path() / "Data" / a_dataRelPath;
+			// a cached entry only counts while the file is the one it was read from;
+			// a missing file reads as the same (error) pair every time, so a known
+			// miss stays cached until the file appears
+			std::error_code ec;
+			const auto      size = std::filesystem::file_size(file, ec);
+			const auto      written = std::filesystem::last_write_time(file, ec);
 			{
 				std::scoped_lock lock{ g_envelopeLock };
-				if (const auto it = g_envelopeCache.find(a_dataRelPath); it != g_envelopeCache.end()) {
-					return it->second;
+				if (const auto it = g_envelopeCache.find(a_dataRelPath);
+					it != g_envelopeCache.end() && it->second.size == size && it->second.written == written) {
+					return it->second.envelope;
 				}
 			}
-			auto envelope = ParseWav(std::filesystem::current_path() / "Data" / a_dataRelPath);
+			auto envelope = ParseWav(file);
 			if (!envelope) {
 				logger::debug("LipSync: no readable PCM wav at '{}' — skipping", a_dataRelPath);
 			}
@@ -209,7 +228,7 @@ namespace LipSync
 				g_envelopeCache.clear();
 			}
 			// negative results are cached too (nullptr): don't re-parse known misses
-			g_envelopeCache[a_dataRelPath] = envelope;
+			g_envelopeCache[a_dataRelPath] = CachedEnvelope{ envelope, size, written };
 			return envelope;
 		}
 
