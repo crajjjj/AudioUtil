@@ -110,6 +110,7 @@ namespace CaptionManager
 			std::chrono::steady_clock::time_point createdAt;
 			bool audible = false;   // the stream was seen playing at least once
 			bool stopped = false;   // early-stop notification arrived
+			bool done = false;      // the line is over; swept at the end of the pass
 			bool injected = false;  // our SubtitleInfo currently sits in the manager
 		};
 
@@ -126,12 +127,12 @@ namespace CaptionManager
 		std::once_flag    g_tickerOnce;
 		std::condition_variable& g_cv = *new std::condition_variable();  // leaked, see g_entries
 
-		// game thread only; takes the manager's spin lock itself
+		// game thread only; caller holds the manager's spin lock
 		void Inject(RE::SubtitleManager* a_manager, const Entry& a_entry)
 		{
-			// real player->speaker distance (at inject time), so overlapping
-			// captions resolve by the engine's own "closest speaker wins" rule —
-			// in a scene that's normally the actor the player is looking at.
+			// real player->speaker distance (at inject time), so captions of
+			// different actors resolve by the engine's own "closest speaker wins"
+			// rule: in a scene that's normally the actor the player is looking at.
 			// The player's own lines get 0: the PC wins ties over partners.
 			float distance = 0.0f;
 			const auto speakerPtr = a_entry.speaker.get();
@@ -140,7 +141,6 @@ namespace CaptionManager
 				distance = player->GetPosition().GetDistance(speakerPtr->GetPosition());
 			}
 
-			RE::BSSpinLockGuard guard{ a_manager->lock };
 			RE::SubtitleInfo info;
 			info.speaker = a_entry.speaker;
 			info.pad04 = 0;
@@ -152,18 +152,20 @@ namespace CaptionManager
 			a_manager->subtitles.push_back(info);
 		}
 
-		// game thread: tell the HUD to drop the subtitle it is showing (the same
-		// message the engine sends when a line ends)
-		void HideHudSubtitle()
+		// game thread: ask the HUD to drop the subtitle it is showing. The message
+		// is the one powerof3's Floating Subtitles sends for the same purpose,
+		// `show` included (whether the handler reads it is not known). False when
+		// it could not be queued.
+		bool HideHudSubtitle()
 		{
 			auto* queue = RE::UIMessageQueue::GetSingleton();
 			auto* strings = RE::InterfaceStrings::GetSingleton();
 			if (!queue || !strings) {
-				return;
+				return false;
 			}
 			auto* data = static_cast<RE::HUDData*>(queue->CreateUIMessageData(strings->hudData));
 			if (!data) {
-				return;
+				return false;
 			}
 			auto type = RE::HUD_MESSAGE_TYPE::kHideSubtitle;
 #ifdef ENABLE_SKYRIM_VR
@@ -172,67 +174,105 @@ namespace CaptionManager
 			data->type = type;
 			data->show = true;
 			queue->AddMessage(strings->hudMenu, RE::UI_MESSAGE_TYPE::kUpdate, data);
+			return true;
 		}
 
-		// remove OUR entry: match speaker + exact text; first hit only, so an
-		// overlapping identical line (same actor, same pick) keeps its own copy
-		void RemoveInjected(RE::SubtitleManager* a_manager, const Entry& a_entry)
+		// caller holds the manager's spin lock. Remove OUR entry: match speaker +
+		// exact text, first hit only. False when it was already gone.
+		bool EraseInjected(RE::SubtitleManager* a_manager, const Entry& a_entry)
 		{
-			RE::BSSpinLockGuard guard{ a_manager->lock };
 			auto& subtitles = a_manager->subtitles;
 			for (auto it = subtitles.begin(); it != subtitles.end(); ++it) {
 				if (it->speaker.native_handle() == a_entry.speaker.native_handle() &&
 					std::string_view(it->subtitle.c_str()) == std::string_view(a_entry.text)) {
 					subtitles.erase(it);
-					// The engine tracks the HUD subtitle by SPEAKER (currentSpeaker),
-					// not by text: its per-frame pass shows a line only when the best
-					// entry's speaker differs from that. Splicing the array skips the
-					// bookkeeping the engine's own add/remove do, so when an actor's
-					// next line was already in the array (back-to-back or overlapping
-					// lines) the old text stayed up and the new one never showed,
-					// until some other speaker's subtitle came and went. Forget the
-					// speaker and blank the HUD: the next pass re-shows whatever is
-					// left. Both under the lock, so that pass cannot run in between
-					// and have its show wiped by our hide.
-					if (a_manager->currentSpeaker.native_handle() == a_entry.speaker.native_handle()) {
-						a_manager->currentSpeaker.reset();
-						HideHudSubtitle();
-						logger::debug("Captions: cleared HUD subtitle for instance {} ({} left)",
-							a_entry.instanceId, subtitles.size());
-					}
-					return;
+					return true;
 				}
 			}
+			return false;
 		}
 
-		// main thread (SKSE task): inject pending captions, sweep finished ones
+		// caller holds g_entriesLock: no later live line belongs to this speaker
+		bool IsNewestOfSpeaker(std::size_t a_index)
+		{
+			const auto speaker = g_entries[a_index].speaker.native_handle();
+			for (auto i = a_index + 1; i < g_entries.size(); ++i) {
+				if (!g_entries[i].done && g_entries[i].speaker.native_handle() == speaker) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		// main thread (SKSE task): sweep finished captions and keep each speaker's
+		// newest live line, and only that one, in the manager
 		void ApplyAll()
 		{
 			auto*      manager = RE::SubtitleManager::GetSingleton();
 			const auto now = std::chrono::steady_clock::now();
+			const bool enabled = g_enabled.load();
+			const bool hud = g_hud.load();
+			bool       clearedHud = false;
+			{
+				std::scoped_lock lock{ g_entriesLock };
+				for (auto& entry : g_entries) {
+					if (entry.stopped || !enabled || !entry.speaker.get()) {
+						entry.done = true;
+					} else if (entry.handle.IsValid() && entry.handle.IsPlaying()) {
+						entry.audible = true;
+					} else if (entry.audible || now - entry.createdAt > AUDIBLE_TIMEOUT) {
+						entry.done = true;  // line finished (or the stream never started)
+					}
+				}
 
-			std::scoped_lock lock{ g_entriesLock };
-			std::erase_if(g_entries, [&](Entry& a_entry) {
-				bool done = a_entry.stopped || !g_enabled.load() || !a_entry.speaker.get();
-				if (!done) {
-					if (a_entry.handle.IsValid() && a_entry.handle.IsPlaying()) {
-						a_entry.audible = true;
-					} else if (a_entry.audible || now - a_entry.createdAt > AUDIBLE_TIMEOUT) {
-						done = true;  // line finished (or the stream never started)
+				if (manager) {
+					// One guard for the whole pass: the engine's own subtitle pass
+					// must see the array, currentSpeaker and the queued hide change
+					// together, or its show could land before our hide.
+					RE::BSSpinLockGuard guard{ manager->lock };
+					const auto wanted = [&](std::size_t a_index) {
+						return hud && !g_entries[a_index].done && IsNewestOfSpeaker(a_index);
+					};
+					bool pulledCurrent = false;  // we removed a line of the speaker the HUD is on
+					for (std::size_t i = 0; i < g_entries.size(); ++i) {
+						auto& entry = g_entries[i];
+						if (entry.injected && !wanted(i)) {
+							entry.injected = false;
+							if (EraseInjected(manager, entry) && manager->currentSpeaker == entry.speaker) {
+								pulledCurrent = true;
+							}
+						}
+					}
+					for (std::size_t i = 0; i < g_entries.size(); ++i) {
+						auto& entry = g_entries[i];
+						if (!entry.injected && wanted(i)) {
+							Inject(manager, entry);
+							entry.injected = true;
+						}
+					}
+					// The engine appears to track the HUD subtitle by SPEAKER
+					// (currentSpeaker), not by text: its pass shows a line only
+					// when the best entry's speaker differs from that one. That
+					// is inferred from a field report and the Floating Subtitles
+					// hooks, not disassembled. Splicing the array skips the
+					// bookkeeping the engine's own add/remove do, so when an
+					// actor's next line took the place of the last one the old
+					// text stayed up and the new one never showed, until another
+					// speaker's subtitle came and went. So blank the HUD and
+					// forget the speaker: the engine's next pass shows whatever
+					// is left. The speaker is only forgotten once the hide is
+					// queued, since without it the engine's own "nothing left,
+					// hide" is the one thing that would still clear the text.
+					if (pulledCurrent && HideHudSubtitle()) {
+						manager->currentSpeaker.reset();
+						clearedHud = true;
 					}
 				}
-				if (done) {
-					if (a_entry.injected && manager) {
-						RemoveInjected(manager, a_entry);
-					}
-					return true;
-				}
-				if (!a_entry.injected && g_hud.load() && manager) {
-					Inject(manager, a_entry);
-					a_entry.injected = true;
-				}
-				return false;
-			});
+				std::erase_if(g_entries, [](const Entry& a_entry) { return a_entry.done; });
+			}
+			if (clearedHud) {
+				logger::debug("Captions: took a finished line off the HUD");
+			}
 		}
 
 		void EnsureTicker()
@@ -399,8 +439,11 @@ namespace CaptionManager
 				if (!manager) {
 					return;
 				}
+				// no HUD handover here: nothing of ours follows, so the engine's
+				// own pass (or the load itself) clears what was on screen
+				RE::BSSpinLockGuard guard{ manager->lock };
 				for (const auto& entry : stale) {
-					RemoveInjected(manager, entry);
+					EraseInjected(manager, entry);
 				}
 			});
 		}

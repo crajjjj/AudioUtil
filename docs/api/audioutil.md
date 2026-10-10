@@ -332,6 +332,8 @@ then, while the line plays, the text for the configured [`[captions]`](../config
 
 Works for every `Play*` that has an actor to attribute the line to (`PlayVoice` / `PlayVoiceFromSlot` / `PlaySFX` / `PlayFile` / `PlayFolder` with a non-`None` actor).
 
+When two captioned lines of **one actor** overlap, the newer one is shown; the older one comes back if it is still playing when the newer ends (0.9.27+). Captions of different actors resolve closest-speaker-first.
+
 A **mod event** is also sent for consumers that want their own presentation (with `[captions] hud = false` to suppress the built-in subtitle):
 
 ```papyrus
