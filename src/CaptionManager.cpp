@@ -152,6 +152,28 @@ namespace CaptionManager
 			a_manager->subtitles.push_back(info);
 		}
 
+		// game thread: tell the HUD to drop the subtitle it is showing (the same
+		// message the engine sends when a line ends)
+		void HideHudSubtitle()
+		{
+			auto* queue = RE::UIMessageQueue::GetSingleton();
+			auto* strings = RE::InterfaceStrings::GetSingleton();
+			if (!queue || !strings) {
+				return;
+			}
+			auto* data = static_cast<RE::HUDData*>(queue->CreateUIMessageData(strings->hudData));
+			if (!data) {
+				return;
+			}
+			auto type = RE::HUD_MESSAGE_TYPE::kHideSubtitle;
+#ifdef ENABLE_SKYRIM_VR
+			type = RE::GetHUDMessageType(type);  // VR shifts the ids past kSetLoadDoorInfo
+#endif
+			data->type = type;
+			data->show = true;
+			queue->AddMessage(strings->hudMenu, RE::UI_MESSAGE_TYPE::kUpdate, data);
+		}
+
 		// remove OUR entry: match speaker + exact text; first hit only, so an
 		// overlapping identical line (same actor, same pick) keeps its own copy
 		void RemoveInjected(RE::SubtitleManager* a_manager, const Entry& a_entry)
@@ -162,6 +184,22 @@ namespace CaptionManager
 				if (it->speaker.native_handle() == a_entry.speaker.native_handle() &&
 					std::string_view(it->subtitle.c_str()) == std::string_view(a_entry.text)) {
 					subtitles.erase(it);
+					// The engine tracks the HUD subtitle by SPEAKER (currentSpeaker),
+					// not by text: its per-frame pass shows a line only when the best
+					// entry's speaker differs from that. Splicing the array skips the
+					// bookkeeping the engine's own add/remove do, so when an actor's
+					// next line was already in the array (back-to-back or overlapping
+					// lines) the old text stayed up and the new one never showed,
+					// until some other speaker's subtitle came and went. Forget the
+					// speaker and blank the HUD: the next pass re-shows whatever is
+					// left. Both under the lock, so that pass cannot run in between
+					// and have its show wiped by our hide.
+					if (a_manager->currentSpeaker.native_handle() == a_entry.speaker.native_handle()) {
+						a_manager->currentSpeaker.reset();
+						HideHudSubtitle();
+						logger::debug("Captions: cleared HUD subtitle for instance {} ({} left)",
+							a_entry.instanceId, subtitles.size());
+					}
 					return;
 				}
 			}
