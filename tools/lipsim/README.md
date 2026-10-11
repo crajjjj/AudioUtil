@@ -86,8 +86,9 @@ lip's blink/brow/gaze channels are not applied to the preview at all.
 
 The view is a true front view: the character's left is on screen right, as
 it is when you face them in game. `BlinkLeft`, `LookLeft` and the other Left
-channels therefore act on the right half of the screen. (Up to 0.9.27 every
-face style drew a mirror image, which only one-sided channels reveal.)
+channels therefore act on the right half of the screen. (LipSim builds from
+before 2026-10-11 drew a mirror image in every face style, which only
+one-sided channels reveal.)
 
 ### What the modifier channels move
 
