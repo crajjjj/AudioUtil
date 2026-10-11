@@ -42,7 +42,8 @@ Never call the `AudioUtil_*` names directly — they are declarations of functio
 AudioUtil's DLL, so a direct call is an unresolved external at link time.
 
 Feature-detect with `AudioUtil_GetInterfaceVersion()` (packed `MMmmpp`; `10100` = 1.1.0, the
-build that added the mouth claims and the claim listing). Exports are append-only, never reordered or removed, so a
+build that added the mouth claims and the claim listing; `10200` = 1.2.0 added
+`AudioUtil_IsHandlePlaying`). Exports are append-only, never reordered or removed, so a
 version check covers the whole surface — but still null-check the individual pointer you are
 about to call, since an older AudioUtil resolves the old names and leaves newer ones null.
 `AudioUtil_GetVersion()` reports the mod version instead, packed `MMmmppp`.

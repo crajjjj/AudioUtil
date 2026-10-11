@@ -12,3 +12,4 @@ AudioUtil_IsMouthBusy
 AudioUtil_GetMouthClaimOwner
 AudioUtil_GetMouthClaimTimeLeft
 AudioUtil_GetClaimedActors
+AudioUtil_IsHandlePlaying

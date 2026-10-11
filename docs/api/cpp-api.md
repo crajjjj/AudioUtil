@@ -92,7 +92,7 @@ Gate on both presence and version before using any export — `au.available()` c
 - **`AudioUtil_GetVersion()`** — packed `MMmmppp` mod/DLL version (`major*10000000 + minor*100000 + patch`, e.g. `909` for 0.9.9, `10000000` for 1.0.0). Tracks the release version automatically.
 - **`AudioUtil_GetInterfaceVersion()`** — the C API surface version, packed `MMmmpp` (`10000` == 1.0.0), bumped only when exports are added. Exports are **append-only** (never reordered or removed), so a value check is enough to feature-detect.
 
-The C API first shipped in AudioUtil **0.9.9** (interface `10000`) — on older installs the module handle resolves but every `GetProcAddress` returns null, which the per-pointer null checks handle for free. The mouth-claim exports, listing included, arrived in **0.9.19** (interface `10100`): gate on `AudioUtil_GetInterfaceVersion() >= 10100`, or simply null-check each pointer.
+The C API first shipped in AudioUtil **0.9.9** (interface `10000`) — on older installs the module handle resolves but every `GetProcAddress` returns null, which the per-pointer null checks handle for free. The mouth-claim exports, listing included, arrived in **0.9.19** (interface `10100`): gate on `AudioUtil_GetInterfaceVersion() >= 10100`, or simply null-check each pointer. `AudioUtil_IsHandlePlaying` arrived in **0.9.28** (interface `10200`).
 
 ## Threading & lifecycle
 
@@ -131,3 +131,4 @@ Identical to the Papyrus natives, so the [Papyrus reference](audioutil.md#playfi
 | `uint32_t AudioUtil_GetMouthClaimOwner(RE::Actor* actor, char* buffer, uint32_t size)` | Chars written into `buffer` (owner tag, always null-terminated) |
 | `float AudioUtil_GetMouthClaimTimeLeft(RE::Actor* actor)` | Seconds left on the claim, `0.0` when unclaimed |
 | `uint32_t AudioUtil_GetClaimedActors(RE::Actor** out, uint32_t max)` | Resolvable-claim count; fills `out` with up to `max` claimed actors (`out = nullptr` counts only) |
+| `bool AudioUtil_IsHandlePlaying(int32_t handle)` | Is that instance still playing; `false` for `0`, an unknown handle, or one that finished or was stopped. Same as the Papyrus [`IsHandlePlaying`](audioutil.md). Call it from the same threads as the playback exports |

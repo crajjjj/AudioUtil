@@ -1,5 +1,6 @@
 #include "API/AudioUtilAPI.h"
 
+#include "InstanceManager.h"
 #include "MouthClaim.h"
 #include "PapyrusAPI.h"
 
@@ -25,7 +26,7 @@ std::uint32_t AudioUtil_GetVersion()
 
 std::uint32_t AudioUtil_GetInterfaceVersion()
 {
-	return 10100;  // 1.1.0 - mouth claims (claim, release, query, listing)
+	return 10200;  // 1.2.0 - handle query (IsHandlePlaying); 1.1.0 was the mouth claims
 }
 
 // ---------------------------------------------------------------------------- Playback
@@ -107,6 +108,14 @@ std::uint32_t AudioUtil_GetClaimedActors(RE::Actor** out, std::uint32_t max)
 	// ALWAYS the total, never the written count: a return > max is how a caller
 	// with a fixed buffer sees that it was truncated. Writing stopped at `max`.
 	return written;
+}
+
+// ----------------------------------------------------------------------------- Handles
+
+bool AudioUtil_IsHandlePlaying(std::int32_t handle)
+{
+	// same test as the Papyrus IsHandlePlaying native
+	return handle > 0 && InstanceManager::IsPlaying(handle);
 }
 
 }  // extern "C"
