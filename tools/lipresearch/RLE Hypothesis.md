@@ -396,3 +396,8 @@ Animation `.tri` set, engine facts from SkyrimSE.exe 1.6.1170.
   whole image), and no head part has a morph named `HeadPitch`/`HeadRoll`/
   `HeadYaw` for the generic morph path to find. So the head channels load and
   are never played. Static analysis only, not confirmed in game.
+- **The in-game check** is `make_head_probe.py`: a beep-marked wav plus a lip
+  that raises the brows (the control) and then swings each head channel to
+  +-0.8, played with `autest playlip`. It rests on one assumption of its own:
+  that the actor's modifier keyframe has all 17 slots, since `LipSync` writes
+  only as many as it has.
