@@ -106,8 +106,8 @@
       <div class="row" style="margin-top:6px">
         <label>gain</label><input type="range" id="p_gain" min="0" max="2" step="0.05" value="1"><span class="val"></span>
       </div>
-      <label class="small" title="adds the 16 blink/brow/gaze rows to the timeline heatmap when the lip carries them"><input type="checkbox" id="showMods" checked> show modifier rows in timeline</label><br>
-      <label class="small" title="apply the lip's blink/brow/gaze channels to the preview face. In-game this is [lipsync] drive_modifiers (default OFF) — TTS-pack modifier tracks are often garbage"><input type="checkbox" id="driveMods"> drive modifiers on face</label>
+      <label class="small" title="adds the 17 modifier rows (blink, brow, gaze, squint, head) to the timeline heatmap when the lip carries them"><input type="checkbox" id="showMods" checked> show modifier rows in timeline</label><br>
+      <label class="small" title="apply the lip's blink/brow/gaze/squint channels to the preview face. Gaze (Look*) turns the eyeballs, so the 3D head shows it only with an eyes part (tri2head.py --eyes). The three Head* rows are in the file but the game does not play them, so the head never tilts here either. In-game this is [lipsync] drive_modifiers (on in the shipped AudioUtil.toml); TTS-pack modifier tracks are often garbage"><input type="checkbox" id="driveMods"> drive modifiers on face</label>
     </div>
     <div class="panel" id="pseudoPanel">
       <details id="pseudoDetails">
@@ -175,8 +175,10 @@
         StorageUtil jsons like <i>FemaleExpressions.json</i>).<br>
         <b>[0–15] phonemes</b> — the mouth: Aah, BigAah, BMP (lips pressed), ChJSh, DST,
         Eee, Eh, FV, I, K, N, Oh, OohQ, R, Th, W.<br>
-        <b>[16–29] modifiers</b> — BlinkL/R, BrowDownL/R, BrowInL/R, BrowUpL/R,
-        LookDown/Left/Right/Up, SquintL/R. Holding <b>Blink*</b> or <b>Look*</b> non-zero
+        <b>[16-29] modifiers</b>: BlinkL/R, BrowDownL/R, BrowInL/R, BrowUpL/R,
+        LookDown/Left/Right/Up, SquintL/R. Left and Right are the character's own,
+        so Left shows on screen right. <b>Look*</b> turns the eyeballs only, never
+        the head. Holding <b>Blink*</b> or <b>Look*</b> non-zero
         stops the actor's natural blinking in-game.<br>
         <b>[30] expression</b> — the base mood worn under everything: 0–6 Dialogue
         (Anger, Fear, Happy, Sad, Surprise, Puzzled, Disgusted), 7 MoodNeutral,
@@ -1007,6 +1009,8 @@ tl.addEventListener("mousemove", e => {
   if (row >= 0 && row < tlRows.length && state.activeAnim) {
     const { ch, label } = tlRows[row];
     extra = ` · ${label} ${state.activeAnim.sample(ch, t).toFixed(2)}`;
+    // HeadPitch / HeadRoll / HeadYaw: stored in the lip, never played back
+    if (ch >= PHONEME_CHANNELS + 14) extra += " (in the file, not played by the game)";
   }
   $("tlHover").textContent = t.toFixed(2) + "s" + extra;
 });
@@ -1071,12 +1075,15 @@ function faceParams(w, expr) {
   const mCorner = (mood.corner || 0) * s, mJaw = (mood.jaw || 0) * s;
   open = Math.max(0, Math.min(1.2, open + mJaw)) * (1 - press);
   round = Math.min(1, round);
+  // L / R here are SCREEN sides. The face looks at the viewer, so the
+  // character's Left channels land on screen right, as they do in game
   return { open, wide, round, press, mBrowY, mBrowIn, mBrowAsym, mEyeH, mCorner,
-    blinkL: w[16], blinkR: w[17],
-    browL: (w[22] - w[18]) * 6 - mBrowY + mBrowAsym,
-    browR: (w[23] - w[19]) * 6 - mBrowY - mBrowAsym,
-    lookX: (w[26] - w[25]) * 5, lookY: (w[27] - w[24]) * 4,
-    squintL: w[28], squintR: w[29] };
+    blinkL: w[17], blinkR: w[16],
+    browL: (w[23] - w[19]) * 6 - mBrowY + mBrowAsym,
+    browR: (w[22] - w[18]) * 6 - mBrowY - mBrowAsym,
+    // canvas offsets: LookLeft moves the iris to screen right, LookUp up (-y)
+    lookX: (w[25] - w[26]) * 5, lookY: (w[24] - w[27]) * 4,
+    squintL: w[29], squintR: w[28] };
 }
 
 function drawFace(canvas, w, expr) {
@@ -1087,7 +1094,8 @@ function drawFace(canvas, w, expr) {
   const W = canvas.width, H = canvas.height;
   fctx.clearRect(0, 0, W, H);
   const cx = W / 2;
-  const { open, wide, round, press, mBrowY, mBrowIn, mBrowAsym, mEyeH, mCorner } = faceParams(w, expr);
+  const { open, wide, round, press, mBrowIn, mEyeH, mCorner,
+          blinkL, blinkR, browL, browR, lookX, lookY, squintL, squintR } = faceParams(w, expr);
 
   // ---- portrait: nord-ish head, jaw drops with `open` ----
   const jawDrop = 20 * Math.min(1, open);
@@ -1142,10 +1150,6 @@ function drawFace(canvas, w, expr) {
   }
 
   // eyes + brows from modifiers (preset base and/or authored lip data)
-  const blinkL = w[16], blinkR = w[17];
-  const browL = (w[22] - w[18]) * 6 - mBrowY + mBrowAsym, browR = (w[23] - w[19]) * 6 - mBrowY - mBrowAsym;
-  const lookX = (w[26] - w[25]) * 5, lookY = (w[27] - w[24]) * 4;   // R-L, Up-Dn
-  const squintL = w[28], squintR = w[29];
   const eyeY = 122;
   for (const side of [-1, 1]) {
     const ex = cx + side * 28, ey = eyeY;
@@ -1540,20 +1544,26 @@ function drawPhotoFace(canvas, fp) {
    base mesh + UVs + the game's own named morph deltas for every MFG phoneme,
    modifier and expression. Rendered in WebGL (one shared offscreen context),
    morphs blended on the CPU per frame — this shows the exact deformations the
-   engine plays, not an approximation. Drag on the face to rotate. */
+   engine plays, not an approximation. Drag on the face to rotate.
+   A bundle may also carry `parts` (tri2head.py --eyes / --mouth): the eyes and
+   the mouth are separate head parts with their own .tri in the head's space.
+   The gaze lives there - the head .tri only has the eyelid follow for
+   LookUp/LookDown, the eyeball turn (and LookLeft/LookRight entirely) is a
+   morph of the eyes mesh, so without that part Look* shows on the lids only. */
 const HEAD_PHONEMES = ["Aah","BigAah","BMP","ChJSh","DST","Eee","Eh","FV","I","K","N","Oh","OohQ","R","Th","W"];
+// HeadPitch/Roll/Yaw have no morph in any part. The game loads them into the
+// modifier keyframe with the rest, but in SkyrimSE 1.6.1170 the one routine
+// that reads those three slots back (radians, clamped to +-pi/2, built into a
+// quaternion) has no caller, so the head is not drawn tilting here either.
 const HEAD_MODIFIERS = ["BlinkLeft","BlinkRight","BrowDownLeft","BrowDownRight","BrowInLeft","BrowInRight",
                         "BrowUpLeft","BrowUpRight","LookDown","LookLeft","LookRight","LookUp",
-                        "SquintLeft","SquintRight",null,null,null];  // HeadPitch/Roll/Yaw: bone poses, not mesh morphs
+                        "SquintLeft","SquintRight",null,null,null];
+// flat colour of a mesh that came without a texture
+const HEAD_TINTS = { head: [0.82, 0.65, 0.52], eyes: [0.90, 0.90, 0.87], mouth: [0.62, 0.30, 0.32] };
 
-function installHead(fileName, doc) {
-  const positions = new Float32Array(doc.positions);
+// outward faces must be front faces: true when the mesh winds the other way
+function windsInward(positions, indices) {
   const nVerts = positions.length / 3;
-  const indices = new Uint16Array(doc.indices);
-  // orig vertex -> split copies (morph deltas are keyed by original index)
-  const origToSplit = Array.from({ length: doc.numOrig }, () => []);
-  doc.orig.forEach((vi, s) => origToSplit[vi].push(s));
-  // auto-fix triangle winding: outward faces must be front faces
   let signed = 0;
   const c = [0, 0, 0];
   for (let i = 0; i < positions.length; i += 3) { c[0] += positions[i]; c[1] += positions[i+1]; c[2] += positions[i+2]; }
@@ -1565,35 +1575,69 @@ function installHead(fileName, doc) {
     const nx = e1[1]*e2[2]-e1[2]*e2[1], ny = e1[2]*e2[0]-e1[0]*e2[2], nz = e1[0]*e2[1]-e1[1]*e2[0];
     signed += nx*(positions[a]-c[0]) + ny*(positions[a+1]-c[1]) + nz*(positions[a+2]-c[2]);
   }
-  if (signed < 0) for (let t = 0; t < indices.length; t += 3) {
+  return signed < 0;
+}
+
+// one mesh of a bundle (the head, or an eyes / mouth part)
+function buildHeadMesh(doc, name, flip) {
+  const base = new Float32Array(doc.positions);
+  const indices = new Uint16Array(doc.indices);
+  if (flip) for (let t = 0; t < indices.length; t += 3) {
     const tmp = indices[t+1]; indices[t+1] = indices[t+2]; indices[t+2] = tmp;
   }
+  // orig vertex -> split copies (morph deltas are keyed by original index)
+  const origToSplit = Array.from({ length: doc.numOrig }, () => []);
+  doc.orig.forEach((vi, s) => origToSplit[vi].push(s));
   const morphs = {};
-  for (const [name, m] of Object.entries(doc.morphs)) morphs[name.toLowerCase()] = m;
+  for (const [morph, m] of Object.entries(doc.morphs)) morphs[morph.toLowerCase()] = m;
+  return {
+    name, base, pos: new Float32Array(base), nrm: new Float32Array(base.length),
+    uvs: new Float32Array(doc.uvs), indices, origToSplit, morphs,
+    tint: HEAD_TINTS[name] || HEAD_TINTS.head, texImg: null, gl: null,
+  };
+}
+
+function installHead(fileName, doc) {
+  // the parts share the head's winding (same exporter), and their own centroid
+  // says nothing about it: two eyeball shells have no inside to measure from
+  const flip = windsInward(doc.positions, doc.indices);
+  const sources = [doc, ...(Array.isArray(doc.parts) ? doc.parts : [])];
+  const meshes = sources.map((src, i) => buildHeadMesh(src, i ? String(src.name || "part").toLowerCase() : "head", flip));
+  const positions = meshes[0].base;
+  const nVerts = positions.length / 3;
   // bbox -> center/extent for the camera
   let min = [1e9,1e9,1e9], max = [-1e9,-1e9,-1e9];
   for (let i = 0; i < positions.length; i += 3)
     for (let a = 0; a < 3; a++) { min[a] = Math.min(min[a], positions[i+a]); max[a] = Math.max(max[a], positions[i+a]); }
   const head = {
-    name: fileName, base: positions, pos: new Float32Array(positions),
-    nrm: new Float32Array(positions.length), uvs: new Float32Array(doc.uvs),
-    indices, origToSplit, morphs,
+    name: fileName, meshes,
     center: [(min[0]+max[0])/2, (min[1]+max[1])/2, (min[2]+max[2])/2],
     extent: Math.max(max[0]-min[0], max[2]-min[2]),
-    yaw: 0, pitch: 0, texImg: null, ready: !doc.texture, gl: null,
+    yaw: 0, pitch: 0, ready: false,
   };
-  if (doc.texture) {
+  let pending = 0;
+  const loaded = () => { if (--pending <= 0) { head.ready = true; renderPresetFace(); } };
+  sources.forEach((src, i) => {
+    if (!src.texture) return;
+    pending++;
     const img = new Image();
-    img.onload = () => { head.texImg = img; head.ready = true; renderPresetFace(); };
-    img.onerror = () => { head.ready = true; renderPresetFace(); };
-    img.src = "data:image/jpeg;base64," + doc.texture;
-  }
+    img.onload = () => { meshes[i].texImg = img; loaded(); };
+    img.onerror = loaded;
+    // parts ship a PNG (their alpha cuts the lashes and the teeth), skin a JPEG
+    img.src = `data:image/${src.texture.startsWith("iVBOR") ? "png" : "jpeg"};base64,` + src.texture;
+  });
+  head.ready = pending === 0;
   const existing = state.heads.findIndex(h => h.name === fileName);
   if (existing >= 0) state.heads[existing] = head; else state.heads.push(head);
   state.head = head;
   state.faceStyle = "head";
   updatePhotoRow();
-  setStatus(`loaded head bundle ${fileName}: ${nVerts} verts, ${Object.keys(morphs).length} real morphs (${doc.source}) — drag the face to rotate`);
+  const partNames = meshes.slice(1).map(m => m.name);
+  const hasEyes = partNames.includes("eyes");
+  setStatus(`loaded head bundle ${fileName}: ${nVerts} verts, ${Object.keys(meshes[0].morphs).length} real morphs (${doc.source})` +
+    (partNames.length ? ` + ${partNames.join(", ")}` : "") +
+    (hasEyes ? "" : ". No eyes part, so Look* moves the lids only (rebuild with tri2head.py --eyes)") +
+    ". Drag the face to rotate");
 }
 
 let glc = null;  // shared offscreen webgl canvas + program state
@@ -1616,37 +1660,112 @@ function headGL() {
     varying vec3 vNrm; varying vec2 vUV;
     void main() {
       vec3 p = uRot * (aPos - uCenter);
-      gl_Position = vec4(p.x * uScale.x, p.z * uScale.y, -p.y * 0.02, 1.0);
+      // the camera faces the character (+y is the nose), so the character's
+      // right (+x) is on screen LEFT: without the -x this is a mirror image,
+      // which nothing symmetric shows but Look/Blink/Brow Left and Right do
+      gl_Position = vec4(-p.x * uScale.x, p.z * uScale.y, -p.y * 0.02, 1.0);
       vNrm = uRot * aNrm; vUV = aUV;
     }`));
   gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, `
     precision mediump float;
     varying vec3 vNrm; varying vec2 vUV;
-    uniform sampler2D uTex; uniform float uDark; uniform float uHasTex;
+    uniform sampler2D uTex; uniform float uDark; uniform float uHasTex; uniform vec3 uTint;
     void main() {
       if (uDark > 0.5) { gl_FragColor = vec4(0.10, 0.045, 0.05, 1.0); return; }
+      vec4 tx = uHasTex > 0.5 ? texture2D(uTex, vUV) : vec4(uTint, 1.0);
+      // alpha cutout: the lash cards of the eyes mesh, the gaps between teeth
+      if (tx.a < 0.4) discard;
       vec3 n = normalize(vNrm);
-      float l = 0.36 + 0.55 * max(dot(n, normalize(vec3(0.25, 0.8, 0.4))), 0.0)
-                     + 0.18 * max(dot(n, normalize(vec3(-0.6, 0.6, -0.1))), 0.0);
-      vec3 albedo = uHasTex > 0.5 ? texture2D(uTex, vUV).rgb : vec3(0.82, 0.65, 0.52);
-      gl_FragColor = vec4(albedo * l, 1.0);
+      // parts draw unculled, so light their back faces from the visible side
+      if (!gl_FrontFacing) n = -n;
+      float l = 0.36 + 0.55 * max(dot(n, normalize(vec3(-0.25, 0.8, 0.4))), 0.0)
+                     + 0.18 * max(dot(n, normalize(vec3(0.6, 0.6, -0.1))), 0.0);
+      gl_FragColor = vec4(tx.rgb * l, 1.0);
     }`));
   gl.linkProgram(prog);
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
   gl.useProgram(prog);
-  const bufs = { pos: gl.createBuffer(), nrm: gl.createBuffer(), uv: gl.createBuffer(), idx: gl.createBuffer() };
   const loc = {
     aPos: gl.getAttribLocation(prog, "aPos"), aNrm: gl.getAttribLocation(prog, "aNrm"),
     aUV: gl.getAttribLocation(prog, "aUV"), uRot: gl.getUniformLocation(prog, "uRot"),
     uCenter: gl.getUniformLocation(prog, "uCenter"), uScale: gl.getUniformLocation(prog, "uScale"),
     uDark: gl.getUniformLocation(prog, "uDark"), uHasTex: gl.getUniformLocation(prog, "uHasTex"),
+    uTint: gl.getUniformLocation(prog, "uTint"),
   };
   gl.enable(gl.DEPTH_TEST);
   gl.enable(gl.CULL_FACE);
-  // clip z = -y flips handedness: outward CCW (model space) arrives CW on screen
-  gl.frontFace(gl.CW);
-  glc = { canvas, gl, prog, bufs, loc, tex: null, texFor: null, idxFor: null };
+  // clip x = -x and clip z = -y: two flips, so outward CCW stays CCW on screen
+  gl.frontFace(gl.CCW);
+  // texGen: bumped to make every mesh re-upload its texture (flip tex toggle)
+  glc = { canvas, gl, prog, loc, texGen: 0 };
   return glc;
+}
+
+// blend the active morphs into one mesh and rebuild its smooth normals
+function morphHeadMesh(M, mw) {
+  // CPU morph blend over original-vertex sparse deltas
+  M.pos.set(M.base);
+  for (const [name, weight] of Object.entries(mw)) {
+    const m = M.morphs[name];
+    if (!m) continue;
+    for (let k = 0; k < m.i.length; k++) {
+      const dx = m.d[k*3] * weight, dy = m.d[k*3+1] * weight, dz = m.d[k*3+2] * weight;
+      for (const s of M.origToSplit[m.i[k]]) {
+        M.pos[s*3] += dx; M.pos[s*3+1] += dy; M.pos[s*3+2] += dz;
+      }
+    }
+  }
+  // smooth normals from the morphed mesh
+  M.nrm.fill(0);
+  const P = M.pos, N = M.nrm, I = M.indices;
+  for (let t = 0; t < I.length; t += 3) {
+    const a = I[t]*3, b = I[t+1]*3, d = I[t+2]*3;
+    const e1x = P[b]-P[a], e1y = P[b+1]-P[a+1], e1z = P[b+2]-P[a+2];
+    const e2x = P[d]-P[a], e2y = P[d+1]-P[a+1], e2z = P[d+2]-P[a+2];
+    const nx = e1y*e2z-e1z*e2y, ny = e1z*e2x-e1x*e2z, nz = e1x*e2y-e1y*e2x;
+    N[a]+=nx; N[a+1]+=ny; N[a+2]+=nz; N[b]+=nx; N[b+1]+=ny; N[b+2]+=nz; N[d]+=nx; N[d+1]+=ny; N[d+2]+=nz;
+  }
+}
+
+// bind one mesh's buffers and texture, creating its GL objects on first use
+function bindHeadMesh(G, M) {
+  const gl = G.gl;
+  if (!M.gl) {
+    M.gl = { pos: gl.createBuffer(), nrm: gl.createBuffer(), uv: gl.createBuffer(),
+             idx: gl.createBuffer(), tex: null, texGen: -1 };
+    gl.bindBuffer(gl.ARRAY_BUFFER, M.gl.uv);
+    gl.bufferData(gl.ARRAY_BUFFER, M.uvs, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, M.gl.idx);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, M.indices, gl.STATIC_DRAW);
+  }
+  const attrib = (buf, locA, size, data) => {
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    if (data) gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(locA);
+    gl.vertexAttribPointer(locA, size, gl.FLOAT, false, 0, 0);
+  };
+  attrib(M.gl.pos, G.loc.aPos, 3, M.pos);
+  attrib(M.gl.nrm, G.loc.aNrm, 3, M.nrm);
+  attrib(M.gl.uv, G.loc.aUV, 2, null);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, M.gl.idx);
+
+  if (M.gl.texGen !== G.texGen) {
+    if (M.gl.tex) { gl.deleteTexture(M.gl.tex); M.gl.tex = null; }
+    if (M.texImg) {
+      M.gl.tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, M.gl.tex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, $("flipV").checked);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, M.texImg);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    M.gl.texGen = G.texGen;
+  }
+  if (M.gl.tex) gl.bindTexture(gl.TEXTURE_2D, M.gl.tex);
+  gl.uniform1f(G.loc.uHasTex, M.gl.tex ? 1 : 0);
+  gl.uniform3fv(G.loc.uTint, M.tint);
 }
 
 function drawHeadFace(canvas, w, expr) {
@@ -1665,63 +1784,17 @@ function drawHeadFace(canvas, w, expr) {
   for (let ch = 0; ch < HEAD_MODIFIERS.length; ch++) add(HEAD_MODIFIERS[ch], w[PHONEME_CHANNELS + ch]);
   if (expr) add(EXPRESSIONS[expr.id], expr.strength);
 
-  // CPU morph blend over original-vertex sparse deltas
-  H.pos.set(H.base);
-  for (const [name, weight] of Object.entries(mw)) {
-    const m = H.morphs[name];
-    if (!m) continue;
-    for (let k = 0; k < m.i.length; k++) {
-      const dx = m.d[k*3] * weight, dy = m.d[k*3+1] * weight, dz = m.d[k*3+2] * weight;
-      for (const s of H.origToSplit[m.i[k]]) {
-        H.pos[s*3] += dx; H.pos[s*3+1] += dy; H.pos[s*3+2] += dz;
-      }
-    }
-  }
-  // smooth normals from the morphed mesh
-  H.nrm.fill(0);
-  const P = H.pos, N = H.nrm, I = H.indices;
-  for (let t = 0; t < I.length; t += 3) {
-    const a = I[t]*3, b = I[t+1]*3, d = I[t+2]*3;
-    const e1x = P[b]-P[a], e1y = P[b+1]-P[a+1], e1z = P[b+2]-P[a+2];
-    const e2x = P[d]-P[a], e2y = P[d+1]-P[a+1], e2z = P[d+2]-P[a+2];
-    const nx = e1y*e2z-e1z*e2y, ny = e1z*e2x-e1x*e2z, nz = e1x*e2y-e1y*e2x;
-    N[a]+=nx; N[a+1]+=ny; N[a+2]+=nz; N[b]+=nx; N[b+1]+=ny; N[b+2]+=nz; N[d]+=nx; N[d+1]+=ny; N[d+2]+=nz;
-  }
+  // every mesh takes the same weights by morph name: a part simply has no
+  // morph for the channels that do not move it
+  for (const M of H.meshes) morphHeadMesh(M, mw);
 
   gl.viewport(0, 0, G.canvas.width, G.canvas.height);
   gl.clearColor(0.078, 0.086, 0.102, 1);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  const bind = (buf, locA, size, data, dynamic) => {
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, data, dynamic ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW);
-    gl.enableVertexAttribArray(locA);
-    gl.vertexAttribPointer(locA, size, gl.FLOAT, false, 0, 0);
-  };
-  bind(G.bufs.pos, G.loc.aPos, 3, H.pos, true);
-  bind(G.bufs.nrm, G.loc.aNrm, 3, H.nrm, true);
-  bind(G.bufs.uv, G.loc.aUV, 2, H.uvs, false);
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, G.bufs.idx);
-  if (G.idxFor !== H) { gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, H.indices, gl.STATIC_DRAW); G.idxFor = H; }
-
-  if (G.texFor !== H) {
-    if (H.texImg) {
-      G.tex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, G.tex);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, $("flipV").checked);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, H.texImg);
-      gl.generateMipmap(gl.TEXTURE_2D);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    }
-    G.texFor = H;
-  }
-  if (G.tex) gl.bindTexture(gl.TEXTURE_2D, G.tex);
-  gl.uniform1f(G.loc.uHasTex, G.tex ? 1 : 0);
-
-  // camera: ortho front view, drag = yaw (around up) + pitch
-  const cy = Math.cos(H.yaw), sy = Math.sin(H.yaw), cp = Math.cos(H.pitch), sp = Math.sin(H.pitch);
+  // camera: ortho front view, drag = yaw (around up) + pitch. Screen x runs
+  // against model x, so the yaw turns the other way to keep the drag direction
+  const cy = Math.cos(-H.yaw), sy = Math.sin(-H.yaw), cp = Math.cos(H.pitch), sp = Math.sin(H.pitch);
   // R = Rx(pitch) * Rz(yaw), supplied column-major
   const rot = [ cy, cp*sy, sp*sy,  -sy, cp*cy, sp*cy,  0, -sp, cp ];
   gl.uniformMatrix3fv(G.loc.uRot, false, rot);
@@ -1729,14 +1802,24 @@ function drawHeadFace(canvas, w, expr) {
   const fit = 2 / (H.extent * 1.25);
   gl.uniform2f(G.loc.uScale, fit * G.canvas.height / G.canvas.width, fit);
 
+  const [skin, ...parts] = H.meshes;
+  bindHeadMesh(G, skin);
   // pass 1: interior (back faces) dark -> the open mouth reads as a cavity
   gl.uniform1f(G.loc.uDark, 1);
   gl.cullFace(gl.FRONT);
-  gl.drawElements(gl.TRIANGLES, H.indices.length, gl.UNSIGNED_SHORT, 0);
+  gl.drawElements(gl.TRIANGLES, skin.indices.length, gl.UNSIGNED_SHORT, 0);
   // pass 2: skin
   gl.uniform1f(G.loc.uDark, 0);
   gl.cullFace(gl.BACK);
-  gl.drawElements(gl.TRIANGLES, H.indices.length, gl.UNSIGNED_SHORT, 0);
+  gl.drawElements(gl.TRIANGLES, skin.indices.length, gl.UNSIGNED_SHORT, 0);
+  // eyes / mouth: open shells and flat cards, drawn from both sides; the depth
+  // buffer puts them behind the lids and the lips
+  gl.disable(gl.CULL_FACE);
+  for (const M of parts) {
+    bindHeadMesh(G, M);
+    gl.drawElements(gl.TRIANGLES, M.indices.length, gl.UNSIGNED_SHORT, 0);
+  }
+  gl.enable(gl.CULL_FACE);
 
   ctx2d.clearRect(0, 0, canvas.width, canvas.height);
   ctx2d.drawImage(G.canvas, 0, 0, canvas.width, canvas.height);
@@ -1976,18 +2059,18 @@ const PRESET_ROW_HINTS = {
   R: "r — slight rounding",
   Th: "th — tongue tip between the teeth",
   W: "w — rounded glide, lips forward",
-  BlinkL: "closes the left eyelid — held non-zero stops natural blinking in-game",
-  BlinkR: "closes the right eyelid — held non-zero stops natural blinking in-game",
+  BlinkL: "closes the character's left eyelid (screen right, as in game). Held non-zero stops natural blinking in-game",
+  BlinkR: "closes the character's right eyelid (screen left). Held non-zero stops natural blinking in-game",
   BrowDnL: "left brow down — anger, frown",
   BrowDnR: "right brow down — anger, frown",
   BrowInL: "left inner brow pinch — worry, pain",
   BrowInR: "right inner brow pinch — worry, pain",
   BrowUpL: "left brow raise — surprise",
   BrowUpR: "right brow raise — surprise",
-  LookDn: "eyes look down — held non-zero stops natural blinking in-game",
-  LookL: "eyes look left (screen) — held non-zero stops natural blinking in-game",
-  LookR: "eyes look right (screen) — held non-zero stops natural blinking in-game",
-  LookUp: "eyes look up / rolled back — held non-zero stops natural blinking in-game",
+  LookDn: "eyes look down: the eyeballs turn, the lids follow, the head stays put. Held non-zero stops natural blinking in-game",
+  LookL: "eyes look to the character's left (screen right). Eyeballs only, so the 3D head needs an eyes part to show it. Held non-zero stops natural blinking in-game",
+  LookR: "eyes look to the character's right (screen left). Eyeballs only, so the 3D head needs an eyes part to show it. Held non-zero stops natural blinking in-game",
+  LookUp: "eyes look up / rolled back: the eyeballs turn, the lids follow, the head stays put. Held non-zero stops natural blinking in-game",
   SquintL: "narrows the left eye — smile, suspicion, pleasure",
   SquintR: "narrows the right eye — smile, suspicion, pleasure",
   strength: "intensity of the chosen expression — 0 = dynamic, the mod picks a value at apply time",
@@ -2165,7 +2248,8 @@ $("pseudoDetails").addEventListener("toggle", saveSettings);
 function updateFaceHint() {
   $("faceHint").textContent =
     state.photo?.rigging ? "click the prompted landmarks on the face" :
-    state.faceStyle === "head" && state.head ? "drag the face to rotate · double-click resets the view" :
+    state.faceStyle === "head" && state.head ? "drag the face to rotate · double-click resets the view" +
+      (state.head.meshes.some(m => m.name === "eyes") ? "" : " · no eyes part: Look* moves the lids only") :
     state.faceStyle === "photo" && state.photo?.rig ? "photo face active — re-rig if the mouth tears oddly" : "";
 }
 const drop = $("drop");
@@ -2282,7 +2366,7 @@ document.querySelectorAll("#faceStyles button").forEach(b =>
   b.addEventListener("click", () => setFaceStyle(b.dataset.fs)));
 $("rerig").addEventListener("click", () => { if (state.photo) startRig(); });
 $("flipV").addEventListener("change", () => {
-  if (glc) glc.texFor = null;  // re-upload with the new flip on next draw
+  if (glc) glc.texGen++;  // re-upload with the new flip on next draw
   renderPresetFace();
   saveSettings();
 });

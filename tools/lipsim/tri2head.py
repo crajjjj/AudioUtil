@@ -11,8 +11,20 @@ optional skin texture) into one .head.json that lipsim renders in WebGL.
 Usage:
   python tri2head.py femalehead.tri --dds femalehead.dds -o mychar.head.json
 
+With eyeballs and teeth (one command, wrapped here):
+  python tri2head.py femalehead.tri --dds femalehead.dds
+      --eyes eyesfemale.tri --eyes-dds eyeblue.dds
+      --mouth mouthhumanf.tri --mouth-dds mouthhuman.dds -o mychar.head.json
+
 The dds is typically textures\\actors\\character\\female\\femalehead.dds from
 your skin mod. BC1/BC3/BC7 supported (BC7 needs `pip install texture2ddecoder`).
+
+The eyes and the mouth are separate head parts with their own .tri, sitting in
+the same space as the head. --eyes adds the eyeballs, which is what makes the
+LookUp/LookDown/LookLeft/LookRight channels visible: the head .tri only carries
+the eyelid follow for LookUp/LookDown, the gaze itself is a morph of the eyes
+mesh. --mouth adds teeth and tongue. Their textures are
+textures\\actors\\character\\eyes\\eye*.dds and ...\\mouth\\mouthhuman.dds.
 No Bethesda assets ship with lipsim — you generate this from your own install.
 """
 
@@ -51,7 +63,7 @@ def parse_tri(path: Path):
     return V, T, verts, tris, uvs, uv_tris, morphs
 
 
-def decode_dds(path: Path, out_size: int):
+def decode_dds(path: Path, out_size: int, alpha: bool = False):
     from PIL import Image
     d = path.read_bytes()
     if d[:4] != b"DDS ":
@@ -79,23 +91,20 @@ def decode_dds(path: Path, out_size: int):
     img = Image.frombytes("RGBA", (w, h), bgra, "raw", "BGRA")
     if max(w, h) > out_size:
         img = img.resize((out_size, out_size), Image.LANCZOS)
-    img = img.convert("RGB")
     buf = io.BytesIO()
-    img.save(buf, "JPEG", quality=88)
+    # eye and mouth textures cut their shapes with alpha (the lashes, the gaps
+    # between the teeth), so those keep it as a PNG; opaque skin stays a JPEG
+    if alpha:
+        img.save(buf, "PNG", optimize=True)
+    else:
+        img.convert("RGB").save(buf, "JPEG", quality=88)
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("tri", type=Path, help="head .tri (FRTRI003)")
-    ap.add_argument("--dds", type=Path, default=None, help="diffuse skin texture (.dds)")
-    ap.add_argument("--tex-size", type=int, default=1024, help="texture size in the bundle (default 1024)")
-    ap.add_argument("-o", "--out", type=Path, default=None, help="output (default <tri>.head.json)")
-    args = ap.parse_args()
-
-    V, T, verts, tris, uvs, uv_tris, morphs = parse_tri(args.tri)
-    print(f"tri: {V} verts, {T} tris, {len(uvs)//2} uvs, {len(morphs)} morphs")
+def build_mesh(tri_path: Path):
+    """One .tri as a renderable mesh: split verts, uvs, indices, sparse morphs."""
+    V, T, verts, tris, uvs, uv_tris, morphs = parse_tri(tri_path)
+    print(f"{tri_path.name}: {V} verts, {T} tris, {len(uvs)//2} uvs, {len(morphs)} morphs")
 
     # split vertices by (position index, uv index) so the mesh is renderable
     # with one uv per vertex; morph deltas stay keyed by ORIGINAL index
@@ -133,14 +142,52 @@ def main():
           "y", round(min(ys), 1), round(max(ys), 1),
           "z", round(min(zs), 1), round(max(zs), 1))
 
-    bundle = {
-        "format": "lipsim-head-1",
-        "source": args.tri.name,
+    return {
+        "source": tri_path.name,
         "positions": positions, "uvs": uv_out, "indices": indices, "orig": orig,
         "numOrig": V,
         "morphs": morph_out,
-        "texture": decode_dds(args.dds, args.tex_size) if args.dds else None,
     }
+
+
+# eye and mouth textures are small on screen; no need for the head's resolution
+PART_TEX_SIZE = 512
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("tri", type=Path, help="head .tri (FRTRI003)")
+    ap.add_argument("--dds", type=Path, default=None, help="diffuse skin texture (.dds)")
+    ap.add_argument("--eyes", type=Path, default=None,
+                    help="eyes .tri (eyesfemale.tri / eyesmale.tri): eyeballs that follow the Look* channels")
+    ap.add_argument("--eyes-dds", type=Path, default=None, help="eye texture (.dds), e.g. eyeblue.dds")
+    ap.add_argument("--mouth", type=Path, default=None,
+                    help="mouth .tri (mouthhumanf.tri / mouthhuman.tri): teeth and tongue")
+    ap.add_argument("--mouth-dds", type=Path, default=None, help="mouth texture (.dds), e.g. mouthhuman.dds")
+    ap.add_argument("--tex-size", type=int, default=1024, help="texture size in the bundle (default 1024)")
+    ap.add_argument("-o", "--out", type=Path, default=None, help="output (default <tri>.head.json)")
+    args = ap.parse_args()
+
+    # the format stays lipsim-head-1: parts are an optional extra list, so an
+    # older lipsim still loads the head from a bundle that carries them
+    bundle = {"format": "lipsim-head-1"}
+    bundle.update(build_mesh(args.tri))
+    bundle["texture"] = decode_dds(args.dds, args.tex_size) if args.dds else None
+    parts = []
+    for name, tri, dds in (("eyes", args.eyes, args.eyes_dds), ("mouth", args.mouth, args.mouth_dds)):
+        if not tri:
+            if dds:
+                print(f"warning: --{name}-dds given without --{name}, ignored")
+            continue
+        if name == "eyes" and not dds:
+            print("warning: --eyes without --eyes-dds: the eyeballs render plain white, the gaze will not show")
+        part = {"name": name}
+        part.update(build_mesh(tri))
+        part["texture"] = decode_dds(dds, min(args.tex_size, PART_TEX_SIZE), alpha=True) if dds else None
+        parts.append(part)
+    if parts:
+        bundle["parts"] = parts
     out = args.out or args.tri.with_suffix(".head.json")
     out.write_text(json.dumps(bundle, separators=(",", ":")))
     print(f"wrote {out} ({out.stat().st_size // 1024} KB)")

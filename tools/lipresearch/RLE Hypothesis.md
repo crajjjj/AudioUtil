@@ -373,3 +373,26 @@ not yet worth a variant in the DLL.
 
 Fixed in AudioUtil 0.9.16: `LipData` honors the start token, keeps signed values
 (clamped [-1,1]), and `CHANNELS` is 33 with `LipSync` driving all 17 modifiers.
+
+## 13. What the modifier slots drive (2026-10-11)
+
+Checked for LipSim's eye rendering; mesh facts from the Expressive Facial
+Animation `.tri` set, engine facts from SkyrimSE.exe 1.6.1170.
+
+- **Gaze is the eyes mesh.** `eyesfemale.tri` / `eyesmale.tri` carry
+  `LookUp/Down/Left/Right` (the eyeball turn) plus `Blink*`/`Squint*` for the
+  lash line. The head `.tri` has only `LookUp` and `LookDown`, an eyelid follow
+  of ~0.3 units, and no `LookLeft`/`LookRight` at all. Nothing in either moves
+  the head.
+- **Left is the character's left, at -x.** The space is right-handed with +y
+  out of the nose and +z up, so +x is the character's right and a viewer facing
+  them sees Left on their own right.
+- **Slots 30-32 have one reader and it is dead.** `0x1404240B0` takes the
+  final modifier keyframe (`BSFaceGenAnimationData + 0x100`), reads values 16,
+  15, 14, maps `FLT_MAX` to 0, clamps each to +-pi/2 (so the unit is radians)
+  and hands them to the quaternion builder `0x140EF9110`, returning whether the
+  result differs from identity. No call, jump, `lea` or pointer anywhere in the
+  image references it (rel32 scan of `.text` plus an 8-byte pointer scan of the
+  whole image), and no head part has a morph named `HeadPitch`/`HeadRoll`/
+  `HeadYaw` for the generic morph path to find. So the head channels load and
+  are never played. Static analysis only, not confirmed in game.

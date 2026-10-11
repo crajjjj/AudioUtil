@@ -2,7 +2,7 @@
 
 A standalone lipsync simulator for Skyrim voice files. Drop a `.wav`, `.lip`,
 or `.fuz` into the page and it plays the audio while animating a face and a
-32-channel phoneme/modifier timeline — exactly the way the AudioUtil SKSE
+33-channel phoneme/modifier timeline, exactly the way the AudioUtil SKSE
 plugin drives an actor's mouth in-game.
 
 Part of [AudioUtil](https://crajjjj.github.io/AudioUtil/) (GPLv3).
@@ -23,8 +23,9 @@ Part of [AudioUtil](https://crajjjj.github.io/AudioUtil/) (GPLv3).
 ## What you can do
 
 - **Preview authored lipsync**: drop a wav + same-stem `.lip`, or a `.fuz`
-  with an embedded lip — the mouth plays the authored FaceFX curves
-  (identity slot map: 0–15 phonemes, 16–31 blink/brow/gaze modifiers).
+  with an embedded lip. The mouth plays the authored FaceFX curves
+  (identity slot map: 0-15 phonemes, 16-29 blink/brow/gaze/squint modifiers,
+  30-32 the three head channels, see [What the modifier channels move](#what-the-modifier-channels-move)).
 - **Preview AudioUtil's pseudo-phoneme synthesis**: drop a bare wav — the
   envelope is segmented into syllables with vowel variety and lip closures,
   mirroring the DLL's `SynthesizePseudoLip` line for line. At seed
@@ -60,10 +61,47 @@ The `.tri` is `meshes\actors\character\character assets\femalehead.tri`
 e.g. Expressive Facial Animation); the `.dds` is your skin mod's
 `textures\actors\character\female\femalehead.dds`. Drop the resulting
 `.head.json` into lipsim: the head renders in WebGL and every phoneme,
-modifier, and expression plays its **actual game morph** — not an
+modifier, and expression plays its **actual game morph**, not an
 approximation. Drag the face to rotate; "flip tex" if the skin looks wrong.
-(BC7 textures need `pip install texture2ddecoder`. Eyes/teeth are separate
-meshes and not included in v1 — the mouth opens onto a dark cavity.)
+(BC7 textures need `pip install texture2ddecoder`.)
+
+The eyes and the mouth are separate head parts with their own `.tri`. Add
+them to the same bundle and the head gets eyeballs that follow the gaze
+channels, plus teeth and a tongue behind the lips:
+
+    python tri2head.py "<path>\femalehead.tri" --dds "<path>\femalehead.dds" --eyes "<path>\eyesfemale.tri" --eyes-dds "<path>\eyeblue.dds" --mouth "<path>\mouthhumanf.tri" --mouth-dds "<path>\mouthhuman.dds" -o female.head.json
+
+`eyesfemale.tri` / `eyesmale.tri` sit beside the head `.tri`, and
+`mouthhumanf.tri` / `mouthhuman.tri` in the `mouth\` subfolder next to it.
+The textures are
+`textures\actors\character\eyes\eye*.dds` and
+`textures\actors\character\mouth\mouthhuman.dds`. Both flags are optional and
+independent. Without `--eyes` the eye sockets stay dark and **Look\*** shows
+on the eyelids only. Remember to tick **drive modifiers on face**, or the
+lip's blink/brow/gaze channels are not applied to the preview at all.
+
+The view is a true front view: the character's left is on screen right, as
+it is when you face them in game. `BlinkLeft`, `LookLeft` and the other Left
+channels therefore act on the right half of the screen. (Up to 0.9.27 every
+face style drew a mirror image, which only one-sided channels reveal.)
+
+### What the modifier channels move
+
+- **LookUp / LookDown / LookLeft / LookRight** turn the **eyeballs only**.
+  They are morphs of the eyes mesh. The head mesh adds a small eyelid follow
+  for up and down, and has nothing at all for left and right. The head itself
+  never moves, so an eye roll or a downcast look is yours to author; a bowed
+  head is not.
+- **HeadPitch / HeadRoll / HeadYaw** (slots 30-32) are in the file format and
+  lip generators fill them, but the game does not play them back. SkyrimSE 1.6.1170
+  has exactly one routine that reads those three slots (as radians, clamped to
+  +-90 degrees, into a quaternion) and nothing in the executable calls it, and
+  no head part has a morph of that name. This is from disassembly, not from an
+  in-game test. LipSim lists the rows in the timeline and leaves the head still.
+- **Blink / Brow / Squint** are head-mesh morphs (the eyes mesh follows the
+  blink and squint with its lash line).
+- Holding a **Blink\*** or **Look\*** channel non-zero stops the actor's own
+  blinking for as long as it is held.
 
 ## Photo face (Skyrim-realistic preview)
 
@@ -122,3 +160,4 @@ Command-line fallback / batch tool: cracks `.fuz` files into `<stem>.wav`
 | `lipsim_server.py` | localhost server + native xWMA decode endpoint |
 | `LipSim.bat` | double-click launcher for the server |
 | `fuz2wav.py` | CLI fuz → wav+lip extractor |
+| `tri2head.py` | CLI head `.tri` (+ eyes, mouth, textures) → `.head.json` for the 3D head |
