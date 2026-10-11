@@ -158,7 +158,9 @@
     </div>
     <div id="presetList"></div>
     <div class="row"><button id="presetNew">new</button><button id="presetSave" class="primary">save</button><button id="presetDownload">download json</button></div>
-    <div class="small">drop a StorageUtil preset json (e.g. SLO VE FemaleExpressions.json) anywhere on this page to load it</div>
+    <div class="small">drop a StorageUtil preset json (e.g. SLO VE FemaleExpressions.json) anywhere on this page to load it.
+      With nothing loaded, <b>new</b> starts a file (name it Expression_&lt;name&gt;.json for a CondiExp profile);
+      with a file loaded it adds a preset to it</div>
   </div>
   <div class="panel" style="width:388px">
     <canvas id="pface" width="356" height="290"></canvas>
@@ -2389,8 +2391,55 @@ for (const cv of [$("face"), $("pface")]) {
   window.addEventListener("mouseup", () => { drag = null; });
 }
 $("presetFilter").addEventListener("input", buildPresetList);
+// "new" with no json loaded starts a FILE, since there is no table to add a
+// preset to. The file name picks the dialect, the way the mods that read these
+// files do: CondiExp loads Expression_<name>.json, anything else is a
+// StorageUtil preset table (SLO VE).
+async function newPresetFile() {
+  let handle = null, fileName = "";
+  if (window.showSaveFilePicker) {
+    try {
+      handle = await window.showSaveFilePicker({
+        suggestedName: "MyExpressions.json",
+        types: [{ description: "Expression preset json", accept: { "application/json": [".json"] } }],
+      });
+      fileName = handle.name;
+    } catch (e) {
+      if (e.name === "AbortError") return;  // picker cancelled
+      handle = null;                        // picker refused: name it by hand, save downloads
+    }
+  }
+  if (!fileName) {
+    fileName = (prompt("New preset file name. Expression_<name>.json makes a CondiExp profile, " +
+                       "any other name a StorageUtil preset table (SLO VE):", "MyExpressions.json") || "").trim();
+    if (!fileName) return;
+    if (!/\.json$/i.test(fileName)) fileName += ".json";
+  }
+  const cee = /^expression_(.+)\.json$/i.exec(fileName);
+  let doc;
+  if (cee) {
+    // one mildest phase per gender, neutral mood at dynamic strength
+    const neutral = () => { const a = new Array(32).fill(0); a[30] = 7; return a; };
+    doc = { floatList: { female1: neutral(), male1: neutral() }, string: { name: cee[1].toLowerCase() } };
+  } else {
+    const first = (prompt("Name of the first preset in it:", "neutral") || "").trim() || "neutral";
+    const tokens = new Array(PRESET_TOKENS).fill(0);
+    tokens[30] = 7; tokens[31] = 100; tokens[32] = 20;  // MoodNeutral, full strength, SLO VE's usual speed
+    doc = { string: { [first]: formatPresetTokens(tokens) } };
+  }
+  installPresets(fileName, doc);
+  state.presets.handle = handle;
+  state.presets.dirty = true;
+  updateSaveButton();
+  // the picker has already made an empty file: fill it, or it is not valid json
+  if (handle) await savePresets();
+  const kind = cee ? "CondiExp profile" : "StorageUtil preset table";
+  presetStatus(state.presets.dirty
+    ? `${fileName}: new ${kind}, not on disk yet ("save" or "download json" writes it)`
+    : `${fileName}: new ${kind} created on disk, "save" writes it in place`);
+}
 $("presetNew").addEventListener("click", () => {
-  if (!state.presets) return;
+  if (!state.presets) { newPresetFile(); return; }
   const P = state.presets;
   const hint = P.kind === "cee"
     ? "New phase name (CondiExp expects female1–female7 / male1–male7):"

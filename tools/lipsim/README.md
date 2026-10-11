@@ -47,7 +47,11 @@ Part of [AudioUtil](https://crajjjj.github.io/AudioUtil/) (GPLv3).
   wears it; playing a line shows lipsync over the expression exactly like
   in-game. Every value is editable (sliders + per-channel N/A), **new**
   clones the current preset under a new name, and **download json** saves
-  the whole modified file — replace the original with it.
+  the whole modified file (replace the original with it). With no json
+  loaded, **new** starts a file instead: name it `Expression_<name>.json`
+  for a ConditionalExpressionsExtended profile, anything else makes a
+  StorageUtil preset table. In Chrome/Edge it asks where to put the file
+  and **save** then writes it in place.
 
 ## 3D head face (the real thing)
 
