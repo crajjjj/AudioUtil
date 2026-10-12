@@ -24,9 +24,12 @@ std::uint32_t AudioUtil_GetVersion()
 	       static_cast<std::uint32_t>(v.patch());
 }
 
+// 1.3.0 - playback control (handle, group and channel calls); 1.2.0 was the handle query
+// (IsHandlePlaying), 1.1.0 the mouth claims. The sdk target in xmake.lua reads the number
+// out of the line below: keep "return <number>" the first thing in the body.
 std::uint32_t AudioUtil_GetInterfaceVersion()
 {
-	return 10200;  // 1.2.0 - handle query (IsHandlePlaying); 1.1.0 was the mouth claims
+	return 10300;
 }
 
 // ---------------------------------------------------------------------------- Playback
@@ -116,6 +119,51 @@ bool AudioUtil_IsHandlePlaying(std::int32_t handle)
 {
 	// same test as the Papyrus IsHandlePlaying native
 	return handle > 0 && InstanceManager::IsPlaying(handle);
+}
+
+// --------------------------------------------------------------------- Playback control
+// each one the body of the Papyrus native of the same name
+
+bool AudioUtil_StopHandle(std::int32_t handle)
+{
+	return handle > 0 && InstanceManager::Stop(handle);
+}
+
+float AudioUtil_GetHandleDuration(std::int32_t handle)
+{
+	return handle > 0 ? InstanceManager::DurationSec(handle) : 0.0f;
+}
+
+void AudioUtil_SetHandleVolume(std::int32_t handle, float volume)
+{
+	if (handle > 0) {
+		InstanceManager::SetInstanceVolume(handle, volume);
+	}
+}
+
+void AudioUtil_SetGroupVolume(const char* group, float volume)
+{
+	InstanceManager::SetGroupVolume(group ? group : "", volume);
+}
+
+void AudioUtil_DuckGroup(const char* group, float factor)
+{
+	InstanceManager::DuckGroup(group ? group : "", factor);
+}
+
+void AudioUtil_UnduckGroup(const char* group)
+{
+	InstanceManager::UnduckGroup(group ? group : "");
+}
+
+void AudioUtil_StopGroup(const char* group)
+{
+	InstanceManager::StopGroup(group ? group : "");
+}
+
+void AudioUtil_StopChannel(const char* channel)
+{
+	InstanceManager::StopChannel(channel ? channel : "");
 }
 
 }  // extern "C"

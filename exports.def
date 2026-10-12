@@ -13,3 +13,11 @@ AudioUtil_GetMouthClaimOwner
 AudioUtil_GetMouthClaimTimeLeft
 AudioUtil_GetClaimedActors
 AudioUtil_IsHandlePlaying
+AudioUtil_StopHandle
+AudioUtil_GetHandleDuration
+AudioUtil_SetHandleVolume
+AudioUtil_SetGroupVolume
+AudioUtil_DuckGroup
+AudioUtil_UnduckGroup
+AudioUtil_StopGroup
+AudioUtil_StopChannel
