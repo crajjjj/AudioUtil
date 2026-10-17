@@ -26,8 +26,9 @@ namespace InstanceManager
 			float             distanceFactor = 1.0f;
 			// the game's Voice volume, for a voice line (1.0 otherwise)
 			float             voiceFactor = 1.0f;
-			// the engine rolls this sound off with distance itself (its output
-			// model, see AudioEngine::OutputModelFor): distanceFactor stays 1.0
+			// the output model PlayPath set on the sound (null = none)
+			const RE::BGSSoundOutput* outputModel = nullptr;
+			// that model rolls the sound off with distance: distanceFactor stays 1.0
 			bool              engineRolloff = false;
 			// the actor this sound follows (3D position) — used by the ticker to
 			// track the player->speaker distance live; empty for flat/2D sounds
@@ -217,9 +218,10 @@ namespace InstanceManager
 	}
 
 	std::int32_t Register(RE::BSSoundHandle a_handle, float a_baseVolume, std::string a_group,
-		std::string a_path, RE::Actor* a_follow, int a_fuzSlot, bool a_voice)
+		std::string a_path, RE::Actor* a_follow, int a_fuzSlot, bool a_voice,
+		const RE::BGSSoundOutput* a_outputModel)
 	{
-		const bool  engineRolloff = AudioEngine::EngineRollsOff(a_follow);
+		const bool  engineRolloff = a_outputModel && a_outputModel->DoGetAttenuatesWithDistance();
 		const float distanceFactor = engineRolloff ? 1.0f : ComputeDistanceFactor(a_follow);
 		const float voiceFactor = a_voice ? AudioEngine::VoiceVolumeFactor() : 1.0f;
 		std::int32_t id = 0;
@@ -231,6 +233,7 @@ namespace InstanceManager
 				Instance{ a_handle, a_baseVolume, std::move(a_group), std::move(a_path) };
 			instance.distanceFactor = distanceFactor;
 			instance.voiceFactor = voiceFactor;
+			instance.outputModel = a_outputModel;
 			instance.engineRolloff = engineRolloff;
 			if (a_follow) {
 				instance.follow = a_follow->GetHandle();
@@ -247,29 +250,31 @@ namespace InstanceManager
 
 	std::string DescribeSound(std::int32_t a_id)
 	{
-		RE::BSSoundHandle handle;
-		std::string       out;
+		std::string out;
 		{
-			// no Sweep: with the console open the line is paused, and may read as stopped
+			// No Sweep: with the console open the line is paused and may read as
+			// stopped. The newest is the highest id, so it says whether it still plays.
 			std::scoped_lock lock{ g_lock };
 			if (a_id <= 0) {
 				for (const auto& [id, instance] : g_instances) {
 					a_id = std::max(a_id, id);
 				}
 			}
-			const auto* instance = Find(a_id);
-			if (!instance) {
-				return (a_id > 0 ? std::format("handle {} is not playing", a_id) : "nothing is playing"s) + "\n" +
-				       AudioEngine::DescribeDialogueDefaults();
+			if (const auto* instance = Find(a_id)) {
+				const auto follow = instance->follow.get();
+				const bool playing = instance->handle.IsValid() && instance->handle.IsPlaying();
+				out = std::format(
+					"handle {} '{}'{}: follows {}, output model {}{}, volume {:.2f} x distance {:.2f} x voice {:.2f}",
+					a_id, instance->path, playing ? "" : " (stopped or paused)",
+					follow ? std::format("{:08X}", follow->GetFormID()) : "nobody"s,
+					instance->outputModel ? std::format("{:08X}", instance->outputModel->GetFormID()) : "none"s,
+					instance->engineRolloff ? " (the engine rolls it off)" : "", instance->baseVolume,
+					instance->distanceFactor, instance->voiceFactor);
+			} else {
+				out = a_id > 0 ? std::format("handle {} is gone", a_id) : "no line has played yet"s;
 			}
-			handle = instance->handle;
-			const auto follow = instance->follow.get();
-			out = std::format("handle {} '{}': follows {}, volume {:.2f} x distance {:.2f} x voice {:.2f}{}", a_id,
-				instance->path, follow ? std::format("{:08X}", follow->GetFormID()) : "nobody"s,
-				instance->baseVolume, instance->distanceFactor, instance->voiceFactor,
-				instance->engineRolloff ? ", the engine rolls it off" : "");
 		}
-		return out + "\n" + AudioEngine::DescribeEngineSound(handle) + "\n" + AudioEngine::DescribeDialogueDefaults();
+		return out + "\n" + AudioEngine::DescribeDialogueDefaults();
 	}
 
 	bool IsPlaying(std::int32_t a_id)

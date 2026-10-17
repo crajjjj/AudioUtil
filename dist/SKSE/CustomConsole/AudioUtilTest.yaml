@@ -241,9 +241,9 @@ subs:
         help: on | off | config (back to the TOML) | status
   - name: sndinfo
     func: SndInfo
-    help: What a playing line got - volume factors, the engine's output model and category for it, the dialogue defaults (also in AudioUtil.log)
+    help: What a line got - the output model AudioUtil set and its volume factors, then the dialogue defaults and Voice categories (also in AudioUtil.log)
     args:
       - name: handle
         type: int
         default: 0
-        help: instance handle; 0 = the newest line still playing
+        help: instance handle; 0 = the newest line

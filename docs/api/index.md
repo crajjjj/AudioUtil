@@ -47,10 +47,10 @@ Failures are **logged to `AudioUtil.log`, never thrown**. Calls on a dead or `0`
 `volume` is the `0.0`–`1.0` base volume of this instance. The **effective** volume is:
 
 ```
-effective = volume × group_volume × group_duck_factor
+effective = volume × group_volume × group_duck_factor × voice_slider
 ```
 
-…and it is re-applied live whenever the group's volume or duck changes.
+…and it is re-applied live whenever the group's volume or duck changes. `voice_slider` is the game's Voice volume, applied to **voice lines** only (the `PlayVoice` family and the `*WithLipSync` calls, see [`[general] voice_slider`](../config/reference.md#general)); every other sound gets `1.0`. A sound that follows an NPC is also faded with distance by the engine, see below.
 
 ### Group
 
@@ -68,7 +68,7 @@ A category or folder with N files acts as a **shuffle bag**: random order, no re
 
 ### 3D positioning
 
-Sounds **follow the given actor's position** while playing. Pass a `None` actor to play unattached (roughly 2D, at the listener).
+Sounds **follow the given actor's position** while playing. A sound that follows an NPC plays through the game's own dialogue output model, like a real NPC line: placed in the speakers where the actor stands and faded with distance by the engine ([`[general] dialogue_output_model`](../config/reference.md#general)). A sound that follows the player stays centered. Pass a `None` actor to play unattached (2D, at the listener).
 
 ## Blocking vs. fire-and-forget
 

@@ -59,7 +59,7 @@ int h = AudioUtil.PlayVoiceTagged(npc, "BattleCry", "angry intense undead")
 int Function PlayVoiceFromSlot(string slot, string category, Actor akFollow, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false) global native
 ```
 
-Same as `PlayVoice`, but the slot is named **explicitly** (`"F1"`, `"M4"`, `"C2"`, …) instead of resolved from an actor — for samples, tests, or when the caller already decided the voice. `akFollow` only provides the 3D position.
+Same as `PlayVoice`, but the slot is named **explicitly** (`"F1"`, `"M4"`, `"C2"`, …) instead of resolved from an actor — for samples, tests, or when the caller already decided the voice. `akFollow` only provides the 3D position: with `None` the line plays 2D, and still counts as a voice line for the [Voice volume](../config/reference.md#general).
 
 ### `PlayVoiceFromSlotTagged`
 
@@ -84,7 +84,7 @@ int Function PlayFile(string dataRelativePath, Actor akFollow, float volume = 1.
 int Function PlayFileWithLipSync(string dataRelativePath, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
 ```
 
-`PlayFile` never drives the mouth — it also serves non-vocal one-shots (squelches, impacts), and its behavior is unchanged for existing consumers. For a **spoken line**, use `PlayFileWithLipSync` (API v5+): identical arguments, plus `akFollow`'s mouth is driven from the clip's loudness exactly like a `PlayVoice` line — honoring the global `[lipsync]` toggle and the automatic guards (gag, worn tongue, in-dialogue). Lipsync works for loose PCM wav and fuz (via the decoded cache); other formats play normally, mouth-still.
+`PlayFile` never drives the mouth: it also serves non-vocal one-shots (squelches, impacts), so it does not get the game's Voice volume either. For a **spoken line**, use `PlayFileWithLipSync` (API v5+): identical arguments, plus `akFollow`'s mouth is driven from the clip's loudness exactly like a `PlayVoice` line, honoring the global `[lipsync]` toggle and the automatic guards (gag, worn tongue, in-dialogue), and the line follows the game's Voice volume like real dialogue ([`voice_slider`](../config/reference.md#general)). Lipsync works for loose PCM wav and fuz (via the decoded cache); other formats play normally, mouth-still. Both place a sound that follows an NPC like a real NPC line ([`dialogue_output_model`](../config/reference.md#general)).
 
 Play one specific file. Path is relative to `Data\` (`'Sound\fx\MyMod\a.wav'`) and may resolve to a **loose file or to audio packed inside a BSA** — the engine's resource loader handles both (loose wins over archive).
 
@@ -97,7 +97,7 @@ int Function PlayFolder(string dataRelativeFolder, Actor akFollow, float volume 
 int Function PlayFolderWithLipSync(string dataRelativeFolder, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
 ```
 
-Play a random file from a loose folder (scanned on first use, then cached as a shuffle bag). Scans pick up `.wav`, `.xwm`, and `.fuz` files. `PlayFolder` never drives the mouth; `PlayFolderWithLipSync` (API v5+) is the spoken-line variant — the picked clip lipsyncs `akFollow` like a `PlayVoice` line, with the same global toggle and guards.
+Play a random file from a loose folder (scanned on first use, then cached as a shuffle bag). Scans pick up `.wav`, `.xwm`, and `.fuz` files. `PlayFolder` never drives the mouth; `PlayFolderWithLipSync` (API v5+) is the spoken-line variant: the picked clip lipsyncs `akFollow` like a `PlayVoice` line, with the same global toggle and guards, and follows the game's Voice volume.
 
 !!! warning "Folder scans can't see into BSAs"
     `PlayFolder` (and folder-string categories, and the `[sfx]` table) scan the loose filesystem only. For **BSA-packed audio** use `PlayFile` or an explicit `[slot.categories]` file list in the TOML — those go through the engine's resource loader, which resolves archives.
@@ -411,7 +411,7 @@ Which slot **actually supplies the audio** for slot/category, walking the same a
 int Function DebugPlayFile(string dataRelativePath, Actor akFollow, int flags, int priority) global native
 ```
 
-Play a file with explicit `BuildSoundDataFromFile` flags/priority instead of the TOML's `sound_flags` / `sound_priority` — for experimenting when a file is silent or behaves oddly. **Not for production use.** If a sound won't play or isn't 3D-positioned, sweep values here.
+Play a file with explicit `BuildSoundDataFromFile` flags/priority instead of the TOML's `sound_flags` / `sound_priority` — for experimenting when a file is silent or behaves oddly. **Not for production use.** If a sound won't play, sweep values here. Placement in the speakers comes from the output model, not the flags (see [`autest outmodel`](../console.md)).
 
 ## Wrappers
 

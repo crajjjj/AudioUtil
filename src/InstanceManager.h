@@ -9,16 +9,17 @@ namespace InstanceManager
 	// When [general] voice_attenuation is on, a distance-attenuation factor is
 	// seeded from the player->follow distance and re-sampled every 250 ms while
 	// the line plays, so movement tracks (see Config + the ticker in the .cpp).
-	// A sound the engine rolls off itself (AudioEngine::EngineRollsOff) gets no
-	// such factor.
+	// A sound whose output model rolls it off itself gets no such factor.
 	// a_fuzSlot: FuzSlots placeholder index backing this instance's audio (-1 if
 	// none). Released back to the pool when the instance stops (Sweep) or is Stopped.
 	// a_voice: a spoken line, scaled by the game's Voice volume ([general] voice_slider).
+	// a_outputModel: the model PlayPath set on the sound (AudioEngine::Played).
 	std::int32_t Register(RE::BSSoundHandle a_handle, float a_baseVolume, std::string a_group,
-		std::string a_path = {}, RE::Actor* a_follow = nullptr, int a_fuzSlot = -1, bool a_voice = false);
+		std::string a_path = {}, RE::Actor* a_follow = nullptr, int a_fuzSlot = -1, bool a_voice = false,
+		const RE::BGSSoundOutput* a_outputModel = nullptr);
 
-	// the volume factors of a playing instance and what the engine holds for it,
-	// for `autest sndinfo` (a_id <= 0 = the newest one still playing)
+	// an instance's output model and volume factors, plus the dialogue defaults,
+	// for `autest sndinfo` (a_id <= 0 = the newest one)
 	std::string DescribeSound(std::int32_t a_id);
 
 	// drop finished instances now, releasing their fuz slots back to the pool.

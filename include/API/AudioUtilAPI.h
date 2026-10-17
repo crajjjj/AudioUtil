@@ -116,11 +116,15 @@ std::uint32_t AudioUtil_GetInterfaceVersion();
 
 // ---------------------------------------------------------------------------- Playback
 // Play a loose (or BSA-packed) audio file by Data-relative path. Never drives the
-// mouth. Returns the instance handle (>0) or 0 on failure.
+// mouth. Returns the instance handle (>0) or 0 on failure. A sound that follows an
+// NPC plays through the game's dialogue output model (placed in the speakers, faded
+// with distance by the engine; [general] dialogue_output_model, AudioUtil 0.9.30+).
 std::int32_t AudioUtil_PlayFile(const char* dataRelPath, RE::Actor* follow,
 	float volume, const char* group, const char* channel);
 // Spoken-line variant: same as AudioUtil_PlayFile plus voice-call lipsync on `follow`
-// (subject to the global lipsync toggle and the gag/tongue/dialogue guards).
+// (subject to the global lipsync toggle and the gag/tongue/dialogue guards), and the
+// game's Voice volume on top of `volume`, as real dialogue gets it ([general]
+// voice_slider, AudioUtil 0.9.30+).
 std::int32_t AudioUtil_PlayFileWithLipSync(const char* dataRelPath, RE::Actor* follow,
 	float volume, const char* group, const char* channel);
 

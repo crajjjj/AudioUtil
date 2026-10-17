@@ -333,11 +333,15 @@ namespace PapyrusAPI
 		// a_log, when given, makes this play a line in the pack-author voice log —
 		// the request it came from is known only to the callers above, and the file
 		// it landed on only down here, so the record is stitched at this seam.
+		// a_voice: a spoken line (the PlayVoice family, PlayFolderWithLipSync), which
+		// gets the game's Voice volume; decided by the caller, not by whether an
+		// actor came along, so a 2D voice line gets it too.
 		std::int32_t PlayFromKey(const std::string& a_folderKey, RE::Actor* a_follow,
 			float a_volume, const std::string& a_group, const std::string& a_channel,
 			RE::Actor* a_mouth = nullptr, bool a_noInterrupt = false,
 			RE::Actor* a_speaker = nullptr, Tags::Mask a_facts = 0,
-			bool a_blockCaption = false, const VoiceLog::Request* a_log = nullptr)
+			bool a_blockCaption = false, const VoiceLog::Request* a_log = nullptr,
+			bool a_voice = false)
 		{
 			const auto miss = [&](std::string_view a_reason) {
 				if (a_log) {
@@ -355,14 +359,13 @@ namespace PapyrusAPI
 				return miss("folder has no qualifying pool");
 			}
 			InstanceManager::SweepNow();  // free slots of lines that already stopped
-			int slot = -1;
-			auto handle = AudioEngine::PlayPath(file, a_follow, a_volume, &slot);
+			AudioEngine::Played played;
+			auto handle = AudioEngine::PlayPath(file, a_follow, a_volume, &played);
 			if (!handle.IsValid()) {
 				return miss("engine refused the file");  // PlayPath released any acquired slot
 			}
-			// a speaker or a mouth to move: a spoken line, not an sfx or a plain folder
-			const bool voice = a_mouth || a_speaker;
-			const auto id = InstanceManager::Register(handle, a_volume, a_group, file, a_follow, slot, voice);
+			const auto id = InstanceManager::Register(handle, a_volume, a_group, file, a_follow, played.fuzSlot,
+				a_voice, played.outputModel);
 			if (!a_channel.empty()) {
 				// claim atomically: if no-interrupt loses the race for a channel
 				// still playing, drop this one (it's within startup grace, silent)
@@ -422,6 +425,7 @@ namespace PapyrusAPI
 			TongueState::Resolve(*Config::Get());
 			InstanceManager::ApplyConfigGroupVolumes();
 			LipSync::ApplyConfig();
+			AudioEngine::ApplyConfig();
 			CaptionManager::ApplyConfig();
 			VoiceLog::ApplyConfig();
 			FuzCache::EnforceCacheCap();
@@ -466,9 +470,10 @@ namespace PapyrusAPI
 			// per-call opt-out OR a category configured to never lipsync (oral sfx, climax)
 			const bool blockLip = a_blockLipSync ||
 				settings->lipsyncBlockCategories.contains(Config::Normalize(a_category));
+			// the sfx slot / [sfx] last resort plays a scene sound, not speech
 			return PlayFromKey(key, follow, a_volume, a_group, a_channel,
 				blockLip ? nullptr : a_actor, settings->voiceNoInterrupt, a_actor, a_facts,
-				a_blockCaption, &log);
+				a_blockCaption, &log, !log.viaSfx);
 		}
 
 		std::int32_t PlayVoice(RE::StaticFunctionTag*, RE::Actor* a_actor,
@@ -516,7 +521,7 @@ namespace PapyrusAPI
 				settings->lipsyncBlockCategories.contains(Config::Normalize(a_category));
 			return PlayFromKey(key, follow, a_volume, a_group, a_channel,
 				blockLip ? nullptr : a_follow, settings->voiceNoInterrupt, a_follow, a_facts,
-				a_blockCaption, &log);
+				a_blockCaption, &log, true);
 		}
 
 		std::int32_t PlayVoiceFromSlot(RE::StaticFunctionTag*, RE::BSFixedString a_slot,
@@ -581,7 +586,7 @@ namespace PapyrusAPI
 		{
 			const auto key = FolderCache::ResolveDirKey(a_folder.c_str());
 			return PlayFromKey(key, a_follow, a_volume, a_group.c_str(), a_channel.c_str(),
-				a_follow);
+				a_follow, false, nullptr, 0, false, nullptr, true);
 		}
 
 		// ---------- natives: handles ----------
@@ -966,12 +971,15 @@ namespace PapyrusAPI
 		{
 			// raw path on purpose (no fuz->payload translation): lets diagnostics
 			// feed a .fuz straight to the engine to probe its native handling
+			// (a raw path never routes through a fuz slot, so played.fuzSlot stays -1)
+			AudioEngine::Played played;
 			auto handle = AudioEngine::PlayPath(a_path.c_str(), a_follow, 1.0f,
-				static_cast<std::uint32_t>(a_flags), static_cast<std::uint32_t>(a_priority), false);
+				static_cast<std::uint32_t>(a_flags), static_cast<std::uint32_t>(a_priority), false, &played);
 			if (!handle.IsValid()) {
 				return 0;
 			}
-			return InstanceManager::Register(handle, 1.0f, "", a_path.c_str(), a_follow);
+			return InstanceManager::Register(handle, 1.0f, "", a_path.c_str(), a_follow, played.fuzSlot, false,
+				played.outputModel);
 		}
 
 		// lip-calibration capture (see LipCapture.h) — registered on the TEST
@@ -1150,9 +1158,9 @@ namespace PapyrusAPI
 			AudioEngine::SetOutputModelMode(a_mode);
 		}
 
-		bool GetOutputModelMode(RE::StaticFunctionTag*)
+		RE::BSFixedString GetOutputModelMode(RE::StaticFunctionTag*)
 		{
-			return AudioEngine::OutputModelEnabled();
+			return RE::BSFixedString(AudioEngine::OutputModelStatus());
 		}
 
 		void SetVoiceSliderMode(RE::StaticFunctionTag*, std::int32_t a_mode)
@@ -1160,13 +1168,13 @@ namespace PapyrusAPI
 			AudioEngine::SetVoiceSliderMode(a_mode);
 		}
 
-		bool GetVoiceSliderMode(RE::StaticFunctionTag*)
+		RE::BSFixedString GetVoiceSliderMode(RE::StaticFunctionTag*)
 		{
-			return AudioEngine::VoiceSliderEnabled();
+			return RE::BSFixedString(AudioEngine::VoiceSliderStatus());
 		}
 
-		// a playing line's volume factors and what the engine holds for it
-		// (output model, category), also written to AudioUtil.log
+		// a line's output model and volume factors, plus the dialogue defaults,
+		// also written to AudioUtil.log
 		RE::BSFixedString DescribeSound(RE::StaticFunctionTag*, std::int32_t a_handle)
 		{
 			const auto text = InstanceManager::DescribeSound(a_handle);
@@ -1277,12 +1285,14 @@ namespace PapyrusAPI
 		std::string path = a_dataRelPath;
 		std::replace(path.begin(), path.end(), '/', '\\');
 		InstanceManager::SweepNow();  // free slots of lines that already stopped
-		int slot = -1;
-		auto handle = AudioEngine::PlayPath(path, a_follow, a_volume, &slot);
+		AudioEngine::Played played;
+		auto handle = AudioEngine::PlayPath(path, a_follow, a_volume, &played);
 		if (!handle.IsValid()) {
 			return 0;  // PlayPath released any acquired slot on failure
 		}
-		const auto id = InstanceManager::Register(handle, a_volume, a_group, path, a_follow, slot, a_lipSync);
+		// the WithLipSync variant is the spoken-line one: it gets the Voice volume
+		const auto id = InstanceManager::Register(handle, a_volume, a_group, path, a_follow, played.fuzSlot,
+			a_lipSync, played.outputModel);
 		if (*a_channel) {
 			InstanceManager::PlayOnChannel(a_channel, id);
 		}

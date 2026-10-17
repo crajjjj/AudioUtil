@@ -198,9 +198,9 @@ string Function GetMouthClaims() global native
 Function SetVoiceLogMode(string asMode) global native
 string Function GetVoiceLogMode() global native
 Function SetOutputModelMode(int aiMode) global native
-bool Function GetOutputModelMode() global native
+string Function GetOutputModelMode() global native
 Function SetVoiceSliderMode(int aiMode) global native
-bool Function GetVoiceSliderMode() global native
+string Function GetVoiceSliderMode() global native
 string Function DescribeSound(int aiHandle) global native
 
 ; Toggle .lip-driven phoneme lipsync at runtime (vs the amplitude envelope).
@@ -380,9 +380,10 @@ Function VoiceSlider(string mode) global
     Debug.Notification("voice slider on voice lines: " + GetVoiceSliderMode())
 EndFunction
 
-; What a playing line got: its volume factors, the output model and category the
-; engine holds for it, and the dialogue default objects with the Voice volume.
-; Also written to AudioUtil.log. 0 = the newest line still playing.
+; What a line got: the output model AudioUtil set on it and its volume factors
+; (own, distance, Voice), then the dialogue default objects, each Voice category's
+; slider and static multiplier, and whether an autest override is on.
+; Also written to AudioUtil.log. 0 = the newest line.
 ; Usage:  autest sndinfo   |   autest sndinfo <handle>
 string Function SndInfo(int handle) global
     return DescribeSound(handle)

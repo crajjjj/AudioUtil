@@ -17,6 +17,13 @@ namespace AudioEngine
 			return mode < 0 ? a_config : mode != 0;
 		}
 
+		std::string ModeStatus(const std::atomic<int>& a_mode, bool a_config)
+		{
+			const int mode = a_mode.load();
+			return std::format("{} ({})", ModeOr(a_mode, a_config) ? "on" : "off",
+				mode < 0 ? "config" : "autest override");
+		}
+
 		template <class T>
 		T* DefaultObject(RE::DEFAULT_OBJECT a_object)
 		{
@@ -35,20 +42,14 @@ namespace AudioEngine
 		{
 			return a_form ? std::format("{:08X}", a_form->GetFormID()) : "none"s;
 		}
-	}
 
-	const RE::BGSSoundOutput* OutputModelFor(RE::Actor* a_follow)
-	{
-		if (!a_follow || a_follow->IsPlayerRef() || !a_follow->Get3D() || !OutputModelEnabled()) {
-			return nullptr;
+		const RE::BGSSoundOutput* OutputModelFor(RE::Actor* a_follow)
+		{
+			if (!a_follow || a_follow->IsPlayerRef() || !OutputModelEnabled()) {
+				return nullptr;
+			}
+			return DefaultObject<RE::BGSSoundOutput>(RE::DEFAULT_OBJECT::kDialogueOutputModel3D);
 		}
-		return DefaultObject<RE::BGSSoundOutput>(RE::DEFAULT_OBJECT::kDialogueOutputModel3D);
-	}
-
-	bool EngineRollsOff(RE::Actor* a_follow)
-	{
-		const auto* model = OutputModelFor(a_follow);
-		return model && model->DoGetAttenuatesWithDistance();
 	}
 
 	float VoiceVolumeFactor()
@@ -56,16 +57,8 @@ namespace AudioEngine
 		if (!VoiceSliderEnabled()) {
 			return 1.0f;
 		}
-		// The master slider is left out: it is what every sound gets, this one
-		// included, and must not be applied twice.
-		const auto* master = DefaultObject<RE::BGSSoundCategory>(RE::DEFAULT_OBJECT::kMasterSoundCategory);
 		const auto* category = DefaultObject<RE::BGSSoundCategory>(RE::DEFAULT_OBJECT::kDialogueVoiceCategory);
-		float       factor = 1.0f;
-		for (int depth = 0; category && category != master && depth < 8; ++depth) {
-			factor *= category->GetCategoryVolume() * StaticMult(*category);
-			category = category->parentCategory;
-		}
-		return std::clamp(factor, 0.0f, 1.0f);
+		return category ? std::clamp(category->GetCategoryVolume(), 0.0f, 1.0f) : 1.0f;
 	}
 
 	void SetOutputModelMode(int a_mode)
@@ -88,24 +81,21 @@ namespace AudioEngine
 		return ModeOr(g_voiceSliderMode, Config::Get()->voiceSlider);
 	}
 
-	std::string DescribeEngineSound(const RE::BSSoundHandle& a_handle)
+	std::string OutputModelStatus()
 	{
-		auto* manager = RE::BSAudioManager::GetSingleton();
-		if (!manager || !a_handle.IsValid()) {
-			return "engine: no such sound";
-		}
-		const auto it = manager->activeSounds.find(a_handle.soundID);
-		if (it == manager->activeSounds.end() || !it->second) {
-			return std::format("engine: sound {} is not active", a_handle.soundID);
-		}
-		const auto* sound = it->second;
-		const auto* model = sound->outputModel ? skyrim_cast<RE::BGSSoundOutput*>(sound->outputModel) : nullptr;
-		const auto* category = sound->category ? skyrim_cast<RE::BGSSoundCategory*>(sound->category) : nullptr;
-		return std::format("engine: sound {}, output model {}{}, category {}{}, static att {}, system att {}, "
-						   "volume {:.2f}, listener distance {:.0f}",
-			a_handle.soundID, FormName(model), sound->outputModel && !model ? " (not a form)" : "",
-			FormName(category), sound->category && !category ? " (not a form)" : "",
-			sound->staticAttenuation, sound->systemAttenuation, sound->volume, sound->listenerDistance);
+		return ModeStatus(g_outputModelMode, Config::Get()->dialogueOutputModel);
+	}
+
+	std::string VoiceSliderStatus()
+	{
+		return ModeStatus(g_voiceSliderMode, Config::Get()->voiceSlider);
+	}
+
+	void ApplyConfig()
+	{
+		// an `autest` A/B ends with a reload, as `autest lipfiles` does
+		g_outputModelMode.store(-1);
+		g_voiceSliderMode.store(-1);
 	}
 
 	std::string DescribeDialogueDefaults()
@@ -119,29 +109,27 @@ namespace AudioEngine
 		} else {
 			out = "dialogue 3D model: none";
 		}
-		const auto* master = DefaultObject<RE::BGSSoundCategory>(RE::DEFAULT_OBJECT::kMasterSoundCategory);
+		// each level's own slider and static multiplier; GetCategoryVolume of the
+		// first is their product, the Voice factor
 		const auto* category = DefaultObject<RE::BGSSoundCategory>(RE::DEFAULT_OBJECT::kDialogueVoiceCategory);
-		out += "; voice categories:";
+		out += "\nvoice categories:";
 		for (int depth = 0; category && depth < 8; ++depth) {
-			out += std::format(" {} vol {:.2f} (field {:.2f}) x static {:.2f}{}", FormName(category),
-				category->GetCategoryVolume(), category->volumeMult, StaticMult(*category),
-				category == master ? " [master, not applied]" : "");
-			if (category == master) {
-				break;
-			}
+			out += std::format(" {} slider {:.2f} x static {:.2f};", FormName(category), category->volumeMult,
+				StaticMult(*category));
 			category = category->parentCategory;
 		}
-		out += std::format("; factor {:.2f}", VoiceVolumeFactor());
+		out += std::format(" Voice factor {:.2f}, output model {}, voice slider {}", VoiceVolumeFactor(),
+			OutputModelStatus(), VoiceSliderStatus());
 		return out;
 	}
 
 	RE::BSSoundHandle PlayPath(const std::string& a_dataRelPath, RE::Actor* a_follow,
 		float a_volume, std::uint32_t a_flags, std::uint32_t a_priority,
-		bool a_translateFuz, int* a_slotOut)
+		bool a_translateFuz, Played* a_played)
 	{
 		RE::BSSoundHandle handle;
-		if (a_slotOut) {
-			*a_slotOut = -1;
+		if (a_played) {
+			*a_played = {};
 		}
 
 		auto* manager = RE::BSAudioManager::GetSingleton();
@@ -168,13 +156,13 @@ namespace AudioEngine
 		// Route the fuz-derived cache wav through a pre-indexed placeholder slot so
 		// a first-session decode is audible now (the cache wav itself isn't in the
 		// launch resource index yet). Only when the caller can release the slot on
-		// stop (a_slotOut) and the pool is on; otherwise play the cache path direct
+		// stop (a_played) and the pool is on; otherwise play the cache path direct
 		// (correct once it's been cached by a prior session). The slot is a .wav, so
 		// only route a decoded-PCM cache path — a decode-failure .xwm fallback keeps
 		// its own extension so the engine picks the right codec. See FuzSlots.
 		int         slot = -1;
 		std::string slotPath;
-		if (a_slotOut && playPath == &extracted && FuzSlots::Enabled() &&
+		if (a_played && playPath == &extracted && FuzSlots::Enabled() &&
 			extracted.ends_with(".wav")) {
 			slot = FuzSlots::AcquireWithCopy(extracted, slotPath);
 			if (slot >= 0) {
@@ -201,19 +189,23 @@ namespace AudioEngine
 				a_dataRelPath, a_flags, a_priority);
 			return handle;
 		}
-		if (a_slotOut) {
-			*a_slotOut = slot;
+		if (a_played) {
+			a_played->fuzSlot = slot;
 		}
 
 		handle.SetVolume(std::clamp(a_volume, 0.0f, 1.0f));
 
 		if (a_follow) {
 			if (auto* node = a_follow->Get3D()) {
-				// A sound built from a bare file has no output model of its own,
-				// and with none it played centered and at full level wherever it
-				// followed. A real NPC line goes through this one.
+				// The engine places a sound in the speakers and rolls it off with
+				// distance only through its output model. A sound built from a
+				// bare file has none: it played centered and at full level
+				// wherever it followed. A real NPC line goes through this one.
 				if (const auto* model = OutputModelFor(a_follow)) {
 					handle.SetOutputModel(model);
+					if (a_played) {
+						a_played->outputModel = model;
+					}
 				}
 				handle.SetObjectToFollow(node);
 			}
@@ -227,11 +219,11 @@ namespace AudioEngine
 	}
 
 	RE::BSSoundHandle PlayPath(const std::string& a_dataRelPath, RE::Actor* a_follow, float a_volume,
-		int* a_slotOut)
+		Played* a_played)
 	{
 		const auto settings = Config::Get();
 		return PlayPath(a_dataRelPath, a_follow, a_volume, settings->soundFlags, settings->soundPriority,
-			true, a_slotOut);
+			true, a_played);
 	}
 
 	bool ResourceExists(const std::string& a_dataRelPath)
