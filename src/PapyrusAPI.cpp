@@ -360,7 +360,9 @@ namespace PapyrusAPI
 			if (!handle.IsValid()) {
 				return miss("engine refused the file");  // PlayPath released any acquired slot
 			}
-			const auto id = InstanceManager::Register(handle, a_volume, a_group, file, a_follow, slot);
+			// a speaker or a mouth to move: a spoken line, not an sfx or a plain folder
+			const bool voice = a_mouth || a_speaker;
+			const auto id = InstanceManager::Register(handle, a_volume, a_group, file, a_follow, slot, voice);
 			if (!a_channel.empty()) {
 				// claim atomically: if no-interrupt loses the race for a channel
 				// still playing, drop this one (it's within startup grace, silent)
@@ -1141,6 +1143,37 @@ namespace PapyrusAPI
 			return RE::BSFixedString(MouthClaim::Describe());
 		}
 
+		// runtime A/B of [general] dialogue_output_model / voice_slider for new
+		// lines: -1 = back to the config, 0 = off, 1 = on
+		void SetOutputModelMode(RE::StaticFunctionTag*, std::int32_t a_mode)
+		{
+			AudioEngine::SetOutputModelMode(a_mode);
+		}
+
+		bool GetOutputModelMode(RE::StaticFunctionTag*)
+		{
+			return AudioEngine::OutputModelEnabled();
+		}
+
+		void SetVoiceSliderMode(RE::StaticFunctionTag*, std::int32_t a_mode)
+		{
+			AudioEngine::SetVoiceSliderMode(a_mode);
+		}
+
+		bool GetVoiceSliderMode(RE::StaticFunctionTag*)
+		{
+			return AudioEngine::VoiceSliderEnabled();
+		}
+
+		// a playing line's volume factors and what the engine holds for it
+		// (output model, category), also written to AudioUtil.log
+		RE::BSFixedString DescribeSound(RE::StaticFunctionTag*, std::int32_t a_handle)
+		{
+			const auto text = InstanceManager::DescribeSound(a_handle);
+			logger::info("sndinfo: {}", text);
+			return RE::BSFixedString(text);
+		}
+
 		// ---------- natives: TomlUtil (generic consumer-config surface) ----------
 		// Registered under its own script class so any mod can read TOML files
 		// through AudioUtil's DLL without touching the audio API.
@@ -1249,7 +1282,7 @@ namespace PapyrusAPI
 		if (!handle.IsValid()) {
 			return 0;  // PlayPath released any acquired slot on failure
 		}
-		const auto id = InstanceManager::Register(handle, a_volume, a_group, path, a_follow, slot);
+		const auto id = InstanceManager::Register(handle, a_volume, a_group, path, a_follow, slot, a_lipSync);
 		if (*a_channel) {
 			InstanceManager::PlayOnChannel(a_channel, id);
 		}
@@ -1325,6 +1358,11 @@ namespace PapyrusAPI
 		REGISTERFUNC(GetMouthClaims, TEST_SCRIPT_NAME);
 		REGISTERFUNC(SetVoiceLogMode, TEST_SCRIPT_NAME);
 		REGISTERFUNC(GetVoiceLogMode, TEST_SCRIPT_NAME);
+		REGISTERFUNC(SetOutputModelMode, TEST_SCRIPT_NAME);
+		REGISTERFUNC(GetOutputModelMode, TEST_SCRIPT_NAME);
+		REGISTERFUNC(SetVoiceSliderMode, TEST_SCRIPT_NAME);
+		REGISTERFUNC(GetVoiceSliderMode, TEST_SCRIPT_NAME);
+		REGISTERFUNC(DescribeSound, TEST_SCRIPT_NAME);
 		REGISTERFUNC(IsConnected, PPA_SCRIPT_NAME);
 		REGISTERFUNC(SetEventRate, PPA_SCRIPT_NAME);
 		REGISTERFUNC(GetContext, PPA_SCRIPT_NAME);

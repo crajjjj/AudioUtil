@@ -223,3 +223,27 @@ subs:
         type: String
         required: true
         help: off | player | all (or on) | status - re-running it restarts the file, so it can capture one scene
+  - name: outmodel
+    func: OutModel
+    help: A/B the engine's dialogue output model on sounds that follow an NPC (placed in the speakers, engine distance rolloff); affects new lines
+    args:
+      - name: mode
+        type: String
+        required: true
+        help: on | off | config (back to the TOML) | status
+  - name: voiceslider
+    func: VoiceSlider
+    help: A/B the game's Voice volume on voice lines; affects new lines
+    args:
+      - name: mode
+        type: String
+        required: true
+        help: on | off | config (back to the TOML) | status
+  - name: sndinfo
+    func: SndInfo
+    help: What a playing line got - volume factors, the engine's output model and category for it, the dialogue defaults (also in AudioUtil.log)
+    args:
+      - name: handle
+        type: int
+        default: 0
+        help: instance handle; 0 = the newest line still playing

@@ -1,5 +1,6 @@
 #include "InstanceManager.h"
 
+#include "AudioEngine.h"
 #include "CaptionManager.h"
 #include "Config.h"
 #include "FuzSlots.h"
@@ -23,6 +24,11 @@ namespace InstanceManager
 			// while the line plays; kept as a separate multiplier so group-volume /
 			// duck recomputes preserve it (see ApplyEffectiveVolume)
 			float             distanceFactor = 1.0f;
+			// the game's Voice volume, for a voice line (1.0 otherwise)
+			float             voiceFactor = 1.0f;
+			// the engine rolls this sound off with distance itself (its output
+			// model, see AudioEngine::OutputModelFor): distanceFactor stays 1.0
+			bool              engineRolloff = false;
 			// the actor this sound follows (3D position) — used by the ticker to
 			// track the player->speaker distance live; empty for flat/2D sounds
 			RE::ActorHandle   follow;
@@ -73,8 +79,8 @@ namespace InstanceManager
 				const auto& group = GetGroup(a_instance.group);
 				mult = group.volume * group.duckFactor;
 			}
-			a_instance.handle.SetVolume(
-				std::clamp(a_instance.baseVolume * mult * a_instance.distanceFactor, 0.0f, 1.0f));
+			a_instance.handle.SetVolume(std::clamp(
+				a_instance.baseVolume * mult * a_instance.distanceFactor * a_instance.voiceFactor, 0.0f, 1.0f));
 		}
 
 		// Distance-attenuation factor for a follow-positioned sound, from the
@@ -142,7 +148,7 @@ namespace InstanceManager
 			Sweep();  // finished lines drop out (and free their fuz slots) promptly
 			for (auto& [id, instance] : g_instances) {
 				const auto follow = instance.follow.get();
-				if (!follow) {
+				if (!follow || instance.engineRolloff) {
 					continue;
 				}
 				const float factor = ComputeDistanceFactor(follow.get());
@@ -211,9 +217,11 @@ namespace InstanceManager
 	}
 
 	std::int32_t Register(RE::BSSoundHandle a_handle, float a_baseVolume, std::string a_group,
-		std::string a_path, RE::Actor* a_follow, int a_fuzSlot)
+		std::string a_path, RE::Actor* a_follow, int a_fuzSlot, bool a_voice)
 	{
-		const float distanceFactor = ComputeDistanceFactor(a_follow);
+		const bool  engineRolloff = AudioEngine::EngineRollsOff(a_follow);
+		const float distanceFactor = engineRolloff ? 1.0f : ComputeDistanceFactor(a_follow);
+		const float voiceFactor = a_voice ? AudioEngine::VoiceVolumeFactor() : 1.0f;
 		std::int32_t id = 0;
 		{
 			std::scoped_lock lock{ g_lock };
@@ -222,17 +230,46 @@ namespace InstanceManager
 			auto& instance = g_instances[id] =
 				Instance{ a_handle, a_baseVolume, std::move(a_group), std::move(a_path) };
 			instance.distanceFactor = distanceFactor;
+			instance.voiceFactor = voiceFactor;
+			instance.engineRolloff = engineRolloff;
 			if (a_follow) {
 				instance.follow = a_follow->GetHandle();
 			}
 			instance.fuzSlot = a_fuzSlot;
 			ApplyEffectiveVolume(instance);
 		}
-		if (a_follow && Config::Get()->voiceAttenuation) {
+		if (a_follow && !engineRolloff && Config::Get()->voiceAttenuation) {
 			EnsureTicker();
 			g_tickerCv.notify_one();
 		}
 		return id;
+	}
+
+	std::string DescribeSound(std::int32_t a_id)
+	{
+		RE::BSSoundHandle handle;
+		std::string       out;
+		{
+			// no Sweep: with the console open the line is paused, and may read as stopped
+			std::scoped_lock lock{ g_lock };
+			if (a_id <= 0) {
+				for (const auto& [id, instance] : g_instances) {
+					a_id = std::max(a_id, id);
+				}
+			}
+			const auto* instance = Find(a_id);
+			if (!instance) {
+				return (a_id > 0 ? std::format("handle {} is not playing", a_id) : "nothing is playing"s) + "\n" +
+				       AudioEngine::DescribeDialogueDefaults();
+			}
+			handle = instance->handle;
+			const auto follow = instance->follow.get();
+			out = std::format("handle {} '{}': follows {}, volume {:.2f} x distance {:.2f} x voice {:.2f}{}", a_id,
+				instance->path, follow ? std::format("{:08X}", follow->GetFormID()) : "nobody"s,
+				instance->baseVolume, instance->distanceFactor, instance->voiceFactor,
+				instance->engineRolloff ? ", the engine rolls it off" : "");
+		}
+		return out + "\n" + AudioEngine::DescribeEngineSound(handle) + "\n" + AudioEngine::DescribeDialogueDefaults();
 	}
 
 	bool IsPlaying(std::int32_t a_id)

@@ -60,6 +60,9 @@ install. Each plays at the player and reports the resulting instance handle
 | `autest voicetag <slot> <category> "<facts>"` | slot id, category, quoted fact string | [Tag-scored](tags.md) play from an explicit slot (`PlayVoiceFromSlotTagged`). Needs a `[tags]` vocabulary (base or overlay). |
 | `autest voicetagpc <category> "<facts>"` | category, quoted fact string | Tag-scored play through the player's resolved slot (`PlayVoiceTagged`). |
 | `autest sfx <name>` | sfx/category name | Play an SFX by name (`PlaySFX`). |
+| `autest outmodel on\|off\|config\|status` | mode | A/B the [dialogue output model](config/reference.md#general) on sounds that follow an NPC, for new lines. `on`: placed in the speakers and rolled off by the engine like a real NPC line. `off`: centered and at full level (the playback before 0.9.30). `config` goes back to `[general] dialogue_output_model`. |
+| `autest voiceslider on\|off\|config\|status` | mode | A/B the game's Voice volume on voice lines (`[general] voice_slider`), for new lines. |
+| `autest sndinfo [handle]` | handle, `0` = newest | What a playing line got: its volume factors (own, distance, Voice slider), the output model and sound category the engine holds for it, and the dialogue default objects with the Voice volume they add up to. Also written to `AudioUtil.log`. For a line that sounds out of place or louder than the game's own dialogue. |
 | `autest claims` | — | List the live [mouth claims](api/audioutil.md#mouth-claims) — actor, owner tag, seconds left. For a mouth that stays still with no obvious owner. |
 | `autest voicelog off\|player\|all\|status` | mode | Turn the [pack-author voice log](config/reference.md#general) on/off live (`[general] voice_log` without a reload). Writes `AudioUtil_Voices.log` in the SKSE log folder: one line per voice line — category asked for, facts, where resolution landed, exact file. Always restarts the file — even when the mode is already what you asked for — so running it right before the scene you care about gives a transcript of just that scene. |
 
@@ -72,6 +75,8 @@ autest voicetagpc BattleCry "afraid"
 autest sfx MediumClap
 autest claims
 autest voicelog player
+autest outmodel off
+autest sndinfo
 ```
 
 ## Exposing your own commands

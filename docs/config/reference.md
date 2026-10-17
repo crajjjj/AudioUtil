@@ -21,6 +21,8 @@ pc_female_slot = ""           # reserved player slot; empty = no reservation
 pc_male_slot = ""
 voice_3d = true               # 3D-position voices at the speaker; false = flat/2D
 voice_no_interrupt = false    # skip a new line while its channel is still playing
+dialogue_output_model = true  # NPC sounds play through the game's dialogue output model
+voice_slider = true           # voice lines follow the game's Voice volume
 voice_attenuation = true      # distance-based volume falloff for follow-positioned sounds
 attenuation_near = 200.0      # full volume within this distance (~3 m)
 attenuation_far = 1800.0      # volume reaches the floor at/beyond this distance (~26 m)
@@ -31,7 +33,7 @@ voice_log = "off"             # pack-author transcript: off | player | all
 | Key | Type | Default | Meaning |
 |-----|------|---------|---------|
 | `log_level` | string | `"info"` | Verbosity of `AudioUtil.log`. |
-| `sound_flags` | int | `0x1A` | `BuildSoundDataFromFile` flags. Sweep with [`DebugPlayFile`](../api/audioutil.md#debugplayfile) if audio is silent or not 3D. |
+| `sound_flags` | int | `0x1A` | `BuildSoundDataFromFile` flags. Sweep with [`DebugPlayFile`](../api/audioutil.md#debugplayfile) if audio is silent. Where a sound sits in the speakers is `dialogue_output_model`, not the flags. |
 | `sound_priority` | int | `128` | Sound priority passed to the engine. |
 | `sfx_slot` | slot id | `"SFX0"` | The `[[slot]]` whose categories [`PlaySFX`](../api/audioutil.md#playsfx) resolves before the flat `[sfx]` table (see [SFX](#sfx-the-sfx-slot-sfx-table)). `""` = table only. |
 | `default_female_slot` | slot id | `"F1"` | Slot for unrouted female actors. |
@@ -39,9 +41,11 @@ voice_log = "off"             # pack-author transcript: off | player | all
 | `default_creature_slot` | slot id | `""` | Slot for an unrouted **creature** (an actor whose race carries no `ActorTypeNPC` keyword). Creatures never fall through to `default_male_slot` or its blind scan: everything those can pick is an `'F'`/`'M'` human voice pack, so an unmapped frostbite spider would otherwise speak human lines. `""` = the creature resolves to nothing and stays silent, and [`GetSlotForActor`](../api/audioutil.md#getslotforactor) returns `""` so a script can test before playing. Explicit routing (a `[race_map]` hint, an `[npc_overrides]` pin, `PlayVoiceFromSlot`) is unaffected. |
 | `pc_female_slot` | slot id | `""` | Reserved for the player; no NPC ever resolves to it. |
 | `pc_male_slot` | slot id | `""` | Same, for a male PC. |
-| `voice_3d` | bool | `true` | `true` = 3D-position each voice at the speaker (distance attenuation). `false` = play flat/2D at full volume so every speaker is equally audible. Lipsync is unaffected either way. |
+| `voice_3d` | bool | `true` | `true` = each voice follows its speaker, so it is placed and rolled off like a real NPC line (see `dialogue_output_model`). `false` = play flat/2D at full volume so every speaker is equally audible. Lipsync is unaffected either way. |
 | `voice_no_interrupt` | bool | `false` | `true` = when a `PlayVoice` names a channel still playing a line, skip the new line instead of cutting the old one off (per channel — different speakers still overlap). SFX and `PlayFile`/`PlayFolder` are unaffected. |
-| `voice_attenuation` | bool | `false` | Distance-based volume falloff for follow-positioned sounds (voice + SFX). Loose-file playback has no sound-descriptor rolloff curve, so `voice_3d` positions a sound but the engine barely lowers its volume with distance — a scene across the room otherwise plays at full volume. When on, each follow-positioned instance is scaled by the player→speaker distance, **re-sampled every 250 ms** while the line plays so movement tracks. |
+| `dialogue_output_model` | bool | `true` | A sound that follows an NPC (a voice with `voice_3d` on, or any `Play*` call given an actor) plays through the game's own **Dialogue Output Model 3D** default object, the output model a real NPC line uses. The engine then places it in the speakers where the speaker stands and rolls it off with distance by that model's curve (vanilla: 70 to 3000 units; sound overhauls change it). A sound built from a bare file has no output model of its own: `false` restores the playback before 0.9.30, centered and at full level wherever the speaker is, with `voice_attenuation` as the only falloff. The player's own lines are left centered either way. A/B it live with [`autest outmodel`](../console.md). |
+| `voice_slider` | bool | `true` | Voice lines (the `PlayVoice` family, `PlayFileWithLipSync`, `PlayFolderWithLipSync`) are scaled by the game's **Voice** volume (Settings, Audio), the way real dialogue is, so they stay level with it. `PlaySFX`, `PlayFile` and `PlayFolder` are left alone. `false` = voice lines ignore the slider, as before 0.9.30. A/B it live with [`autest voiceslider`](../console.md). |
+| `voice_attenuation` | bool | `false` | Distance-based volume falloff for follow-positioned sounds (voice + SFX) that the engine does not roll off itself, which is all of them while `dialogue_output_model` is `false`. Loose-file playback has no sound-descriptor rolloff curve, so such a sound across the room otherwise plays at full volume. When on, each of them is scaled by the player-to-speaker distance, **re-sampled every 250 ms** while the line plays so movement tracks. |
 | `attenuation_near` | float | `200.0` | Full volume within this distance (game units, ~70/m — so ~3 m). |
 | `attenuation_far` | float | `1800.0` | Volume reaches `attenuation_floor` at/beyond this distance (~26 m). Between `near` and `far` the curve is an inverse-distance rolloff (−6 dB per doubling, the point-source law) renormalized to land on the floor at `far`. |
 | `attenuation_floor` | float | `0.05` | Minimum volume factor for far sounds (`0.0` = silent beyond `attenuation_far`). |

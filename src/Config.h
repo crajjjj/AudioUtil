@@ -195,17 +195,31 @@ namespace Config
 
 		// Distance attenuation for follow-positioned sounds (voice + sfx). Loose-file
 		// playback has no sound-descriptor rolloff curve, so a followed sound barely
-		// gets quieter with distance (positioning still works). When enabled, the
+		// gets quieter with distance. When enabled, the
 		// per-instance volume is scaled by the listener->speaker distance: full within
 		// attenuationNear, then an inverse-distance rolloff (-6 dB per doubling)
 		// renormalized to reach attenuationFloor at attenuationFar (units, ~70/m).
 		// Re-sampled every 250 ms while a line plays, so movement tracks (see the
 		// InstanceManager ticker). Off by default = no change for existing consumers.
 		// Only meaningful when a sound plays far from the player (e.g. NPC-only scenes).
+		// Not applied to a sound the engine already rolls off (dialogueOutputModel).
 		bool  voiceAttenuation{ false };
 		float attenuationNear{ 200.0f };
 		float attenuationFar{ 1800.0f };
 		float attenuationFloor{ 0.05f };
+
+		// A sound that follows an NPC plays through the game's own "Dialogue
+		// Output Model 3D" default object, the model a real NPC line uses: placed
+		// in the speakers and rolled off with distance by the engine. Built from a
+		// bare file, it otherwise played centered and at full level wherever it
+		// followed. The player's own lines are left as they were. Base-only
+		// global; runtime override: `autest outmodel`.
+		bool dialogueOutputModel{ true };
+
+		// Voice lines (the PlayVoice family and the *WithLipSync variants) are
+		// scaled by the game's Voice volume, the way real dialogue is, so they
+		// stay level with it. Base-only global; runtime override: `autest voiceslider`.
+		bool voiceSlider{ true };
 
 		bool          ppaEnabled{ true };
 		std::uint32_t ppaEventRateMs{ 2000 };

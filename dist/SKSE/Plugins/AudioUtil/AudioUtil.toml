@@ -19,9 +19,19 @@ sound_flags = 0x1A            # BuildSoundDataFromFile flags (sweep via DebugPla
 sound_priority = 128
 voice_3d = true               # 3D-position voices at the speaker; false = flat/2D, all equally audible
 voice_no_interrupt = false    # true = a still-playing channel skips the new line instead of cutting it
-# Distance attenuation for follow-positioned sounds (voice + SFX). Loose-file playback
-# has no rolloff curve, so voice_3d positions a sound but barely lowers its volume with
-# distance - matters only when a sound plays far from the player. When on, volume is
+# Sounds that follow an NPC play through the game's own dialogue output model
+# (the "Dialogue Output Model 3D" default object, what a real NPC line uses):
+# placed in the speakers where the speaker stands, and rolled off with distance
+# by the engine. false = the playback before 0.9.30: centered and at full level,
+# with voice_attenuation below as the only falloff. The player's own lines stay
+# centered either way.
+dialogue_output_model = true
+# Voice lines (PlayVoice and the *WithLipSync calls) follow the game's Voice
+# volume (Settings > Audio), the way real dialogue does. false = they ignore it.
+voice_slider = true
+# Distance attenuation for follow-positioned sounds (voice + SFX) that the engine
+# does not roll off itself, i.e. all of them while dialogue_output_model is false.
+# Loose-file playback has no rolloff curve of its own. When on, volume is
 # scaled by the listener->speaker distance: full within attenuation_near, then an
 # inverse-distance rolloff (-6 dB per doubling, like the engine's own voice curves)
 # down to attenuation_floor at attenuation_far (game units, ~70/m). Re-sampled every

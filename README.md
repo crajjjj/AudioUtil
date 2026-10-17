@@ -104,8 +104,11 @@ via [ConsoleUtil Extended](https://www.nexusmods.com/skyrimspecialedition/mods/1
 and rescans without restarting the game.
 
 `sound_flags` / `sound_priority` are the `BuildSoundDataFromFile` parameters (default `0x1A` /
-`128`). If audio doesn't play or isn't 3D, sweep values in-game with
-`AudioUtil.DebugPlayFile(path, actor, flags, priority)` (harness: `T2F`).
+`128`). If audio doesn't play, sweep values in-game with
+`AudioUtil.DebugPlayFile(path, actor, flags, priority)` (harness: `T2F`). A sound that follows
+an NPC is placed in the speakers by the game's dialogue output model (`dialogue_output_model`),
+and voice lines follow the game's Voice volume (`voice_slider`); `autest sndinfo` shows what a
+playing line got.
 
 ## PPA bridge
 

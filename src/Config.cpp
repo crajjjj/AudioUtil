@@ -182,6 +182,9 @@ namespace Config
 				settings->attenuationNear = (*general)["attenuation_near"].value_or(settings->attenuationNear);
 				settings->attenuationFar = (*general)["attenuation_far"].value_or(settings->attenuationFar);
 				settings->attenuationFloor = (*general)["attenuation_floor"].value_or(settings->attenuationFloor);
+				settings->dialogueOutputModel =
+					(*general)["dialogue_output_model"].value_or(settings->dialogueOutputModel);
+				settings->voiceSlider = (*general)["voice_slider"].value_or(settings->voiceSlider);
 				settings->fuzCacheMaxMB = (*general)["fuz_cache_max_mb"].value_or(settings->fuzCacheMaxMB);
 				settings->prewarmFuz = (*general)["prewarm_fuz"].value_or(settings->prewarmFuz);
 				settings->fuzSlots = (*general)["fuz_slots"].value_or(settings->fuzSlots);

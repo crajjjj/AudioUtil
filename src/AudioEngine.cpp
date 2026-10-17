@@ -6,6 +6,135 @@
 
 namespace AudioEngine
 {
+	namespace
+	{
+		std::atomic<int> g_outputModelMode{ -1 };
+		std::atomic<int> g_voiceSliderMode{ -1 };
+
+		bool ModeOr(const std::atomic<int>& a_mode, bool a_config)
+		{
+			const int mode = a_mode.load();
+			return mode < 0 ? a_config : mode != 0;
+		}
+
+		template <class T>
+		T* DefaultObject(RE::DEFAULT_OBJECT a_object)
+		{
+			auto* dobj = RE::BGSDefaultObjectManager::GetSingleton();
+			return dobj ? dobj->GetObject<T>(a_object) : nullptr;
+		}
+
+		// VNAM, stored as u16 of 1.0 (CommonLib's GetStaticVolumeMultiplier
+		// divides as integers and reads 0 for anything below 1.0)
+		float StaticMult(const RE::BGSSoundCategory& a_category)
+		{
+			return static_cast<float>(a_category.staticMult) / 65535.0f;
+		}
+
+		std::string FormName(const RE::TESForm* a_form)
+		{
+			return a_form ? std::format("{:08X}", a_form->GetFormID()) : "none"s;
+		}
+	}
+
+	const RE::BGSSoundOutput* OutputModelFor(RE::Actor* a_follow)
+	{
+		if (!a_follow || a_follow->IsPlayerRef() || !a_follow->Get3D() || !OutputModelEnabled()) {
+			return nullptr;
+		}
+		return DefaultObject<RE::BGSSoundOutput>(RE::DEFAULT_OBJECT::kDialogueOutputModel3D);
+	}
+
+	bool EngineRollsOff(RE::Actor* a_follow)
+	{
+		const auto* model = OutputModelFor(a_follow);
+		return model && model->DoGetAttenuatesWithDistance();
+	}
+
+	float VoiceVolumeFactor()
+	{
+		if (!VoiceSliderEnabled()) {
+			return 1.0f;
+		}
+		// The master slider is left out: it is what every sound gets, this one
+		// included, and must not be applied twice.
+		const auto* master = DefaultObject<RE::BGSSoundCategory>(RE::DEFAULT_OBJECT::kMasterSoundCategory);
+		const auto* category = DefaultObject<RE::BGSSoundCategory>(RE::DEFAULT_OBJECT::kDialogueVoiceCategory);
+		float       factor = 1.0f;
+		for (int depth = 0; category && category != master && depth < 8; ++depth) {
+			factor *= category->GetCategoryVolume() * StaticMult(*category);
+			category = category->parentCategory;
+		}
+		return std::clamp(factor, 0.0f, 1.0f);
+	}
+
+	void SetOutputModelMode(int a_mode)
+	{
+		g_outputModelMode.store(a_mode < 0 ? -1 : (a_mode != 0 ? 1 : 0));
+	}
+
+	bool OutputModelEnabled()
+	{
+		return ModeOr(g_outputModelMode, Config::Get()->dialogueOutputModel);
+	}
+
+	void SetVoiceSliderMode(int a_mode)
+	{
+		g_voiceSliderMode.store(a_mode < 0 ? -1 : (a_mode != 0 ? 1 : 0));
+	}
+
+	bool VoiceSliderEnabled()
+	{
+		return ModeOr(g_voiceSliderMode, Config::Get()->voiceSlider);
+	}
+
+	std::string DescribeEngineSound(const RE::BSSoundHandle& a_handle)
+	{
+		auto* manager = RE::BSAudioManager::GetSingleton();
+		if (!manager || !a_handle.IsValid()) {
+			return "engine: no such sound";
+		}
+		const auto it = manager->activeSounds.find(a_handle.soundID);
+		if (it == manager->activeSounds.end() || !it->second) {
+			return std::format("engine: sound {} is not active", a_handle.soundID);
+		}
+		const auto* sound = it->second;
+		const auto* model = sound->outputModel ? skyrim_cast<RE::BGSSoundOutput*>(sound->outputModel) : nullptr;
+		const auto* category = sound->category ? skyrim_cast<RE::BGSSoundCategory*>(sound->category) : nullptr;
+		return std::format("engine: sound {}, output model {}{}, category {}{}, static att {}, system att {}, "
+						   "volume {:.2f}, listener distance {:.0f}",
+			a_handle.soundID, FormName(model), sound->outputModel && !model ? " (not a form)" : "",
+			FormName(category), sound->category && !category ? " (not a form)" : "",
+			sound->staticAttenuation, sound->systemAttenuation, sound->volume, sound->listenerDistance);
+	}
+
+	std::string DescribeDialogueDefaults()
+	{
+		std::string out;
+		if (const auto* model = DefaultObject<RE::BGSSoundOutput>(RE::DEFAULT_OBJECT::kDialogueOutputModel3D)) {
+			const auto* att = model->attenuation;
+			out = std::format("dialogue 3D model {}: {}, rolls off {}, {:.0f} to {:.0f} units", FormName(model),
+				model->DoGetUsesHRTF() ? "HRTF" : "speaker output", model->DoGetAttenuatesWithDistance(),
+				att ? att->data.minDistance : 0.0f, att ? att->data.maxDistance : 0.0f);
+		} else {
+			out = "dialogue 3D model: none";
+		}
+		const auto* master = DefaultObject<RE::BGSSoundCategory>(RE::DEFAULT_OBJECT::kMasterSoundCategory);
+		const auto* category = DefaultObject<RE::BGSSoundCategory>(RE::DEFAULT_OBJECT::kDialogueVoiceCategory);
+		out += "; voice categories:";
+		for (int depth = 0; category && depth < 8; ++depth) {
+			out += std::format(" {} vol {:.2f} (field {:.2f}) x static {:.2f}{}", FormName(category),
+				category->GetCategoryVolume(), category->volumeMult, StaticMult(*category),
+				category == master ? " [master, not applied]" : "");
+			if (category == master) {
+				break;
+			}
+			category = category->parentCategory;
+		}
+		out += std::format("; factor {:.2f}", VoiceVolumeFactor());
+		return out;
+	}
+
 	RE::BSSoundHandle PlayPath(const std::string& a_dataRelPath, RE::Actor* a_follow,
 		float a_volume, std::uint32_t a_flags, std::uint32_t a_priority,
 		bool a_translateFuz, int* a_slotOut)
@@ -80,6 +209,12 @@ namespace AudioEngine
 
 		if (a_follow) {
 			if (auto* node = a_follow->Get3D()) {
+				// A sound built from a bare file has no output model of its own,
+				// and with none it played centered and at full level wherever it
+				// followed. A real NPC line goes through this one.
+				if (const auto* model = OutputModelFor(a_follow)) {
+					handle.SetOutputModel(model);
+				}
 				handle.SetObjectToFollow(node);
 			}
 		}

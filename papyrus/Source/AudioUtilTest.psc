@@ -197,6 +197,11 @@ int Function GetLipLeadMs() global native
 string Function GetMouthClaims() global native
 Function SetVoiceLogMode(string asMode) global native
 string Function GetVoiceLogMode() global native
+Function SetOutputModelMode(int aiMode) global native
+bool Function GetOutputModelMode() global native
+Function SetVoiceSliderMode(int aiMode) global native
+bool Function GetVoiceSliderMode() global native
+string Function DescribeSound(int aiHandle) global native
 
 ; Toggle .lip-driven phoneme lipsync at runtime (vs the amplitude envelope).
 ; Affects newly started lines.  Usage:  autest lipfiles on|off|status
@@ -337,4 +342,48 @@ Function VoiceLog(string mode) global
         SetVoiceLogMode(mode)
         Debug.Notification("voice log: " + GetVoiceLogMode() + " (SKSE logs/AudioUtil_Voices.log)")
     endif
+EndFunction
+
+; on/off/config -> 1/0/-1 (config = back to the TOML), anything else -> -2 (status)
+int Function ModeArg(string mode) global
+    if mode == "on"
+        return 1
+    elseif mode == "off"
+        return 0
+    elseif mode == "config"
+        return -1
+    endif
+    return -2
+EndFunction
+
+; A/B the engine's dialogue output model on sounds that follow an NPC: on, a line
+; sits in the speakers where the speaker stands and the engine rolls it off with
+; distance, like a real NPC line; off, it plays centered and at full level, with
+; voice_attenuation as its only falloff (the behavior before 0.9.30).
+; Affects new lines.  Usage:  autest outmodel on|off|config|status
+Function OutModel(string mode) global
+    int m = ModeArg(mode)
+    if m > -2
+        SetOutputModelMode(m)
+    endif
+    Debug.Notification("dialogue output model: " + GetOutputModelMode())
+EndFunction
+
+; A/B the game's Voice volume on voice lines: on, they are scaled by it the way
+; real dialogue is; off, they ignore it. Affects new lines.
+; Usage:  autest voiceslider on|off|config|status
+Function VoiceSlider(string mode) global
+    int m = ModeArg(mode)
+    if m > -2
+        SetVoiceSliderMode(m)
+    endif
+    Debug.Notification("voice slider on voice lines: " + GetVoiceSliderMode())
+EndFunction
+
+; What a playing line got: its volume factors, the output model and category the
+; engine holds for it, and the dialogue default objects with the Voice volume.
+; Also written to AudioUtil.log. 0 = the newest line still playing.
+; Usage:  autest sndinfo   |   autest sndinfo <handle>
+string Function SndInfo(int handle) global
+    return DescribeSound(handle)
 EndFunction
