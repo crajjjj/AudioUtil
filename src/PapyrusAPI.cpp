@@ -27,7 +27,7 @@ namespace PapyrusAPI
 		constexpr auto PPA_SCRIPT_NAME = "AudioUtilPPA";
 		constexpr auto TOML_SCRIPT_NAME = "TomlUtil";
 		constexpr auto TEST_SCRIPT_NAME = "AudioUtilTest";  // debug/calibration natives only
-		constexpr std::int32_t API_VERSION = 10;  // v10: PPA one-call snapshot (v9: penetration site, v8: mouth claims)
+		constexpr std::int32_t API_VERSION = 11;  // v11: Ex play natives with the dialogueGuard switch (v10: PPA one-call snapshot, v9: penetration site, v8: mouth claims)
 
 		using VM = RE::BSScript::IVirtualMachine;
 
@@ -336,12 +336,14 @@ namespace PapyrusAPI
 		// a_voice: a spoken line (the PlayVoice family, PlayFolderWithLipSync), which
 		// gets the game's Voice volume; decided by the caller, not by whether an
 		// actor came along, so a 2D voice line gets it too.
+		// a_dialogueGuard = false: the mouth lipsyncs even while a_mouth talks to the
+		// player (the Ex natives' dialogueGuard argument; see LipSync::Start).
 		std::int32_t PlayFromKey(const std::string& a_folderKey, RE::Actor* a_follow,
 			float a_volume, const std::string& a_group, const std::string& a_channel,
 			RE::Actor* a_mouth = nullptr, bool a_noInterrupt = false,
 			RE::Actor* a_speaker = nullptr, Tags::Mask a_facts = 0,
 			bool a_blockCaption = false, const VoiceLog::Request* a_log = nullptr,
-			bool a_voice = false)
+			bool a_voice = false, bool a_dialogueGuard = true)
 		{
 			const auto miss = [&](std::string_view a_reason) {
 				if (a_log) {
@@ -375,7 +377,7 @@ namespace PapyrusAPI
 				}
 			}
 			if (a_mouth) {
-				LipSync::Start(a_mouth, file, handle, id);
+				LipSync::Start(a_mouth, file, handle, id, a_dialogueGuard);
 			}
 			if (!a_blockCaption) {
 				CaptionManager::Start(a_speaker ? a_speaker : a_follow, file, handle, id);
@@ -500,7 +502,7 @@ namespace PapyrusAPI
 		std::int32_t PlayVoiceFromSlotImpl(const char* a_slot, const char* a_category,
 			Tags::Mask a_facts, RE::Actor* a_follow, float a_volume,
 			const char* a_group, const char* a_channel, bool a_blockLipSync,
-			bool a_blockCaption = false)
+			bool a_blockCaption = false, bool a_dialogueGuard = true)
 		{
 			const auto settings = Config::Get();
 			const auto* slot = Config::FindSlot(*settings, a_slot);
@@ -521,7 +523,7 @@ namespace PapyrusAPI
 				settings->lipsyncBlockCategories.contains(Config::Normalize(a_category));
 			return PlayFromKey(key, follow, a_volume, a_group, a_channel,
 				blockLip ? nullptr : a_follow, settings->voiceNoInterrupt, a_follow, a_facts,
-				a_blockCaption, &log, true);
+				a_blockCaption, &log, true, a_dialogueGuard);
 		}
 
 		std::int32_t PlayVoiceFromSlot(RE::StaticFunctionTag*, RE::BSFixedString a_slot,
@@ -530,6 +532,19 @@ namespace PapyrusAPI
 		{
 			return PlayVoiceFromSlotImpl(a_slot.c_str(), a_category.c_str(), 0, a_follow,
 				a_volume, a_group.c_str(), a_channel.c_str(), a_blockLipSync);
+		}
+
+		// PlayVoiceFromSlot plus `dialogueGuard`: false lifts the in-dialogue lipsync block
+		// for this line (a mod voicing an unvoiced topic itself). A separate native
+		// because the VM rejects a call whose arg count differs from the native's,
+		// so a new argument on PlayVoiceFromSlot would break every compiled caller.
+		std::int32_t PlayVoiceFromSlotEx(RE::StaticFunctionTag*, RE::BSFixedString a_slot,
+			RE::BSFixedString a_category, RE::Actor* a_follow, float a_volume,
+			RE::BSFixedString a_group, RE::BSFixedString a_channel, bool a_blockLipSync,
+			bool a_dialogueGuard)
+		{
+			return PlayVoiceFromSlotImpl(a_slot.c_str(), a_category.c_str(), 0, a_follow,
+				a_volume, a_group.c_str(), a_channel.c_str(), a_blockLipSync, false, a_dialogueGuard);
 		}
 
 		std::int32_t PlayVoiceFromSlotTagged(RE::StaticFunctionTag*, RE::BSFixedString a_slot,
@@ -568,6 +583,15 @@ namespace PapyrusAPI
 		{
 			return PlayFileByPath(a_path.c_str(), a_follow, a_volume,
 				a_group.c_str(), a_channel.c_str(), true);
+		}
+
+		// PlayFileWithLipSync plus `dialogueGuard` (see PlayVoiceFromSlotEx)
+		std::int32_t PlayFileWithLipSyncEx(RE::StaticFunctionTag*, RE::BSFixedString a_path,
+			RE::Actor* a_follow, float a_volume, RE::BSFixedString a_group,
+			RE::BSFixedString a_channel, bool a_dialogueGuard)
+		{
+			return PlayFileByPath(a_path.c_str(), a_follow, a_volume,
+				a_group.c_str(), a_channel.c_str(), true, a_dialogueGuard);
 		}
 
 		std::int32_t PlayFolder(RE::StaticFunctionTag*, RE::BSFixedString a_folder,
@@ -1280,7 +1304,8 @@ namespace PapyrusAPI
 	// in whether the file is treated as a spoken line); public so the C exports
 	// in AudioUtilAPI.cpp run the exact same code path as the Papyrus natives
 	std::int32_t PlayFileByPath(const char* a_dataRelPath, RE::Actor* a_follow,
-		float a_volume, const char* a_group, const char* a_channel, bool a_lipSync)
+		float a_volume, const char* a_group, const char* a_channel, bool a_lipSync,
+		bool a_dialogueGuard)
 	{
 		std::string path = a_dataRelPath;
 		std::replace(path.begin(), path.end(), '/', '\\');
@@ -1300,7 +1325,7 @@ namespace PapyrusAPI
 		// to attribute the subtitle to)
 		CaptionManager::Start(a_follow, path, handle, id);
 		if (a_lipSync && a_follow) {
-			LipSync::Start(a_follow, path, handle, id);
+			LipSync::Start(a_follow, path, handle, id, a_dialogueGuard);
 		}
 		return id;
 	}
@@ -1313,10 +1338,12 @@ namespace PapyrusAPI
 		REGISTERFUNC(PlayVoice, SCRIPT_NAME);
 		REGISTERFUNC(PlayVoiceTagged, SCRIPT_NAME);
 		REGISTERFUNC(PlayVoiceFromSlot, SCRIPT_NAME);
+		REGISTERFUNC(PlayVoiceFromSlotEx, SCRIPT_NAME);
 		REGISTERFUNC(PlayVoiceFromSlotTagged, SCRIPT_NAME);
 		REGISTERFUNC(PlaySFX, SCRIPT_NAME);
 		REGISTERFUNC(PlayFile, SCRIPT_NAME);
 		REGISTERFUNC(PlayFileWithLipSync, SCRIPT_NAME);
+		REGISTERFUNC(PlayFileWithLipSyncEx, SCRIPT_NAME);
 		REGISTERFUNC(PlayFolder, SCRIPT_NAME);
 		REGISTERFUNC(PlayFolderWithLipSync, SCRIPT_NAME);
 		REGISTERFUNC(IsHandlePlaying, SCRIPT_NAME);

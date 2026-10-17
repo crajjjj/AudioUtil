@@ -86,6 +86,26 @@ Function PlayLipPath(string path) global
     endif
 EndFunction
 
+; PlayFileWithLipSyncEx at the console-selected actor (the player if none), to
+; check the per-call dialogue guard: talk to an NPC, open the console, click
+; them, run e.g.  autest lipref "Sound\Voice\Skyrim.esm\FemaleEvenToned\dialoguewhiterun__0008f148_1.fuz" 0
+; and close the console. The line starts after `delay` seconds (counted while
+; menus are open), so it plays under the open dialogue menu. dialogueGuard 0 = the mouth
+; moves anyway, 1 = the normal in-dialogue block keeps it still.
+Function PlayLipRef(string path, int dialogueGuard = 0, float delay = 3.0) global
+    Actor target = Game.GetCurrentConsoleRef() as Actor
+    if !target
+        target = Game.GetPlayer()
+    endif
+    Utility.WaitMenuMode(delay)
+    int h = AudioUtil.PlayFileWithLipSyncEx(path, target, 1.0, "", "", dialogueGuard != 0)
+    if h > 0
+        Debug.Notification("lipref " + target.GetDisplayName() + " dialogueGuard=" + dialogueGuard + " handle=" + h)
+    else
+        Debug.Notification("lipref '" + path + "' FAILED (0) - see AudioUtil.log")
+    endif
+EndFunction
+
 ; Shuffle-bag play a whole folder as a pool (no-repeat until the deck empties),
 ; spoken variant so the picked clip drives the player's mouth. Data-relative
 ; folder path, e.g.  autest playfolder "Sound\TMSDynamicDialogue\VoiceBella\Base"

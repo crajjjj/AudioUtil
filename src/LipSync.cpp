@@ -247,6 +247,7 @@ namespace LipSync
 			std::chrono::steady_clock::time_point handoverCheckAt;  // next gag/dialogue re-check
 			bool  audible = false;
 			bool  stopping = false;
+			bool  dialogueGuard = true;  // false = the caller lifted the in-dialogue block (Ex natives)
 			bool  drove = false;  // wrote a non-zero phoneme → zero the mouth on removal
 			bool  droveModifiers = false;  // lip mode also drove blink/brow channels
 			bool  lipHasModifiers = false; // the anim carries real modifier curves (authored lip, not pseudo)
@@ -605,7 +606,8 @@ namespace LipSync
 					a_entry.handoverCheckAt = now + HANDOVER_RECHECK;
 					const bool gag = GagState::IsGagged(actor);
 					const bool tongue = !gag && TongueState::IsWearingTongue(actor);
-					const bool dlg = !gag && !tongue && g_blockInDialogue.load() && IsInDialogue(actor);
+					const bool dlg = !gag && !tongue && a_entry.dialogueGuard &&
+						g_blockInDialogue.load() && IsInDialogue(actor);
 					const bool claimed = !gag && !tongue && !dlg && MouthClaim::IsClaimed(actor);
 					if (gag || tongue || dlg || claimed) {
 						logger::debug("LipSync: handover mid-line on {:08X} ({})",
@@ -764,7 +766,7 @@ namespace LipSync
 	}
 
 	void Start(RE::Actor* a_actor, const std::string& a_dataRelPath,
-		RE::BSSoundHandle a_handle, std::int32_t a_instanceId)
+		RE::BSSoundHandle a_handle, std::int32_t a_instanceId, bool a_dialogueGuard)
 	{
 		if (!g_enabled.load() || !a_actor || !a_handle.IsValid()) {
 			return;
@@ -779,8 +781,10 @@ namespace LipSync
 			return;
 		}
 		// in a dialogue with the player the game drives the mouth from the real
-		// voice file; stay off it (toggle: [lipsync] block_in_dialogue)
-		if (g_blockInDialogue.load() && IsInDialogue(a_actor)) {
+		// voice file; stay off it (toggle: [lipsync] block_in_dialogue). A caller
+		// that plays the line itself over an unvoiced topic lifts this per call
+		// (a_dialogueGuard = false, the Ex natives' dialogueGuard argument)
+		if (a_dialogueGuard && g_blockInDialogue.load() && IsInDialogue(a_actor)) {
 			return;
 		}
 		// another mod told us it is driving this mouth itself (a player-voice mod
@@ -813,6 +817,7 @@ namespace LipSync
 		entry.handle = a_handle;
 		entry.createdAt = now;
 		entry.handoverCheckAt = now + HANDOVER_RECHECK;  // checked just above; next re-check later
+		entry.dialogueGuard = a_dialogueGuard;  // the re-check honors the same choice
 		// real phoneme curves when the line ships a lip (same-stem .lip, or the
 		// fuz's embedded block — looked up via the ORIGINAL path, not the
 		// FuzCache-extracted wav). Null = amplitude-envelope mode, as before.

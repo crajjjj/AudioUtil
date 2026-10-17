@@ -12,7 +12,7 @@ All name and key matching (categories, slots, groups, SFX names) is **case- and 
 int Function GetAPIVersion() global native
 ```
 
-API version of the loaded DLL, for compatibility checks. `0` = DLL not installed. Increases only when signatures/behavior change incompatibly. Currently `10` (v2 added `GetSlotVariation`, v3 `GetResolvingSlot`, v4 `GetHandlePath`, v5 captions, v6 the tag-scored natives, v7 `IsGamePaused`, v8 the mouth claims, v9 the PPA penetration site, v10 the one-call PPA snapshot).
+API version of the loaded DLL, for compatibility checks. `0` = DLL not installed. Increases whenever natives are added; existing signatures never change. Currently `11` (v2 added `GetSlotVariation`, v3 `GetResolvingSlot`, v4 `GetHandlePath`, v5 captions, v6 the tag-scored natives, v7 `IsGamePaused`, v8 the mouth claims, v9 the PPA penetration site, v10 the one-call PPA snapshot, v11 `PlayVoiceFromSlotEx` / `PlayFileWithLipSyncEx`).
 
 ### `ReloadConfig`
 
@@ -61,6 +61,25 @@ int Function PlayVoiceFromSlot(string slot, string category, Actor akFollow, flo
 
 Same as `PlayVoice`, but the slot is named **explicitly** (`"F1"`, `"M4"`, `"C2"`, …) instead of resolved from an actor — for samples, tests, or when the caller already decided the voice. `akFollow` only provides the 3D position: with `None` the line plays 2D, and still counts as a voice line for the [Voice volume](../config/reference.md#general).
 
+### `PlayVoiceFromSlotEx`
+
+```papyrus
+int Function PlayVoiceFromSlotEx(string slot, string category, Actor akFollow, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false, bool dialogueGuard = true) global native
+```
+
+*API v11+.* `PlayVoiceFromSlot` plus a `dialogueGuard` switch. `dialogueGuard = true` behaves exactly like `PlayVoiceFromSlot`. `dialogueGuard = false` lifts one automatic guard for this line: the **in-dialogue block**, which normally keeps `akFollow`'s mouth still while they talk to the player (see [Lipsync](#lipsync)). Use it for custom-voiced dialogue: the topic line itself is unvoiced or silent and your mod plays the audio through AudioUtil, so nothing else is moving the mouth. On a topic the engine voices too, both drive the jaw and it flickers.
+
+Everything else still applies: a gag, a worn tongue, another mod's [mouth claim](#mouth-claims), `blockLipSync`, [`[lipsync] block_categories`](../config/reference.md#lipsync) and the global `[lipsync]` toggle.
+
+```papyrus
+if AudioUtil.GetAPIVersion() >= 11
+    AudioUtil.PlayVoiceFromSlotEx("MyNPC", "Greeting", akSpeaker, dialogueGuard = false)
+endif
+```
+
+!!! note "Why a new function"
+    The game refuses a call whose argument count differs from the function's, so adding `dialogueGuard` to `PlayVoiceFromSlot` would break every mod already compiled against it. See [Is the DLL installed?](index.md#is-the-dll-installed).
+
 ### `PlayVoiceFromSlotTagged`
 
 ```papyrus
@@ -89,6 +108,14 @@ int Function PlayFileWithLipSync(string dataRelativePath, Actor akFollow, float 
 Play one specific file. Path is relative to `Data\` (`'Sound\fx\MyMod\a.wav'`) and may resolve to a **loose file or to audio packed inside a BSA** — the engine's resource loader handles both (loose wins over archive).
 
 Supported formats: **wav**, **xwm**, and **fuz**. A `.fuz` voice container — e.g. any vanilla dialogue line, `Sound\Voice\Skyrim.esm\MaleNord\…​.fuz`, straight out of the voice BSAs — has its xWMA audio **decoded once to PCM** (via the OS's own WMA decoder, no bundled codecs) into `Sound\AudioUtilFuzCache\` and plays from there on every later call (the cache persists across sessions and can be deleted freely — it rebuilds on demand). Because the cached copy is plain PCM wav, fuz lines get the full treatment: [captions](#captions) keyed off the `.fuz` path (`foo.fuz` + `foo.toml` sidecar) **and [amplitude lipsync](#lipsync)**, same as a loose wav. If the decode ever fails, the raw xwm payload is cached instead — the line still plays, just mouth-still.
+
+### `PlayFileWithLipSyncEx`
+
+```papyrus
+int Function PlayFileWithLipSyncEx(string dataRelativePath, Actor akFollow, float volume = 1.0, string group = "", string channel = "", bool dialogueGuard = true) global native
+```
+
+*API v11+.* `PlayFileWithLipSync` plus a `dialogueGuard` switch: `dialogueGuard = false` lipsyncs `akFollow` even while they talk to the player. Same rules as [`PlayVoiceFromSlotEx`](#playvoicefromslotex).
 
 ### `PlayFolder`
 
@@ -181,7 +208,7 @@ Function StopChannel(string channel) global native
 
 `PlayVoice` / `PlayVoiceFromSlot` / `PlayFileWithLipSync` automatically move the speaking actor's mouth in sync with the clip's loudness: the DLL reads the wav's amplitude envelope and drives the MFG `Aah` / `BigAah` phonemes per frame. Works for **loose PCM wav files** and **fuz** (whose audio is decoded to PCM in the fuz cache, so even BSA-packed vanilla lines lipsync); raw xwm or BSA-packed wav plays normally but skips the mouth. Configure defaults in the TOML `[lipsync]` table.
 
-Lipsync is also suppressed automatically for a **gagged** actor (one wearing a device configured in the TOML [`[gag]`](../config/reference.md#gag) table) — the device owns the mouth, so the DLL won't fight it. It's likewise suppressed while an actor is **in a dialogue with the player** (the game's dialogue/voice system drives that mouth), toggleable via [`[lipsync] block_in_dialogue`](../config/reference.md#lipsync) (default on). No Papyrus call needed for either.
+Lipsync is also suppressed automatically for a **gagged** actor (one wearing a device configured in the TOML [`[gag]`](../config/reference.md#gag) table): the device owns the mouth, so the DLL won't fight it. It's likewise suppressed while an actor is **in a dialogue with the player** (the game's dialogue/voice system drives that mouth), toggleable via [`[lipsync] block_in_dialogue`](../config/reference.md#lipsync) (default on). No Papyrus call needed for either. A mod that voices an unvoiced topic itself can lift the dialogue block for its own lines with `dialogueGuard = false` on [`PlayVoiceFromSlotEx`](#playvoicefromslotex) / [`PlayFileWithLipSyncEx`](#playfilewithlipsyncex).
 
 !!! tip "Playing nice with expression mods"
     Only the two phonemes above are touched, and they are zeroed when the clip ends. If your mod sets phonemes itself (e.g. an expression cycler), skip your own mouth writes for an actor while `IsLipSyncActive(actor)` is `true` to avoid fighting over the jaw. If your mod fully **owns** the face (an overlay that sets its own expression), pass `blockLipSync = true` on the lines you play for that actor while the face is up so AudioUtil never touches its mouth (see the tip above).

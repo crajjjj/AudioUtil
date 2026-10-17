@@ -4,9 +4,11 @@ namespace LipSync
 {
 	// begin driving the actor's mouth from the wav's amplitude envelope, in sync
 	// with the playing instance. No-op if disabled, the file isn't readable PCM
-	// wav (e.g. xwm/BSA-packed), or the actor is invalid — failures only log.
+	// wav (e.g. xwm/BSA-packed), or the actor is invalid; failures only log.
+	// a_dialogueGuard = false skips the in-dialogue-with-the-player block (at
+	// start and on every handover re-check); gag, tongue and claims still apply.
 	void Start(RE::Actor* a_actor, const std::string& a_dataRelPath,
-		RE::BSSoundHandle a_handle, std::int32_t a_instanceId);
+		RE::BSSoundHandle a_handle, std::int32_t a_instanceId, bool a_dialogueGuard = true);
 
 	// early-stop notification (StopHandle / channel replace / StopGroup / StopAll)
 	void OnInstanceStopped(std::int32_t a_instanceId);

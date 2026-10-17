@@ -66,6 +66,22 @@ subs:
         type: String
         required: true
         help: Data-relative wav/fuz path (BSA fuz work too)
+  - name: lipref
+    func: PlayLipRef
+    help: Play a path at the console-selected actor with lipsync after a delay; dialogueGuard 0 lipsyncs during player dialogue
+    args:
+      - name: path
+        type: String
+        required: true
+        help: Data-relative wav/fuz path
+      - name: dialogueGuard
+        type: int
+        default: 0
+        help: 0 = lipsync even in dialogue with the player, 1 = normal in-dialogue block
+      - name: delay
+        type: float
+        default: 3.0
+        help: seconds before the line starts, counted with menus open (close the console in time)
   - name: playfolder
     func: PlayFolderPath
     help: Shuffle-bag play a whole folder as a pool (spoken/lipsynced); re-run for the next pick

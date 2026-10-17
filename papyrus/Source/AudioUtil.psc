@@ -36,7 +36,8 @@ Scriptname AudioUtil Hidden
 ; ===================== NATIVE — core =====================
 
 ; API version of the loaded DLL, for compatibility checks from scripts.
-; Increases only when signatures/behavior change incompatibly.
+; Increases whenever natives are added; existing signatures never change (the
+; game rejects a call whose argument count differs from the function's).
 int Function GetAPIVersion() global native
 
 ; True while the game world is frozen behind a menu - either a real menu-mode
@@ -132,6 +133,20 @@ int Function PlayVoiceTagged(Actor akActor, string category, string tags, float 
 ;   blockLipSync - true plays this line without moving akFollow's mouth (see PlayVoice).
 int Function PlayVoiceFromSlot(string slot, string category, Actor akFollow, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false) global native
 
+; PlayVoiceFromSlot plus a `dialogueGuard` switch. dialogueGuard = true behaves
+; exactly like PlayVoiceFromSlot. dialogueGuard = false lifts ONE automatic
+; guard for this line: the in-dialogue block, which keeps akFollow's mouth
+; still while they talk to the player because the game is assumed to be
+; voicing that topic. Use it when the topic line is unvoiced (or silent) and
+; your mod plays the audio itself. On a topic the engine voices too, both
+; drive the jaw and it flickers.
+; Gag, worn tongue, other mods' mouth claims, blockLipSync, [lipsync]
+; block_categories and the [lipsync] enable switch still apply.
+; A separate function because the game refuses a call whose argument count
+; differs from the function's, so a new argument on PlayVoiceFromSlot would
+; break every mod already compiled against it. Requires API version >= 11.
+int Function PlayVoiceFromSlotEx(string slot, string category, Actor akFollow, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false, bool dialogueGuard = true) global native
+
 ; Tag-scored variant of PlayVoiceFromSlot - the fact string and blockCaption
 ; work exactly as in PlayVoiceTagged.
 int Function PlayVoiceFromSlotTagged(string slot, string category, string tags, Actor akFollow = None, float volume = 1.0, string group = "", string channel = "", bool blockLipSync = false, bool blockCaption = false) global native
@@ -177,6 +192,12 @@ int Function PlayFile(string dataRelativePath, Actor akFollow, float volume = 1.
 ; with the player). Works for loose PCM wav and fuz (via the decoded cache);
 ; other formats play normally, mouth-still. Requires API version >= 5.
 int Function PlayFileWithLipSync(string dataRelativePath, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
+
+; PlayFileWithLipSync plus a `dialogueGuard` switch: dialogueGuard = false
+; lipsyncs akFollow even while they talk to the player. Same rules as
+; PlayVoiceFromSlotEx.
+; Requires API version >= 11.
+int Function PlayFileWithLipSyncEx(string dataRelativePath, Actor akFollow, float volume = 1.0, string group = "", string channel = "", bool dialogueGuard = true) global native
 
 ; Play a random file from a loose folder (scanned on first use, then cached as a
 ; shuffle bag - no repeats until the deck empties). Returns a handle (see

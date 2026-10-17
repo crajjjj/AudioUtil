@@ -55,6 +55,7 @@ install. Each plays at the player and reports the resulting instance handle
 | Command | Args | Does |
 |---|---|---|
 | `autest play <path>` | Data-relative wav path | Play any loose wav via `PlayFile`. |
+| `autest lipref <path> [dialogueGuard] [delay]` | wav/fuz path, `0`/`1` (default `0`), seconds (default `3.0`) | Play at the **console-selected** actor (the player if none) via `PlayFileWithLipSyncEx`, `delay` seconds later. Checks the per-call dialogue guard: talk to an NPC, open the console, click them, run it, close the console. With `0` their mouth moves under the dialogue menu; with `1` the normal [in-dialogue block](config/reference.md#lipsync) keeps it still. |
 | `autest voice <slot> <category>` | slot id, category | Play a category from an explicit slot (`PlayVoiceFromSlot`); also prints the category's file count. |
 | `autest voicepc <category>` | category | Resolve the player's slot and play the category through it (`PlayVoice`); prints the resolved slot. |
 | `autest voicetag <slot> <category> "<facts>"` | slot id, category, quoted fact string | [Tag-scored](tags.md) play from an explicit slot (`PlayVoiceFromSlotTagged`). Needs a `[tags]` vocabulary (base or overlay). |
