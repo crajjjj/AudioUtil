@@ -29,4 +29,10 @@ namespace FuzCache
 	// No-op when the cap is 0 (unlimited) or the folder doesn't exist.
 	// Called on kDataLoaded and ReloadConfig.
 	void EnforceCacheCap();
+
+	// True once the cache folder holds fuz_cache_max_mb (never with a cap of 0):
+	// the size EnforceCacheCap last measured plus every file written since. The
+	// background prewarm stops here, because decoding past the cap only feeds the
+	// next launch's eviction, which the prewarm then refills.
+	bool CacheFull();
 }

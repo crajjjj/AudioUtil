@@ -73,22 +73,33 @@ namespace
 		std::thread([] {
 			const auto start = std::chrono::steady_clock::now();
 			const auto files = FolderCache::AllAudioFiles();
-			std::size_t fuz = 0;
+			const auto fuz = std::ranges::count_if(files, [](const std::string& a_file) {
+				return FuzCache::IsFuzPath(a_file);
+			});
 			std::size_t decoded = 0;
+			bool        full = false;
 			for (const auto& f : files) {
 				if (!FuzCache::IsFuzPath(f)) {
 					continue;
 				}
-				++fuz;
+				// a large fuz pack decodes to gigabytes of PCM, so the prewarm stops at
+				// [general] fuz_cache_max_mb and leaves the rest to their first play
+				if (FuzCache::CacheFull()) {
+					full = true;
+					break;
+				}
 				if (!FuzCache::Resolve(f).empty()) {
 					++decoded;
 				}
 			}
 			const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
 				std::chrono::steady_clock::now() - start).count();
-			log::info("Fuz prewarm: {} of {} fuz cached (of {} audio files) in {} ms. Newly "
-					  "decoded lines become playable after the next game restart.",
-				decoded, fuz, files.size(), ms);
+			log::info("Fuz prewarm: {} of {} fuz cached (of {} audio files) in {} ms.{}", decoded, fuz,
+				files.size(), ms,
+				full ? std::format(" Stopped at the fuz_cache_max_mb cap ({} MB): the rest decode "
+								   "on first play.",
+						   Config::Get()->fuzCacheMaxMB) :
+					   "");
 		}).detach();
 	}
 

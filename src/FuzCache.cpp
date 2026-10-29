@@ -26,6 +26,19 @@ namespace FuzCache
 		std::unordered_map<std::string, std::string> g_resolved;
 		std::mutex g_lock;
 
+		// bytes in the cache folder (slot wavs excluded): set by EnforceCacheCap's
+		// walk, grown by every file Extract writes. CacheFull() reads it.
+		std::atomic<std::uintmax_t> g_cacheBytes{ 0 };
+
+		void CountWritten(const std::filesystem::path& a_file)
+		{
+			std::error_code ec;
+			const auto size = std::filesystem::file_size(a_file, ec);
+			if (!ec) {
+				g_cacheBytes += size;
+			}
+		}
+
 		std::string NormalizeKey(const std::string& a_path)
 		{
 			std::string out = a_path;
@@ -434,6 +447,7 @@ namespace FuzCache
 							static_cast<std::streamsize>(pcm.size()));
 					});
 					if (wrote) {
+						CountWritten(wavDisk);
 						logger::info("Fuz '{}' -> {}.wav (xWMA decoded, {} PCM bytes{})", a_key,
 							cacheBase, pcm.size(),
 							lipSize ? std::format(", lip {} bytes skipped", lipSize) : "");
@@ -460,6 +474,7 @@ namespace FuzCache
 				logger::warn("Fuz '{}': failed to write cache file {}{}", a_key, cacheBase, ext);
 				return {};
 			}
+			CountWritten(rawDisk);
 			logger::info("Fuz '{}' -> {}{} ({} bytes{})", a_key, cacheBase, ext, audioSize,
 				lipSize ? std::format(", lip {} bytes skipped", lipSize) : "");
 			return cacheBase + ext;
@@ -492,6 +507,7 @@ namespace FuzCache
 
 	void EnforceCacheCap()
 	{
+		g_cacheBytes = 0;
 		const auto capMB = Config::Get()->fuzCacheMaxMB;
 		if (capMB == 0) {
 			return;
@@ -527,11 +543,15 @@ namespace FuzCache
 				continue;
 			}
 			const auto size = entry.file_size(ec);
+			if (ec) {
+				continue;
+			}
 			files.push_back({ entry.path(), size, entry.last_write_time(ec) });
 			total += size;
 		}
 		const std::uintmax_t cap = static_cast<std::uintmax_t>(capMB) * 1024 * 1024;
 		if (total <= cap) {
+			g_cacheBytes = total;
 			return;
 		}
 
@@ -550,11 +570,18 @@ namespace FuzCache
 		}
 		logger::info("Fuz cache over {} MB cap: evicted {} oldest file(s), {} MB kept",
 			capMB, evicted, total / (1024 * 1024));
+		g_cacheBytes = total;
 
 		// evicted paths may be in this session's resolve map - drop it so they
 		// re-extract on demand instead of pointing at deleted files
 		std::scoped_lock lock{ g_lock };
 		g_resolved.clear();
+	}
+
+	bool CacheFull()
+	{
+		const auto capMB = Config::Get()->fuzCacheMaxMB;
+		return capMB != 0 && g_cacheBytes >= static_cast<std::uintmax_t>(capMB) * 1024 * 1024;
 	}
 
 	std::string Resolve(const std::string& a_fuzDataRelPath)
