@@ -23,8 +23,9 @@ namespace FuzCache
 	// the fuz is unreadable, malformed, or carries no lip.
 	std::vector<std::uint8_t> ReadLipBlock(const std::string& a_fuzDataRelPath);
 
-	// Enforce [general] fuz_cache_max_mb on the cache folder: while the total
-	// size exceeds the cap, the oldest files (by write time) are deleted. Also
+	// Enforce [general] fuz_cache_max_mb on the cache folder: when the total
+	// size exceeds the cap, the oldest files (by write time) are deleted until
+	// it is a tenth below the cap, which leaves the prewarm room to work. Also
 	// drops the in-session resolve map so evicted paths re-extract on demand.
 	// No-op when the cap is 0 (unlimited) or the folder doesn't exist.
 	// Called on kDataLoaded and ReloadConfig.

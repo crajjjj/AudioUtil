@@ -1036,9 +1036,16 @@ namespace PapyrusAPI
 			const auto files = FolderCache::ListFolder(a_folder.c_str());
 			std::int32_t decoded = 0;
 			std::int32_t fuz = 0;
+			bool         full = false;
 			for (const auto& f : files) {
 				if (!FuzCache::IsFuzPath(f)) {
 					continue;
+				}
+				// the same stop as the startup prewarm: past fuz_cache_max_mb the next
+				// launch's eviction would delete what this writes
+				if (FuzCache::CacheFull()) {
+					full = true;
+					break;
 				}
 				++fuz;
 				if (!FuzCache::Resolve(f).empty()) {
@@ -1048,8 +1055,9 @@ namespace PapyrusAPI
 			const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
 				std::chrono::steady_clock::now() - start).count();
 			logger::info("PrewarmFolder '{}': {} of {} fuz decoded/cached ({} files scanned) in "
-						 "{} ms ({} ms/fuz) — restart so the new cache wavs enter the resource index",
-				a_folder.c_str(), decoded, fuz, files.size(), ms, fuz ? ms / fuz : 0);
+						 "{} ms ({} ms/fuz){}. Restart so the new cache wavs enter the resource index.",
+				a_folder.c_str(), decoded, fuz, files.size(), ms, fuz ? ms / fuz : 0,
+				full ? ", stopped at the fuz_cache_max_mb cap" : "");
 			return decoded;
 		}
 

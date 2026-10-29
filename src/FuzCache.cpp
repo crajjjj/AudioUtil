@@ -26,17 +26,32 @@ namespace FuzCache
 		std::unordered_map<std::string, std::string> g_resolved;
 		std::mutex g_lock;
 
-		// bytes in the cache folder (slot wavs excluded): set by EnforceCacheCap's
-		// walk, grown by every file Extract writes. CacheFull() reads it.
-		std::atomic<std::uintmax_t> g_cacheBytes{ 0 };
+		// one Extract (and cache walk) at a time: the prewarm thread and a playing
+		// line can ask for the same fuz together, which decoded it twice and
+		// counted it twice. Taken before g_lock, never inside it.
+		std::mutex g_extractLock;
 
-		void CountWritten(const std::filesystem::path& a_file)
+		// bytes in the cache folder (slot wavs excluded): measured by
+		// EnforceCacheCap, then moved by every file Extract writes, both under
+		// g_extractLock. CacheFull() reads it without the lock.
+		std::atomic<std::int64_t> g_cacheBytes{ 0 };
+
+		std::uintmax_t CapBytes()
+		{
+			return static_cast<std::uintmax_t>(Config::Get()->fuzCacheMaxMB) * 1024 * 1024;
+		}
+
+		// 0 when the file is missing or unreadable
+		std::uintmax_t SizeOnDisk(const std::filesystem::path& a_file)
 		{
 			std::error_code ec;
 			const auto size = std::filesystem::file_size(a_file, ec);
-			if (!ec) {
-				g_cacheBytes += size;
-			}
+			return ec ? 0 : size;
+		}
+
+		void CountWrite(std::uintmax_t a_written, std::uintmax_t a_replaced)
+		{
+			g_cacheBytes += static_cast<std::int64_t>(a_written) - static_cast<std::int64_t>(a_replaced);
 		}
 
 		std::string NormalizeKey(const std::string& a_path)
@@ -429,7 +444,8 @@ namespace FuzCache
 			// an earlier session may have extracted (and decoded) it already
 			std::error_code ec;
 			const auto wavDisk = std::filesystem::path(diskBase.string() + ".wav");
-			if (std::filesystem::exists(wavDisk, ec) && std::filesystem::file_size(wavDisk, ec) > 44) {
+			const auto wavOnDisk = SizeOnDisk(wavDisk);
+			if (wavOnDisk > 44) {
 				return cacheBase + ".wav";
 			}
 
@@ -447,7 +463,7 @@ namespace FuzCache
 							static_cast<std::streamsize>(pcm.size()));
 					});
 					if (wrote) {
-						CountWritten(wavDisk);
+						CountWrite(44 + pcm.size(), wavOnDisk);  // WriteWavHeader: 44 bytes
 						logger::info("Fuz '{}' -> {}.wav (xWMA decoded, {} PCM bytes{})", a_key,
 							cacheBase, pcm.size(),
 							lipSize ? std::format(", lip {} bytes skipped", lipSize) : "");
@@ -462,8 +478,8 @@ namespace FuzCache
 			// WAVE payload, or the decode fallback: cache the raw payload bytes
 			const char* ext = isWave ? ".wav" : ".xwm";
 			const auto rawDisk = std::filesystem::path(diskBase.string() + ext);
-			if (!isWave && std::filesystem::exists(rawDisk, ec) &&
-				std::filesystem::file_size(rawDisk, ec) == audioSize) {
+			const auto rawOnDisk = SizeOnDisk(rawDisk);
+			if (!isWave && rawOnDisk == audioSize) {
 				return cacheBase + ext;  // fallback from an earlier session
 			}
 			const bool wrote = WriteFileAtomic(rawDisk, [&](std::ofstream& out) {
@@ -474,7 +490,7 @@ namespace FuzCache
 				logger::warn("Fuz '{}': failed to write cache file {}{}", a_key, cacheBase, ext);
 				return {};
 			}
-			CountWritten(rawDisk);
+			CountWrite(audioSize, rawOnDisk);
 			logger::info("Fuz '{}' -> {}{} ({} bytes{})", a_key, cacheBase, ext, audioSize,
 				lipSize ? std::format(", lip {} bytes skipped", lipSize) : "");
 			return cacheBase + ext;
@@ -507,9 +523,10 @@ namespace FuzCache
 
 	void EnforceCacheCap()
 	{
+		std::scoped_lock extract{ g_extractLock };  // no cache write lands mid-walk
 		g_cacheBytes = 0;
-		const auto capMB = Config::Get()->fuzCacheMaxMB;
-		if (capMB == 0) {
+		const auto cap = CapBytes();
+		if (cap == 0) {
 			return;
 		}
 		const auto dir = std::filesystem::current_path() / "Data" / CACHE_DIR_REL;
@@ -549,18 +566,24 @@ namespace FuzCache
 			files.push_back({ entry.path(), size, entry.last_write_time(ec) });
 			total += size;
 		}
-		const std::uintmax_t cap = static_cast<std::uintmax_t>(capMB) * 1024 * 1024;
+		g_cacheBytes = static_cast<std::int64_t>(total);
 		if (total <= cap) {
-			g_cacheBytes = total;
 			return;
 		}
 
-		// oldest first — effectively FIFO (cache files are written once)
+		// Evict down to a tenth below the cap, not to the cap itself. The prewarm
+		// fills up to the cap, so trimming only to it frees about one file a launch:
+		// lines of a pack that is gone would then hold the space for hundreds of
+		// launches, and the same line would be evicted and re-decoded every launch.
+		// A fuz set larger than the cap re-decodes that tenth each launch instead.
+		const auto target = cap / 10 * 9;
+
+		// oldest first: effectively FIFO (cache files are written once)
 		std::sort(files.begin(), files.end(),
 			[](const File& a_lhs, const File& a_rhs) { return a_lhs.written < a_rhs.written; });
 		std::size_t evicted = 0;
 		for (const auto& file : files) {
-			if (total <= cap) {
+			if (total <= target) {
 				break;
 			}
 			if (std::filesystem::remove(file.path, ec)) {
@@ -569,8 +592,8 @@ namespace FuzCache
 			}
 		}
 		logger::info("Fuz cache over {} MB cap: evicted {} oldest file(s), {} MB kept",
-			capMB, evicted, total / (1024 * 1024));
-		g_cacheBytes = total;
+			cap / (1024 * 1024), evicted, total / (1024 * 1024));
+		g_cacheBytes = static_cast<std::int64_t>(total);
 
 		// evicted paths may be in this session's resolve map - drop it so they
 		// re-extract on demand instead of pointing at deleted files
@@ -580,8 +603,8 @@ namespace FuzCache
 
 	bool CacheFull()
 	{
-		const auto capMB = Config::Get()->fuzCacheMaxMB;
-		return capMB != 0 && g_cacheBytes >= static_cast<std::uintmax_t>(capMB) * 1024 * 1024;
+		const auto cap = CapBytes();
+		return cap != 0 && g_cacheBytes.load() >= static_cast<std::int64_t>(cap);
 	}
 
 	std::string Resolve(const std::string& a_fuzDataRelPath)
@@ -593,7 +616,8 @@ namespace FuzCache
 				return it->second;
 			}
 		}
-		auto resolved = Extract(key);
+		std::scoped_lock extract{ g_extractLock };
+		auto             resolved = Extract(key);
 		std::scoped_lock lock{ g_lock };
 		g_resolved[key] = resolved;
 		return resolved;

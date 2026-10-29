@@ -57,12 +57,14 @@ namespace
 		log::info("Papyrus functions bound.");
 	}
 
-	// Decode-ahead the whole config's .fuz set on a detached background thread, so
-	// their cache wavs are on disk BEFORE the next launch indexes loose files.
-	// (A cache wav written mid-session can't be read back by the engine's resource
-	// loader until a relaunch — the loose-file index is frozen at game start, and
-	// MO2's USVFS never surfaces a mid-session file at all. So the first launch
-	// after new fuz is added warms silently; every launch after plays first try.)
+	// Decode-ahead the config's .fuz set on a detached background thread, so first
+	// plays skip the inline decode. Stops at [general] fuz_cache_max_mb (CacheFull):
+	// a large fuz pack decodes to gigabytes of PCM, and past the cap the next
+	// launch's eviction would only delete what this wrote. The lines it does not
+	// reach decode on first play. Without fuz_slots, a cache wav written mid-session
+	// cannot be read by the engine until a relaunch (the loose-file index is frozen
+	// at game start, and MO2's USVFS never surfaces a mid-session file), so the
+	// first launch after new fuz is added warms silently.
 	// Idempotent + cheap once cached: FuzCache::Resolve short-circuits on a disk
 	// hit. Gated on [general] prewarm_fuz. Detached like LipSync's ticker.
 	void PrewarmFuzCache()
@@ -76,30 +78,32 @@ namespace
 			const auto fuz = std::ranges::count_if(files, [](const std::string& a_file) {
 				return FuzCache::IsFuzPath(a_file);
 			});
-			std::size_t decoded = 0;
+			std::size_t visited = 0;
+			std::size_t cached = 0;
 			bool        full = false;
 			for (const auto& f : files) {
 				if (!FuzCache::IsFuzPath(f)) {
 					continue;
 				}
-				// a large fuz pack decodes to gigabytes of PCM, so the prewarm stops at
-				// [general] fuz_cache_max_mb and leaves the rest to their first play
 				if (FuzCache::CacheFull()) {
 					full = true;
 					break;
 				}
+				++visited;
 				if (!FuzCache::Resolve(f).empty()) {
-					++decoded;
+					++cached;
 				}
 			}
 			const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
 				std::chrono::steady_clock::now() - start).count();
-			log::info("Fuz prewarm: {} of {} fuz cached (of {} audio files) in {} ms.{}", decoded, fuz,
+			const auto settings = Config::Get();
+			log::info("Fuz prewarm: {} of {} fuz cached (of {} audio files) in {} ms.{}{}", cached, fuz,
 				files.size(), ms,
-				full ? std::format(" Stopped at the fuz_cache_max_mb cap ({} MB): the rest decode "
-								   "on first play.",
-						   Config::Get()->fuzCacheMaxMB) :
-					   "");
+				full ? std::format(" Stopped at the fuz_cache_max_mb cap ({} MB) after {} fuz: the rest "
+								   "decode on first play.",
+						   settings->fuzCacheMaxMB, visited) :
+					   "",
+				settings->fuzSlots <= 0 ? " fuz_slots is 0: newly decoded lines play after the next game restart." : "");
 		}).detach();
 	}
 
