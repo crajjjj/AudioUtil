@@ -19,6 +19,9 @@ option("copy_to_mod")
 option_end()
 
 -- Dependencies & Includes
+-- AudioUtil installs no trampoline hooks, so CommonLib's patch-site diagnostics
+-- have nothing to check; off, their MinHook HDE64 code stays out of the DLL.
+set_config("skse_patch_safety", false)
 includes("lib/commonlibsse-ng")
 
 add_requires("toml++")
