@@ -3,7 +3,6 @@
 #include "Config.h"
 #include "FuzCache.h"
 #include "FuzSlots.h"
-#include "ResourceStream.h"
 
 namespace AudioEngine
 {
@@ -234,7 +233,7 @@ namespace AudioEngine
 		}
 		// opening a resource stream succeeds only if the path resolves from a
 		// loose file or a mounted archive - the engine's own lookup
-		ResourceStream resource{ a_dataRelPath.c_str() };
-		return resource.stream.good();
+		RE::BSResourceNiBinaryStream stream{ a_dataRelPath.c_str() };
+		return stream.good();
 	}
 }

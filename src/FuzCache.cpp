@@ -2,7 +2,6 @@
 
 #include "Config.h"
 #include "FuzSlots.h"
-#include "ResourceStream.h"
 
 #include <atomic>
 #include <filesystem>
@@ -53,8 +52,7 @@ namespace FuzCache
 		std::vector<std::uint8_t> ReadResource(const std::string& a_dataRelPath)
 		{
 			std::vector<std::uint8_t> out;
-			ResourceStream resource{ a_dataRelPath.c_str() };
-			auto& stream = resource.stream;
+			RE::BSResourceNiBinaryStream stream{ a_dataRelPath.c_str() };
 			if (!stream.good()) {
 				return out;
 			}
