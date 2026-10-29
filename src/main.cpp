@@ -147,6 +147,9 @@ SKSEPluginLoad(const LoadInterface* skse)
 	log::info("Runtime version: {}", REL::Module::get().version().string());
 
 	Init(skse);
+	// CommonLib loads the Address Library at the first relocation; load it here
+	// so a missing one fails at game start, not mid-session
+	(void)REL::IDDB::get();
 	InitializePapyrus();
 
 	if (const auto* messaging = GetMessagingInterface()) {

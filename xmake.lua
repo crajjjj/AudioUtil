@@ -44,7 +44,7 @@ elseif is_mode("release") then
 end
 
 add_defines("_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING")
-add_defines("NOMINMAX")  -- CommonLib v7 headers pull in Windows.h
+add_defines("NOMINMAX")  -- CommonLib headers (since v7) pull in Windows.h
 
 -- Target
 target(PROJECT_NAME)
