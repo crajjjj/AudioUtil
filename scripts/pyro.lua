@@ -49,17 +49,35 @@ function generate_fuz_slots()
 end
 
 -- Add dist\Sound (the FuzSlots placeholders) into an existing zip, nested as
--- Sound\AudioUtilFuzCache\*.wav. Done here rather than via the ppj's <Match>
--- because the ppj is gitignored (machine-local paths) — keeping the fix in this
+-- Sound/AudioUtilFuzCache/*.wav. Done here rather than via the ppj's <Match>
+-- because the ppj is gitignored (machine-local paths); keeping the fix in this
 -- tracked script makes it reproducible on any checkout.
+-- Entries are written through .NET with explicit forward-slash names. Windows
+-- PowerShell's own Compress-Archive (Archive module 1.0.1.0) names them with
+-- backslashes, which zip readers and mod managers mishandle; whether it ran
+-- depended on the calling shell (a PowerShell 7 parent lends its newer module).
 function inject_fuz_slots(zip)
     local sound = path.join(os.projectdir(), "dist", "Sound")
     if not os.isdir(sound) or not os.isfile(zip) then
         return
     end
-    os.execv("powershell", { "-NoProfile", "-Command", string.format(
-        "Compress-Archive -Update -Path '%s' -DestinationPath '%s'", sound, zip) })
-    print("pyro: injected Sound\\AudioUtilFuzCache placeholders into " .. path.filename(zip))
+    local script = [[
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+$root = (Get-Item -LiteralPath '{SOUND}').Parent.FullName
+$z = [IO.Compression.ZipFile]::Open('{ZIP}', 'Update')
+try {
+    foreach ($f in Get-ChildItem -LiteralPath '{SOUND}' -Recurse -File) {
+        $name = $f.FullName.Substring($root.Length + 1).Replace('\', '/')
+        $old = $z.GetEntry($name)
+        if ($old) { $old.Delete() }
+        [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z, $f.FullName, $name)
+    }
+} finally { $z.Dispose() }
+]]
+    script = script:gsub("{SOUND}", (sound:gsub("%%", "%%%%"))):gsub("{ZIP}", (zip:gsub("%%", "%%%%")))
+    os.execv("powershell", { "-NoProfile", "-Command", script })
+    print("pyro: injected Sound/AudioUtilFuzCache placeholders into " .. path.filename(zip))
 end
 
 function main()
