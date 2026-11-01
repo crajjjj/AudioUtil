@@ -15,8 +15,8 @@ Checked top to bottom; **first hit wins**.
 |---|--------|-------|
 | 1 | `pc_female_slot` / `pc_male_slot` | **Player only.** The PC always resolves here, and no other actor ever does. Empty = no reservation. |
 | 2 | `[npc_overrides]` | Explicit per-NPC pin, `'Plugin.esp\|FormID' = "Slot"`. May target any slot, including a pc-reserved one. |
-| 3 | `[voicetype_remap]` → `[voicetype_map]` | Rename the actor's voicetype (one hop) to one you have, then map that voicetype to a slot. |
-| 4 | `[race_map]` | Substring match against the race editor id; most specific (longest) hint wins. Creatures resolve here. |
+| 3 | `[voicetype_remap]` → `[voicetype_map]` | Rename the actor's voicetype (one hop) to one you have, then map that voicetype to a slot. A **creature** tries step 4 first and comes here only when no race hint matched. |
+| 4 | `[race_map]` | Substring match against the race editor id; most specific (longest) hint wins. Creatures resolve here, **before** their voicetype. |
 | 5 | `default_creature_slot` | **Creatures only**, and they stop here — step 6 is never reached. Empty (the default) = silent. |
 | 6 | `default_female_slot` / `default_male_slot` | Non-creatures: last resort, by the actor's sex. If that slot is missing or pc-reserved, the first free slot of the actor's sex. |
 
@@ -24,7 +24,7 @@ Checked top to bottom; **first hit wins**.
 
 ### Creatures branch at step 5
 
-A **creature** — an actor whose race carries no `ActorTypeNPC` keyword — is routed by steps 1–4 like anyone else, so a `[race_map]` hint onto a `sex = "all"` slot is the normal way to voice one. What it may *not* do is fall through to the by-sex default: every slot that step can reach is an `'F'`/`'M'` human voice pack, so an unmapped frostbite spider or fox would end up speaking human lines from whichever male pack happened to be declared first.
+A **creature** (an actor whose race carries no `ActorTypeNPC` keyword) is routed by steps 1 to 4 like anyone else, with one twist: it tries its `[race_map]` hint (step 4) **before** its voicetype (step 3). What a creature sounds like is its race, and an NPC who transforms into a werewolf keeps the human voicetype of his NPC record, which would otherwise pull him onto a human voice pack for the whole scene. A `[race_map]` hint onto a `sex = "all"` slot is the normal way to voice one. What it may *not* do is fall through to the by-sex default: every slot that step can reach is an `'F'`/`'M'` human voice pack, so an unmapped frostbite spider or fox would end up speaking human lines from whichever male pack happened to be declared first.
 
 So creatures take `default_creature_slot` instead, and stop there whether or not it resolves:
 
