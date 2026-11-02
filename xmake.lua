@@ -179,9 +179,23 @@ target("lipsim")
         local out = path.join(rel,
             "AudioUtil-LipSim-" .. (project.version() or "dev") .. ".zip")
         os.rm(out)
-        os.execv("powershell", { "-NoProfile", "-Command",
-            string.format("Compress-Archive -Path '%s\\*' -DestinationPath '%s' -Force",
-                staging, out) })
+        -- .NET with explicit forward-slash entry names, as scripts/pyro.lua does for
+        -- the mod zip: Windows PowerShell's Compress-Archive writes backslashes
+        -- (cpp\AudioUtilAPI.h), which unzip on Linux turns into one odd file name
+        local script = [[
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+$root = (Get-Item -LiteralPath '{STAGING}').FullName
+$z = [IO.Compression.ZipFile]::Open('{OUT}', 'Create')
+try {
+    foreach ($f in Get-ChildItem -LiteralPath $root -Recurse -File) {
+        $name = $f.FullName.Substring($root.Length + 1).Replace('\', '/')
+        [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z, $f.FullName, $name)
+    }
+} finally { $z.Dispose() }
+]]
+        script = script:gsub("{STAGING}", (staging:gsub("%%", "%%%%"))):gsub("{OUT}", (out:gsub("%%", "%%%%")))
+        os.execv("powershell", { "-NoProfile", "-Command", script })
         os.rm(staging)
         print("lipsim package -> " .. out)
     end)
@@ -247,9 +261,23 @@ target("sdk")
         local out = path.join(rel,
             "AudioUtil-API-" .. (project.version() or "dev") .. "+.zip")
         os.rm(out)
-        os.execv("powershell", { "-NoProfile", "-Command",
-            string.format("Compress-Archive -Path '%s\\*' -DestinationPath '%s' -Force",
-                staging, out) })
+        -- .NET with explicit forward-slash entry names, as scripts/pyro.lua does for
+        -- the mod zip: Windows PowerShell's Compress-Archive writes backslashes
+        -- (cpp\AudioUtilAPI.h), which unzip on Linux turns into one odd file name
+        local script = [[
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+$root = (Get-Item -LiteralPath '{STAGING}').FullName
+$z = [IO.Compression.ZipFile]::Open('{OUT}', 'Create')
+try {
+    foreach ($f in Get-ChildItem -LiteralPath $root -Recurse -File) {
+        $name = $f.FullName.Substring($root.Length + 1).Replace('\', '/')
+        [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z, $f.FullName, $name)
+    }
+} finally { $z.Dispose() }
+]]
+        script = script:gsub("{STAGING}", (staging:gsub("%%", "%%%%"))):gsub("{OUT}", (out:gsub("%%", "%%%%")))
+        os.execv("powershell", { "-NoProfile", "-Command", script })
         os.rm(staging)
         print("sdk package -> " .. out)
     end)
