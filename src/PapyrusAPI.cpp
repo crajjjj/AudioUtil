@@ -128,11 +128,11 @@ namespace PapyrusAPI
 		}
 
 		// resolution order: PC reservation (player only) -> npc_overrides ->
-		// voicetype remap/map -> race match -> default by sex. A CREATURE takes the
-		// race match before the voicetype (see there) and ends at
-		// default_creature_slot. Non-player actors never resolve to a PC-reserved
-		// slot; if the default is reserved they get the first free slot of their
-		// sex instead.
+		// voicetype remap/map -> race match -> default by sex. A humanoid in BEAST
+		// FORM takes the race match before the voicetype (see there); a creature
+		// ends at default_creature_slot. Non-player actors never resolve to a
+		// PC-reserved slot; if the default is reserved they get the first free slot
+		// of their sex instead.
 		const Config::Slot* ResolveSlotForActor(const Config::Settings& a_settings, RE::Actor* a_actor)
 		{
 			if (!a_actor) {
@@ -176,15 +176,21 @@ namespace PapyrusAPI
 				}
 			}
 
-			// 2./3. voicetype remap -> map, and the race match. The order depends on
-			// what the actor is. A HUMANOID is voiced by voice type first: a uniquely
-			// voiced follower must not be pulled onto her race's pack. A CREATURE is
-			// voiced by race first: an NPC who turns into a werewolf keeps his human
-			// voice type (SLO VE's bandit captain carried MaleBandit into a werewolf
-			// scene, took the M4 male pack, and his "Breathing" ambience fell through
-			// that pack's fallbacks to its climax cries every few seconds), and what
-			// a creature sounds like is its race, not whose voice it had before.
+			// 2./3. voicetype remap -> map, then the race match: the voice type is the
+			// more specific fact about an actor, so it goes first. Except that it does
+			// not describe a humanoid in BEAST FORM. An NPC who turns into a werewolf or
+			// a vampire lord keeps the voice type of his NPC record (SLO VE's bandit
+			// captain carried MaleBandit into a werewolf scene, took the M4 male pack,
+			// and his "Breathing" ambience fell through that pack's fallbacks to its
+			// climax cries every few seconds). Actor::GetRace() is the live race
+			// (the one SwitchRace sets), so beast form = that race is a creature race
+			// and differs from the record's; such an actor is voiced by race first. A
+			// creature in its own race keeps voice type first, so a consumer's
+			// deliberate voicetype route for a talking creature still beats a broad
+			// race hint.
 			const bool creature = IsCreature(a_actor);
+			const auto* liveRace = a_actor->GetRace();
+			const bool beastForm = creature && liveRace && base->race && liveRace != base->race;
 
 			const auto byVoicetype = [&]() -> const Config::Slot* {
 				std::string voicetype;
@@ -239,7 +245,7 @@ namespace PapyrusAPI
 				return nullptr;
 			};
 
-			if (creature) {
+			if (beastForm) {
 				if (const auto* slot = byRace()) {
 					return slot;
 				}
