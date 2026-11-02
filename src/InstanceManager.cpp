@@ -142,7 +142,7 @@ namespace InstanceManager
 				return;
 			}
 			std::scoped_lock lock{ g_lock };
-			Sweep();  // finished lines drop out (and free their fuz slots) promptly
+			Sweep();  // finished lines drop out promptly
 			for (auto& [id, instance] : g_instances) {
 				const auto follow = instance.follow.get();
 				if (!follow || instance.engineRolloff) {

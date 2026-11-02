@@ -52,11 +52,4 @@ namespace FolderCache
 	// counts files but has nothing a fact-poorer request may play.
 	bool HasPlayableFiles(const std::string& a_folderKey, Tags::Mask a_facts = 0);
 
-	// data-relative audio file paths in a folder (non-recursive), scanning it on
-	// first use like ResolveDirKey. For cache prewarming. Empty on miss.
-	std::vector<std::string> ListFolder(std::string_view a_dataRelativeFolder);
-
-	// every audio file across all scanned folders (deduplicated). Call after
-	// Rebuild. Used to prewarm the fuz cache for the whole config at load.
-	std::vector<std::string> AllAudioFiles();
 }

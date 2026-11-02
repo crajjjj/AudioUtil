@@ -421,10 +421,13 @@ namespace PapyrusAPI
 			if (file.empty()) {
 				return miss("folder has no qualifying pool");
 			}
+			if (a_mouth) {
+				LipSync::Prepare(file);  // before the sound starts, so the mouth is not late
+			}
 			AudioEngine::Played played;
 			auto handle = AudioEngine::PlayPath(file, a_follow, a_volume, &played);
 			if (!handle.IsValid()) {
-				return miss("engine refused the file");  // PlayPath released any acquired slot
+				return miss("engine refused the file");
 			}
 			const auto id = InstanceManager::Register(handle, a_volume, a_group, file, a_follow,
 				a_voice, played.outputModel);
@@ -1274,10 +1277,13 @@ namespace PapyrusAPI
 	{
 		std::string path = a_dataRelPath;
 		std::replace(path.begin(), path.end(), '/', '\\');
+		if (a_lipSync && a_follow) {
+			LipSync::Prepare(path);  // before the sound starts, so the mouth is not late
+		}
 		AudioEngine::Played played;
 		auto handle = AudioEngine::PlayPath(path, a_follow, a_volume, &played);
 		if (!handle.IsValid()) {
-			return 0;  // PlayPath released any acquired slot on failure
+			return 0;
 		}
 		// the WithLipSync variant is the spoken-line one: it gets the Voice volume
 		const auto id = InstanceManager::Register(handle, a_volume, a_group, path, a_follow,

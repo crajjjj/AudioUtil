@@ -15,9 +15,9 @@ AudioUtil lipsyncs from the decoded audio (pseudo/envelope) at runtime.
 With --fuz, each wav+lip pair is additionally packed into a same-stem .fuz:
 the wav is encoded to xWMA with the CK's xwmaencode.exe and wrapped in the
 FUZE container (magic + u32 version + u32 lipSize + LIP block + xWMA RIFF).
-A .fuz is one file per line and much smaller than the wav, at the cost of a
-first-play decode through AudioUtil's FuzCache. Captions still work (the
-.toml sidecar keys off the .fuz path); keep the sidecar next to the fuz.
+A .fuz is one file per line and much smaller than the wav; the game plays it
+by path like any vanilla voice line. Captions still work (the .toml sidecar
+keys off the .fuz path); keep the sidecar next to the fuz.
 
 Requirements: Python 3.11+, Skyrim SE Creation Kit tools installed
 (Tools\\LipGen\\LipGenerator\\LipGenerator.exe, and for --fuz

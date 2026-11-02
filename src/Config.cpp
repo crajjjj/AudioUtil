@@ -185,13 +185,19 @@ namespace Config
 				settings->dialogueOutputModel =
 					(*general)["dialogue_output_model"].value_or(settings->dialogueOutputModel);
 				settings->voiceSlider = (*general)["voice_slider"].value_or(settings->voiceSlider);
-				// the fuz cache's keys, retired in 0.9.32 (the engine plays a .fuz by
-				// path itself): accepted, ignored, named once so the config can be cleaned
-				for (const char* retired : { "fuz_cache_max_mb", "prewarm_fuz", "fuz_slots" }) {
-					if (general->contains(retired)) {
-						logger::info("[general] {} is retired (a .fuz plays by path, nothing is cached): ignored",
-							retired);
+				// the fuz cache's keys, retired in 1.0.0 (the engine plays a .fuz by
+				// path itself): accepted and ignored, named once per launch (not per
+				// reload: a preset mod's shipped toml may carry them for a while)
+				static std::atomic<bool> retiredNoted{ false };
+				std::string              retired;
+				for (const char* key : { "fuz_cache_max_mb", "prewarm_fuz", "fuz_slots" }) {
+					if (general->contains(key)) {
+						retired += retired.empty() ? key : std::format(", {}", key);
 					}
+				}
+				if (!retired.empty() && !retiredNoted.exchange(true)) {
+					logger::info("[general] {}: retired in 1.0.0 (a .fuz plays by path, nothing is cached), ignored",
+						retired);
 				}
 				settings->pauseOnFreezeTime =
 					(*general)["pause_on_freeze_time"].value_or(settings->pauseOnFreezeTime);

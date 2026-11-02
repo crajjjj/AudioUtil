@@ -2,6 +2,10 @@
 
 #include "AudioEngine.h"
 
+#include <filesystem>
+#include <regex>
+#include <thread>
+
 #include <mediaobj.h>
 #include <mmreg.h>
 #include <objbase.h>
@@ -309,6 +313,110 @@ namespace Fuz
 	{
 		return a_path.size() > 4 &&
 		       _strnicmp(a_path.data() + a_path.size() - 4, ".fuz", 4) == 0;
+	}
+
+	bool IsPlayable(const std::string& a_fuzDataRelPath)
+	{
+		static std::mutex                            lock;
+		static std::unordered_map<std::string, bool> verdicts;
+
+		std::string key = a_fuzDataRelPath;
+		std::replace(key.begin(), key.end(), '/', '\\');
+		std::transform(key.begin(), key.end(), key.begin(),
+			[](unsigned char a_ch) { return static_cast<char>(std::tolower(a_ch)); });
+		{
+			std::scoped_lock guard{ lock };
+			if (const auto it = verdicts.find(key); it != verdicts.end()) {
+				return it->second;
+			}
+		}
+
+		const auto verdict = [&]() -> std::string {
+			RE::BSResourceNiBinaryStream stream{ key.c_str() };
+			if (!stream.good()) {
+				return "unreadable (no such loose file or archive entry)";
+			}
+			std::uint8_t header[FUZ_HEADER_SIZE];
+			if (!stream.read(reinterpret_cast<char*>(header), FUZ_HEADER_SIZE)) {
+				return "too small for a fuz header";
+			}
+			if (std::memcmp(header, "FUZE", 4) != 0) {
+				return "missing FUZE magic";
+			}
+			// skip the lip block: read, not seek, so a block running past the end of
+			// the file shows as a short read
+			auto       left = ReadU32LE(header + 8);
+			const auto lipSize = left;
+			std::vector<char> skip(std::min<std::uint32_t>(left, 64 * 1024));
+			while (left > 0) {
+				const auto take = std::min<std::uint32_t>(left, static_cast<std::uint32_t>(skip.size()));
+				if (!stream.read(skip.data(), take)) {
+					return std::format("lip size {} exceeds the file", lipSize);
+				}
+				left -= take;
+			}
+			std::uint8_t riff[12];
+			if (!stream.read(reinterpret_cast<char*>(riff), sizeof(riff)) || std::memcmp(riff, "RIFF", 4) != 0 ||
+				(std::memcmp(riff + 8, "XWMA", 4) != 0 && std::memcmp(riff + 8, "WAVE", 4) != 0)) {
+				return "payload is not RIFF xWMA/wav";
+			}
+			return {};
+		}();
+		if (!verdict.empty()) {
+			logger::warn("Fuz '{}': {} - not played", a_fuzDataRelPath, verdict);
+		}
+		std::scoped_lock guard{ lock };
+		verdicts[key] = verdict.empty();
+		return verdict.empty();
+	}
+
+	void RemoveLegacyCache()
+	{
+		namespace fs = std::filesystem;
+		const auto      dir = fs::current_path() / "Data" / "Sound" / "AudioUtilFuzCache";
+		std::error_code ec;
+		if (!fs::is_directory(dir, ec)) {
+			return;
+		}
+		std::thread([dir] {
+			// names only the old cache wrote: decoded <stem>_<fnv32>.wav/.xwm, their
+			// .tmp<n> write files, and the shipped placeholders
+			static const std::regex legacy{ R"(^(_au_slot\d{2,}\.wav|.+_[0-9a-f]{8}\.(wav|xwm)(\.tmp[0-9a-f]+)?)$)",
+				std::regex::icase };
+			std::error_code ec;
+			std::size_t     removed = 0;
+			std::uintmax_t  bytes = 0;
+			std::size_t     kept = 0;
+			for (const auto& entry : fs::directory_iterator(dir, ec)) {
+				std::string name;
+				try {
+					name = entry.path().filename().string();
+				} catch (const std::exception&) {
+					++kept;  // a name that does not map to the narrow charset is not ours
+					continue;
+				}
+				if (!entry.is_regular_file(ec) || !std::regex_match(name, legacy)) {
+					++kept;
+					continue;
+				}
+				const auto size = entry.file_size(ec);
+				if (fs::remove(entry.path(), ec)) {
+					++removed;
+					bytes += ec ? 0 : size;
+				} else {
+					++kept;
+				}
+			}
+			if (kept == 0) {
+				fs::remove(dir, ec);  // removes an empty directory only
+			}
+			if (removed) {
+				logger::info("Removed {} file(s), {} MB, that earlier versions' fuz cache left in "
+							 "Sound\\AudioUtilFuzCache\\ (a .fuz plays by path now){}",
+					removed, bytes / (1024 * 1024),
+					kept ? std::format("; {} other file(s) left alone", kept) : "");
+			}
+		}).detach();
 	}
 
 	std::vector<std::uint8_t> ReadLipBlock(const std::string& a_fuzDataRelPath)

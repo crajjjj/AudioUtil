@@ -30,7 +30,7 @@ right; the in-game probe methodology (§5) is what settled it.
 
 ## 2. File format (verified)
 
-A `.fuz` = `FUZE` magic, u32 version, u32 lipSize, LIP block, RIFF audio (see `FuzCache`).
+A `.fuz` = `FUZE` magic, u32 version, u32 lipSize, LIP block, RIFF audio (see `Fuz`).
 A standalone `.lip` is just the LIP block.
 
 ### Header — 24 bytes, little-endian `struct "<IIIHHiHH"`
@@ -188,8 +188,8 @@ its slot map is the OLD wrong assumption — the timelines/format part is still 
   **rest (0)** with a 2-frame release, per §2 — not held or interpolated.
   `Anim::Sample(channel, t)` linearly interpolates between frames (sub-frame smoothing
   only); `HasMouthData()` rejects lips with no phoneme signal.
-- `GetFor(path)`: resolves the lip for a played path — a `.fuz`'s embedded LIP block
-  (via `FuzCache`), else a same-stem `.lip` beside the file (loose or BSA) — with
+- `GetFor(path)`: resolves the lip for a played path: a `.fuz`'s embedded LIP block
+  (via `Fuz`), else a same-stem `.lip` beside the file (loose or BSA), with
   session caching (misses cached too; `ClearCache()` on config reload).
 
 **`src/LipSync.cpp`** — per-entry mode, chosen at `Start`:

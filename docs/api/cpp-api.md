@@ -108,7 +108,7 @@ Playing sounds stop automatically on `kPreLoadGame`/`kNewGame` (AudioUtil stops 
 
 Identical to the Papyrus natives, so the [Papyrus reference](audioutil.md#playfile) and the [shared concepts](index.md#concepts-shared-by-every-play-call) (handles, volume math, groups, channels) are the source of truth. In short:
 
-- `dataRelPath` is `Data`-relative (`"Sound\\FX\\MyMod\\whoosh.wav"`; forward slashes are normalized). Playable formats: **wav, xwm, fuz** — loose or BSA-packed (the engine plays a `.fuz` by path itself).
+- `dataRelPath` is `Data`-relative (`"Sound\\FX\\MyMod\\whoosh.wav"`; forward slashes are normalized). Playable formats: **wav, xwm, fuz**, loose or BSA-packed (the engine plays a `.fuz` by path itself).
 - `follow` 3D-positions the sound at that actor and tracks it while playing; `nullptr` plays flat/2D at the listener.
 - `volume` is `0.0`–`1.0`; effective volume = `volume × group_volume × duck_factor`, re-applied live.
 - `group` joins a [volume/duck bucket](index.md#group); `channel` is an [exclusivity lane](index.md#channel) (starting a sound on an occupied channel stops the previous instance). Empty/null = none.

@@ -23,7 +23,7 @@ Install with a mod manager (Mod Organizer 2 / Vortex) like any SKSE plugin, or e
 [*][b]Play any WAV by path[/b] — loose files or audio packed inside BSA archives, positioned in 3D on an actor or played flat.[/*]
 [*][b]Per-NPC voice assignment[/b] — one call picks the right voice for an actor automatically, resolved by NPC pin, voice type, race, or sex, then shuffle-picks a clip so lines don't repeat.[/*]
 [*][b]Automatic lip movement[/b] — mouths move in sync with the audio, read from the clip's own loudness. No [font=Courier New].lip[/font] baking, works on any loose voice file.[/*]
-[*][b]Vanilla voice lines[/b] — play any game [font=Courier New].fuz[/font] voice file straight by path (loose or inside a BSA). Nothing is extracted or cached, and lip movement works on it too.[/*]
+[*][b]Vanilla voice lines[/b]: play any game [font=Courier New].fuz[/font] voice file straight by path (loose or inside a BSA). Nothing is extracted or cached, and lip movement works on it too.[/*]
 [*][b]On-screen captions[/b] — a voice clip can carry a small text sidecar, shown as a game subtitle on the speaker while it plays, with per-language text and an event for custom UI.[/*]
 [*][b]Mixing control[/b] — per-sound volume and stop, volume groups, ducking, and exclusive channels so a new line cleanly replaces the last.[/*]
 [*][b]Gag support[/b] — when a speaker wears a mouth-owning device, their voice automatically switches to a muffled set and lip movement hands off to the device.[/*]

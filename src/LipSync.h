@@ -2,9 +2,18 @@
 
 namespace LipSync
 {
-	// begin driving the actor's mouth from the wav's amplitude envelope, in sync
-	// with the playing instance. No-op if disabled, the file isn't readable PCM
-	// wav (e.g. xwm/BSA-packed), or the actor is invalid; failures only log.
+	// Warm the caches Start reads for a .fuz (its lip block, or else its audio
+	// decoded in memory for the envelope). Call it BEFORE the sound starts: the
+	// mouth clock starts when Start's entry first sees the sound playing, so a
+	// first-play decode inside Start would leave the mouth trailing the voice by
+	// the decode time. No-op for other files (a loose wav parses fast) and while
+	// lipsync is off.
+	void Prepare(const std::string& a_dataRelPath);
+
+	// begin driving the actor's mouth from the line's lip curves (a .lip beside
+	// the file, or a fuz's embedded block) or its amplitude envelope, in sync
+	// with the playing instance. No-op if disabled, the audio isn't readable
+	// (xwm, BSA-packed wav), or the actor is invalid; failures only log.
 	// a_dialogueGuard = false skips the in-dialogue-with-the-player block (at
 	// start and on every handover re-check); gag, tongue and claims still apply.
 	void Start(RE::Actor* a_actor, const std::string& a_dataRelPath,

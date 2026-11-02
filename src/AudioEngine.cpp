@@ -1,6 +1,7 @@
 #include "AudioEngine.h"
 
 #include "Config.h"
+#include "Fuz.h"
 
 namespace AudioEngine
 {
@@ -137,7 +138,12 @@ namespace AudioEngine
 
 		// A .fuz goes in as-is: the engine's sound open (BSXAudio2GameSound
 		// SyncOpen / FinishAsyncOpen) skips the FUZE header and lip block itself
-		// and decodes the xWMA, the way every vanilla dialogue line plays.
+		// and decodes the xWMA, the way every vanilla dialogue line plays. That
+		// open runs later and asynchronously, so check the container first: a
+		// broken fuz would otherwise get a valid handle and play silence.
+		if (Fuz::IsFuzPath(a_dataRelPath) && !Fuz::IsPlayable(a_dataRelPath)) {
+			return handle;  // IsPlayable warned why
+		}
 		RE::BSResource::ID id;
 		id.GenerateFromPath(a_dataRelPath.c_str());
 		manager->GetSoundHandleByFile(handle, id, a_flags, a_priority);

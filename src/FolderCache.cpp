@@ -105,8 +105,7 @@ namespace FolderCache
 
 		bool IsAudioFile(const std::filesystem::path& a_path)
 		{
-			// .fuz voice containers count too: AudioEngine::PlayPath transparently
-			// plays their extracted xWMA/wav payload (see FuzCache)
+			// .fuz voice containers count too: the engine plays them by path (see Fuz)
 			std::string ext;
 			if (!NarrowPathImpl(a_path.extension(), ext)) {
 				return false;
@@ -967,38 +966,6 @@ namespace FolderCache
 			}
 		}
 		return key;
-	}
-
-	std::vector<std::string> ListFolder(std::string_view a_dataRelativeFolder)
-	{
-		const auto key = ResolveDirKey(a_dataRelativeFolder);  // scans on first use
-		if (key.empty()) {
-			return {};
-		}
-		std::scoped_lock lock{ g_lock };
-		const auto it = g_folders.find(key);
-		if (it == g_folders.end()) {
-			return {};
-		}
-		std::vector<std::string> out;
-		for (const auto& pool : it->second.pools) {
-			out.insert(out.end(), pool.files.begin(), pool.files.end());
-		}
-		return out;
-	}
-
-	std::vector<std::string> AllAudioFiles()
-	{
-		std::unordered_set<std::string> seen;
-		std::scoped_lock lock{ g_lock };
-		for (const auto& [key, folder] : g_folders) {
-			for (const auto& pool : folder.pools) {
-				for (const auto& f : pool.files) {
-					seen.insert(f);
-				}
-			}
-		}
-		return { seen.begin(), seen.end() };
 	}
 
 	namespace
