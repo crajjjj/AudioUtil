@@ -32,15 +32,6 @@ namespace Fuz
 	// verdict is cached per path for the session and a reject is warned once.
 	bool IsPlayable(const std::string& a_fuzDataRelPath);
 
-	// Delete what pre-1.0.0 builds left in Data\Sound\AudioUtilFuzCache\: the
-	// decoded <stem>_<8 hex>.wav/.xwm files, interrupted .tmp writes and the
-	// _au_slotNN.wav placeholders. Nothing reads them any more, and the size cap
-	// that bounded the folder went with them. Only names of those shapes are
-	// removed, then the folder if it is left empty. Runs on a detached thread
-	// (the folder could hold gigabytes); once the folder is gone it costs one
-	// exists check per launch.
-	void RemoveLegacyCache();
-
 	// The embedded LIP block, read through the engine's resource loader (loose
 	// or BSA-packed fuz). Empty if the fuz is unreadable, malformed, or carries
 	// no lip.

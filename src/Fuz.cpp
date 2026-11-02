@@ -2,10 +2,6 @@
 
 #include "AudioEngine.h"
 
-#include <filesystem>
-#include <regex>
-#include <thread>
-
 #include <mediaobj.h>
 #include <mmreg.h>
 #include <objbase.h>
@@ -368,55 +364,6 @@ namespace Fuz
 		std::scoped_lock guard{ lock };
 		verdicts[key] = verdict.empty();
 		return verdict.empty();
-	}
-
-	void RemoveLegacyCache()
-	{
-		namespace fs = std::filesystem;
-		const auto      dir = fs::current_path() / "Data" / "Sound" / "AudioUtilFuzCache";
-		std::error_code ec;
-		if (!fs::is_directory(dir, ec)) {
-			return;
-		}
-		std::thread([dir] {
-			// names only the old cache wrote: decoded <stem>_<fnv32>.wav/.xwm, their
-			// .tmp<n> write files, and the shipped placeholders
-			static const std::regex legacy{ R"(^(_au_slot\d{2,}\.wav|.+_[0-9a-f]{8}\.(wav|xwm)(\.tmp[0-9a-f]+)?)$)",
-				std::regex::icase };
-			std::error_code ec;
-			std::size_t     removed = 0;
-			std::uintmax_t  bytes = 0;
-			std::size_t     kept = 0;
-			for (const auto& entry : fs::directory_iterator(dir, ec)) {
-				std::string name;
-				try {
-					name = entry.path().filename().string();
-				} catch (const std::exception&) {
-					++kept;  // a name that does not map to the narrow charset is not ours
-					continue;
-				}
-				if (!entry.is_regular_file(ec) || !std::regex_match(name, legacy)) {
-					++kept;
-					continue;
-				}
-				const auto size = entry.file_size(ec);
-				if (fs::remove(entry.path(), ec)) {
-					++removed;
-					bytes += ec ? 0 : size;
-				} else {
-					++kept;
-				}
-			}
-			if (kept == 0) {
-				fs::remove(dir, ec);  // removes an empty directory only
-			}
-			if (removed) {
-				logger::info("Removed {} file(s), {} MB, that earlier versions' fuz cache left in "
-							 "Sound\\AudioUtilFuzCache\\ (a .fuz plays by path now){}",
-					removed, bytes / (1024 * 1024),
-					kept ? std::format("; {} other file(s) left alone", kept) : "");
-			}
-		}).detach();
 	}
 
 	std::vector<std::uint8_t> ReadLipBlock(const std::string& a_fuzDataRelPath)

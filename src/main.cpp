@@ -7,7 +7,6 @@
 #include "CaptionManager.h"
 #include "Config.h"
 #include "FolderCache.h"
-#include "Fuz.h"
 #include "Tags.h"
 #include "GagState.h"
 #include "InstanceManager.h"
@@ -70,7 +69,6 @@ namespace
 			CaptionManager::ApplyConfig();
 			VoiceLog::ApplyConfig();
 			PPABridge::TryConnect();
-			Fuz::RemoveLegacyCache();  // background
 			break;
 		case MessagingInterface::kPreLoadGame:
 		case MessagingInterface::kNewGame:
