@@ -127,6 +127,22 @@ Function PlayFlags(string path, int flags, int priority) global
     Debug.Notification("playf flags=" + flags + " prio=" + priority + " handle=" + h + " dur=" + AudioUtil.GetHandleDuration(h))
 EndFunction
 
+; No-arg raw-fuz probe (the console caps input length, so the vanilla line is
+; built in). Feeds a .fuz to the engine AS-IS through DebugPlayFile - audible
+; means the engine strips the FUZE header and plays the xWMA itself, with no
+; transcode and no fuz slot. The notice comes 1.5 s later so the async open
+; (priority 128) has landed: dur > 0 = the engine parsed the container.
+;   autest fuzraw                  ; the built-in Whiterun line (BSA)
+;   autest fuzraw "Sound\x\y.fuz"  ; any other fuz
+Function FuzRaw(string path) global
+    if path == ""
+        path = "Sound\\Voice\\Skyrim.esm\\FemaleEvenToned\\dialoguewhiterun__0008f148_1.fuz"
+    endif
+    int h = AudioUtil.DebugPlayFile(path, Game.GetPlayer(), 26, 128)
+    Utility.WaitMenuMode(1.5)
+    Debug.Notification("fuzraw handle=" + h + " dur=" + AudioUtil.GetHandleDuration(h) + " playing=" + AudioUtil.IsHandlePlaying(h))
+EndFunction
+
 ; Auto-sweep a curated list of sound_flags values over one path, ~2.5s apart,
 ; each announced via notification with its handle + duration. Run it, CLOSE THE
 ; CONSOLE (the game must be unpaused for Utility.Wait / audio), listen, and note

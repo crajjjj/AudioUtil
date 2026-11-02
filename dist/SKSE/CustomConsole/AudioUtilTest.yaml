@@ -106,6 +106,14 @@ subs:
         type: int
         default: 128
         help: sound priority (default 128)
+  - name: fuzraw
+    func: FuzRaw
+    help: Play a .fuz RAW (no extraction, no slot) - audible = the engine plays fuz itself; default is a vanilla Whiterun line
+    args:
+      - name: path
+        type: String
+        default: Sound\Voice\Skyrim.esm\FemaleEvenToned\dialoguewhiterun__0008f148_1.fuz
+        help: Data-relative .fuz path (loose or BSA)
   - name: sweep
     func: Sweep
     help: Auto-sweep 13 sound_flags values over one path (close the console after running; listen + watch notifications)
