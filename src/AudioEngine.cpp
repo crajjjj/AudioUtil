@@ -1,8 +1,6 @@
 #include "AudioEngine.h"
 
 #include "Config.h"
-#include "FuzCache.h"
-#include "FuzSlots.h"
 
 namespace AudioEngine
 {
@@ -124,8 +122,7 @@ namespace AudioEngine
 	}
 
 	RE::BSSoundHandle PlayPath(const std::string& a_dataRelPath, RE::Actor* a_follow,
-		float a_volume, std::uint32_t a_flags, std::uint32_t a_priority,
-		bool a_translateFuz, Played* a_played)
+		float a_volume, std::uint32_t a_flags, std::uint32_t a_priority, Played* a_played)
 	{
 		RE::BSSoundHandle handle;
 		if (a_played) {
@@ -138,59 +135,16 @@ namespace AudioEngine
 			return handle;
 		}
 
-		// .fuz (voice container) can't be fed to the generic decoder - swap in
-		// the cached xWMA/wav payload FuzCache extracts. Only this build step
-		// uses the translated path: callers keep registering/lipsyncing/
-		// captioning against the ORIGINAL path (a .fuz caption sidecar is
-		// foo.toml next to foo.fuz).
-		const std::string* playPath = &a_dataRelPath;
-		std::string        extracted;
-		if (a_translateFuz && FuzCache::IsFuzPath(a_dataRelPath)) {
-			extracted = FuzCache::Resolve(a_dataRelPath);
-			if (extracted.empty()) {
-				return handle;  // Resolve already logged why
-			}
-			playPath = &extracted;
-		}
-
-		// Route the fuz-derived cache wav through a pre-indexed placeholder slot so
-		// a first-session decode is audible now (the cache wav itself isn't in the
-		// launch resource index yet). Only when the caller can release the slot on
-		// stop (a_played) and the pool is on; otherwise play the cache path direct
-		// (correct once it's been cached by a prior session). The slot is a .wav, so
-		// only route a decoded-PCM cache path — a decode-failure .xwm fallback keeps
-		// its own extension so the engine picks the right codec. See FuzSlots.
-		int         slot = -1;
-		std::string slotPath;
-		if (a_played && playPath == &extracted && FuzSlots::Enabled() &&
-			extracted.ends_with(".wav")) {
-			slot = FuzSlots::AcquireWithCopy(extracted, slotPath);
-			if (slot >= 0) {
-				playPath = &slotPath;
-			}
-		}
-
+		// A .fuz goes in as-is: the engine's sound open (BSXAudio2GameSound
+		// SyncOpen / FinishAsyncOpen) skips the FUZE header and lip block itself
+		// and decodes the xWMA, the way every vanilla dialogue line plays.
 		RE::BSResource::ID id;
-		id.GenerateFromPath(playPath->c_str());
+		id.GenerateFromPath(a_dataRelPath.c_str());
 		manager->GetSoundHandleByFile(handle, id, a_flags, a_priority);
-
-		// A slot not in the launch index (e.g. one this session self-healed into
-		// existence) fails to build — fall back to the direct cache path rather than
-		// dropping the line. That path plays if a prior session already cached it.
-		if (!handle.IsValid() && slot >= 0) {
-			FuzSlots::Release(slot);
-			slot = -1;
-			id.GenerateFromPath(extracted.c_str());
-			manager->GetSoundHandleByFile(handle, id, a_flags, a_priority);
-		}
-
 		if (!handle.IsValid()) {
 			logger::warn("GetSoundHandleByFile failed for '{}' (flags=0x{:X}, priority={})",
 				a_dataRelPath, a_flags, a_priority);
 			return handle;
-		}
-		if (a_played) {
-			a_played->fuzSlot = slot;
 		}
 
 		handle.SetVolume(std::clamp(a_volume, 0.0f, 1.0f));
@@ -223,7 +177,7 @@ namespace AudioEngine
 	{
 		const auto settings = Config::Get();
 		return PlayPath(a_dataRelPath, a_follow, a_volume, settings->soundFlags, settings->soundPriority,
-			true, a_played);
+			a_played);
 	}
 
 	bool ResourceExists(const std::string& a_dataRelPath)
@@ -235,5 +189,35 @@ namespace AudioEngine
 		// loose file or a mounted archive - the engine's own lookup
 		RE::BSResourceNiBinaryStream stream{ a_dataRelPath.c_str() };
 		return stream.good();
+	}
+
+	std::vector<std::uint8_t> ReadResourceBytes(const std::string& a_dataRelPath)
+	{
+		std::vector<std::uint8_t> out;
+		if (a_dataRelPath.empty()) {
+			return out;
+		}
+		std::string path = a_dataRelPath;
+		std::replace(path.begin(), path.end(), '/', '\\');
+		RE::BSResourceNiBinaryStream stream{ path.c_str() };
+		if (!stream.good()) {
+			return out;
+		}
+		// chunked binary_read until short read - the stream has no size accessor
+		constexpr std::uint32_t CHUNK = 64 * 1024;
+		for (;;) {
+			const auto base = out.size();
+			out.resize(base + CHUNK);
+			// read() is all-or-nothing bool; the tell() delta recovers the
+			// actual byte count of the final short read
+			const auto before = stream.tell();
+			stream.read(reinterpret_cast<char*>(out.data() + base), CHUNK);
+			const auto got = stream.tell() - before;
+			out.resize(base + got);
+			if (got < CHUNK) {
+				break;
+			}
+		}
+		return out;
 	}
 }

@@ -1,6 +1,7 @@
 #include "LipData.h"
 
-#include "FuzCache.h"
+#include "AudioEngine.h"
+#include "Fuz.h"
 
 namespace LipData
 {
@@ -237,10 +238,10 @@ namespace LipData
 		}
 
 		std::vector<std::uint8_t> bytes;
-		if (FuzCache::IsFuzPath(key)) {
-			bytes = FuzCache::ReadLipBlock(key);
+		if (Fuz::IsFuzPath(key)) {
+			bytes = Fuz::ReadLipBlock(key);
 		} else if (const auto dot = key.rfind('.'); dot != std::string::npos) {
-			bytes = FuzCache::ReadResourceBytes(key.substr(0, dot) + ".lip");
+			bytes = AudioEngine::ReadResourceBytes(key.substr(0, dot) + ".lip");
 		}
 
 		std::shared_ptr<const Anim> anim;

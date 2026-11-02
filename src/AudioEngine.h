@@ -5,27 +5,20 @@ namespace AudioEngine
 	// what PlayPath did to a sound beyond building it, for InstanceManager::Register
 	struct Played
 	{
-		// FuzSlots placeholder backing the audio (-1 = none); the caller MUST
-		// release it (via InstanceManager) when the instance stops
-		int fuzSlot = -1;
 		// the output model set on the sound: the game's "Dialogue Output Model 3D"
 		// for a followed NPC while [general] dialogue_output_model is on, else null
 		// (left as built). The player's own lines never get one.
 		const RE::BGSSoundOutput* outputModel = nullptr;
 	};
 
-	// build+play a loose audio file. Returns an invalid handle on failure (logged).
-	// a_follow may be null (2D / UI-style playback).
-	// a_translateFuz: swap a .fuz path for its FuzCache-extracted payload (the
-	// normal behavior). DebugPlayFile passes false so a raw .fuz can be fed
-	// straight to the engine for diagnostics.
-	// a_played: when non-null, receives what was done to the sound; AND when the
-	// play is a fuz-derived cache wav, the audio is routed through a FuzSlots
-	// placeholder so a first-session decode is audible without a restart
-	// (a_played->fuzSlot >= 0).
+	// build+play an audio file by data-relative path (wav, xwm or fuz; loose or
+	// BSA-packed). Returns an invalid handle on failure (logged). a_follow may be
+	// null (2D / UI-style playback). A .fuz is built as-is: the engine's own
+	// sound loader skips the FUZE header and plays the xWMA inside (see Fuz).
+	// a_played: when non-null, receives what was done to the sound.
 	RE::BSSoundHandle PlayPath(const std::string& a_dataRelPath, RE::Actor* a_follow,
 		float a_volume, std::uint32_t a_flags, std::uint32_t a_priority,
-		bool a_translateFuz = true, Played* a_played = nullptr);
+		Played* a_played = nullptr);
 
 	// overload using config defaults for flags/priority
 	RE::BSSoundHandle PlayPath(const std::string& a_dataRelPath, RE::Actor* a_follow, float a_volume,
@@ -57,4 +50,9 @@ namespace AudioEngine
 	// AND BSA-packed content (the same resolver PlayPath uses). Confirms the path
 	// resolves, not that the audio is valid PCM.
 	bool ResourceExists(const std::string& a_dataRelPath);
+
+	// a whole data-relative resource through the engine's loader (loose or
+	// BSA-packed; forward slashes normalized). Empty on failure. Uncached:
+	// callers keep what they parse.
+	std::vector<std::uint8_t> ReadResourceBytes(const std::string& a_dataRelPath);
 }

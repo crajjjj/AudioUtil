@@ -119,19 +119,18 @@ Function PlayFolderPath(string folder) global
     endif
 EndFunction
 
-; DebugPlayFile on any path with explicit flags/priority. RAW path - a .fuz is
-; fed to the engine as-is (no payload extraction), so this can probe the
-; engine's native fuz handling.  e.g.  autest playf "Sound\x\y.xwm" 26 128
+; DebugPlayFile on any path with explicit flags/priority.
+;   e.g.  autest playf "Sound\x\y.xwm" 26 128
 Function PlayFlags(string path, int flags, int priority) global
     int h = AudioUtil.DebugPlayFile(path, Game.GetPlayer(), flags, priority)
     Debug.Notification("playf flags=" + flags + " prio=" + priority + " handle=" + h + " dur=" + AudioUtil.GetHandleDuration(h))
 EndFunction
 
-; No-arg raw-fuz probe (the console caps input length, so the vanilla line is
-; built in). Feeds a .fuz to the engine AS-IS through DebugPlayFile - audible
-; means the engine strips the FUZE header and plays the xWMA itself, with no
-; transcode and no fuz slot. The notice comes 1.5 s later so the async open
-; (priority 128) has landed: dur > 0 = the engine parsed the container.
+; No-arg fuz check: plays a vanilla BSA line by path (the console caps input
+; length, so the line is built in). The engine's own sound loader handles the
+; .fuz container, so audible here = fuz playback works on this install. The
+; notice comes 1.5 s later so the async open (priority 128) has landed:
+; dur > 0 = the engine parsed the container.
 ;   autest fuzraw                  ; the built-in Whiterun line (BSA)
 ;   autest fuzraw "Sound\x\y.fuz"  ; any other fuz
 Function FuzRaw(string path) global
@@ -148,7 +147,7 @@ EndFunction
 ; CONSOLE (the game must be unpaused for Utility.Wait / audio), listen, and note
 ; which "sweep N: flags=F" notifications coincide with audible sound.
 ; duration > 0 alone already means the decoder parsed the file.
-; RAW path like PlayFlags - point it at an extracted .xwm or a .fuz directly.
+; Point it at any wav, xwm or fuz.
 Function Sweep(string path) global
     int[] f = new int[13]
     f[0] = 26   ; 0x1A - the shipped default
@@ -221,9 +220,6 @@ EndFunction
 bool Function StartLipCapture() global native
 string Function StopLipCapture() global native
 bool Function IsLipCapturing() global native
-int Function PrewarmFolder(string asFolder) global native
-bool Function BOverwriteFile(string asDst, string asSrc) global native
-string Function BCacheFile(int aiIndex) global native
 Function SetLipFilesMode(bool abEnabled) global native
 bool Function GetLipFilesMode() global native
 Function SetPseudoLipMode(bool abEnabled) global native
@@ -279,59 +275,6 @@ Function LipLead(string arg) global
         SetLipLeadMs(arg as int)
         Debug.Notification("lipsync: lead set to " + GetLipLeadMs() + " ms (config default needs [lipsync] lead_ms)")
     endif
-EndFunction
-
-; Decode-only prewarm of a fuz folder. Under MO2 a cache wav written mid-session
-; is invisible to the engine until the next launch, so a first-time fuz plays
-; silent. Run this once over a fuz folder, RESTART the game, then folder/file
-; play of those lines works first try.  autest warmfolder "Sound\...\Base"
-Function WarmFolder(string folder) global
-    int n = PrewarmFolder(folder)
-    Debug.Notification("warmfolder: " + n + " fuz decoded in '" + folder + "' - now RESTART Skyrim, then play")
-EndFunction
-
-; B-experiment: overwrite dst wav's bytes with src's, to learn whether the engine
-; re-reads a file per play or caches decoded audio by resource id.
-;   autest play <dst>            ; hear dst's line
-;   autest boverwrite <dst> <src>
-;   autest play <dst>            ; src's line = re-read (B viable); dst's = cached
-Function BOverwrite(string dst, string src) global
-    if BOverwriteFile(dst, src)
-        Debug.Notification("boverwrite OK - now: autest play '" + dst + "' - CHANGED=re-read (B viable), SAME=cached")
-    else
-        Debug.Notification("boverwrite FAILED - see AudioUtil.log")
-    endif
-EndFunction
-
-; No-arg B-experiment (Skyrim's console caps input length, so no long paths).
-; Uses the first two wavs in the fuz cache: A = [0], B = [1].
-;   autest bbase   ; plays A - note what A says (its filename shows in the notice)
-;   autest bswap   ; overwrites A's bytes with B, replays A:
-;                  ;   hear B's line = engine re-reads  -> B VIABLE
-;                  ;   hear A's line = cached/USVFS      -> B DEAD
-Function BBase() global
-    string a = BCacheFile(0)
-    if a == ""
-        Debug.Notification("bbase: no cache wavs (play/warm a fuz first)")
-        return
-    endif
-    AudioUtil.PlayFile(a, Game.GetPlayer())
-    Debug.Notification("bbase: A = " + a + " (close console, listen)")
-EndFunction
-
-Function BSwap() global
-    string a = BCacheFile(0)
-    string b = BCacheFile(1)
-    if a == "" || b == ""
-        Debug.Notification("bswap: need 2 cache wavs (warm more fuz first)")
-        return
-    endif
-    if !BOverwriteFile(a, b)
-        Debug.Notification("bswap: overwrite FAILED - see AudioUtil.log")
-        return
-    endif
-    AudioUtil.PlayFile(a, Game.GetPlayer())
-    Debug.Notification("bswap: replayed A after writing B=" + b + " -> hear B=re-read(B OK), A=cached")
 EndFunction
 
 Function LipCap(string mode) global

@@ -137,29 +137,6 @@ namespace Config
 		std::uint32_t soundFlags{ 0x1A };
 		std::uint32_t soundPriority{ 128 };
 
-		// Sound\AudioUtilFuzCache\ size cap in MB, enforced once per launch
-		// (oldest files deleted first). ~88 KB per second of decoded audio, so
-		// the default holds on the order of a thousand voice lines. 0 = unlimited.
-		std::uint32_t fuzCacheMaxMB{ 256 };
-
-		// Placeholder-slot pool size for in-session fuz playback (see FuzSlots): a
-		// first-session fuz decode is routed through one of N pre-indexed slot wavs
-		// so it's audible WITHOUT a restart, and released when the line ends. N caps
-		// simultaneously-playing fuz lines (each concurrent line needs its own slot);
-		// 24 comfortably covers overlapping voices. 0 disables (revert to the
-		// decode-now-audible-next-launch behavior). Base-only global.
-		int fuzSlots{ 24 };
-
-		// Decode-ahead every .fuz the config knows about, on a background thread at
-		// game start, so their cache wavs exist BEFORE the next launch. A cache wav
-		// written mid-session is invisible to the engine's loose-file resource index
-		// (frozen at launch — and doubly so under MO2's USVFS), so a first-ever fuz
-		// plays silent until it has been cached by a prior session. This warms the
-		// whole set automatically: first launch after adding fuz decodes them (still
-		// silent that session); every launch after, they play first try. Idempotent
-		// and cheap once cached (a disk-exists check per file). Base-only global.
-		bool prewarmFuz{ false };
-
 		// Pack-author playback transcript (see VoiceLog): "off" (default),
 		// "player" (the PC's lines only) or "all". Writes a second log file,
 		// <SKSE logs>\AudioUtil_Voices.log, one line per voice line: the category

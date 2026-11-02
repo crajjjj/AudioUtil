@@ -3,7 +3,6 @@
 #include "AudioEngine.h"
 #include "CaptionManager.h"
 #include "Config.h"
-#include "FuzSlots.h"
 #include "LipSync.h"
 
 #include <condition_variable>
@@ -33,9 +32,6 @@ namespace InstanceManager
 			// the actor this sound follows (3D position) — used by the ticker to
 			// track the player->speaker distance live; empty for flat/2D sounds
 			RE::ActorHandle   follow;
-			// FuzSlots placeholder index backing this instance's audio (-1 = none);
-			// returned to the pool when this instance is swept or stopped
-			int               fuzSlot = -1;
 			// stream startup is asynchronous: for a short window after Play() the
 			// engine still reports "not playing", which made IsPlaying()/Sweep()
 			// treat brand-new instances as finished (PlayAndWait returned instantly)
@@ -194,12 +190,7 @@ namespace InstanceManager
 					return false;
 				}
 				auto& handle = instance.handle;
-				const bool done = !handle.IsValid() || !handle.IsPlaying();
-				if (done && instance.fuzSlot >= 0) {
-					FuzSlots::Release(instance.fuzSlot);  // free the placeholder for reuse
-					instance.fuzSlot = -1;
-				}
-				return done;
+				return !handle.IsValid() || !handle.IsPlaying();
 			});
 		}
 
@@ -211,14 +202,8 @@ namespace InstanceManager
 		}
 	}
 
-	void SweepNow()
-	{
-		std::scoped_lock lock{ g_lock };
-		Sweep();
-	}
-
 	std::int32_t Register(RE::BSSoundHandle a_handle, float a_baseVolume, std::string a_group,
-		std::string a_path, RE::Actor* a_follow, int a_fuzSlot, bool a_voice,
+		std::string a_path, RE::Actor* a_follow, bool a_voice,
 		const RE::BGSSoundOutput* a_outputModel)
 	{
 		const bool  engineRolloff = a_outputModel && a_outputModel->DoGetAttenuatesWithDistance();
@@ -238,7 +223,6 @@ namespace InstanceManager
 			if (a_follow) {
 				instance.follow = a_follow->GetHandle();
 			}
-			instance.fuzSlot = a_fuzSlot;
 			ApplyEffectiveVolume(instance);
 		}
 		if (a_follow && !engineRolloff && Config::Get()->voiceAttenuation) {
@@ -296,9 +280,6 @@ namespace InstanceManager
 			if (auto* instance = Find(a_id)) {
 				found = true;
 				ok = instance->handle.IsValid() && instance->handle.Stop();
-				if (instance->fuzSlot >= 0) {
-					FuzSlots::Release(instance->fuzSlot);
-				}
 				g_instances.erase(a_id);
 			}
 		}
@@ -382,9 +363,6 @@ namespace InstanceManager
 				if (instance.handle.IsValid()) {
 					instance.handle.Stop();
 				}
-				if (instance.fuzSlot >= 0) {
-					FuzSlots::Release(instance.fuzSlot);
-				}
 				stopped.push_back(a_pair.first);
 				return true;
 			});
@@ -403,9 +381,6 @@ namespace InstanceManager
 			for (auto& [id, instance] : g_instances) {
 				if (instance.handle.IsValid()) {
 					instance.handle.Stop();
-				}
-				if (instance.fuzSlot >= 0) {
-					FuzSlots::Release(instance.fuzSlot);
 				}
 				stopped.push_back(id);
 			}

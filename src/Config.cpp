@@ -185,9 +185,14 @@ namespace Config
 				settings->dialogueOutputModel =
 					(*general)["dialogue_output_model"].value_or(settings->dialogueOutputModel);
 				settings->voiceSlider = (*general)["voice_slider"].value_or(settings->voiceSlider);
-				settings->fuzCacheMaxMB = (*general)["fuz_cache_max_mb"].value_or(settings->fuzCacheMaxMB);
-				settings->prewarmFuz = (*general)["prewarm_fuz"].value_or(settings->prewarmFuz);
-				settings->fuzSlots = (*general)["fuz_slots"].value_or(settings->fuzSlots);
+				// the fuz cache's keys, retired in 0.9.32 (the engine plays a .fuz by
+				// path itself): accepted, ignored, named once so the config can be cleaned
+				for (const char* retired : { "fuz_cache_max_mb", "prewarm_fuz", "fuz_slots" }) {
+					if (general->contains(retired)) {
+						logger::info("[general] {} is retired (a .fuz plays by path, nothing is cached): ignored",
+							retired);
+					}
+				}
 				settings->pauseOnFreezeTime =
 					(*general)["pause_on_freeze_time"].value_or(settings->pauseOnFreezeTime);
 

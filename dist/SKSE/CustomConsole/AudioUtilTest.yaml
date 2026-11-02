@@ -92,7 +92,7 @@ subs:
         help: Data-relative folder, e.g. Sound\TMSDynamicDialogue\VoiceBella\Base
   - name: playf
     func: PlayFlags
-    help: DebugPlayFile any path with explicit flags/priority (RAW - a .fuz is not extracted)
+    help: DebugPlayFile any path with explicit flags/priority
     args:
       - name: path
         type: String
@@ -108,7 +108,7 @@ subs:
         help: sound priority (default 128)
   - name: fuzraw
     func: FuzRaw
-    help: Play a .fuz RAW (no extraction, no slot) - audible = the engine plays fuz itself; default is a vanilla Whiterun line
+    help: Fuz check - play a vanilla BSA line by path (audible = fuz playback works here); any .fuz path as arg
     args:
       - name: path
         type: String
@@ -178,32 +178,6 @@ subs:
         type: String
         required: true
         help: SFX/category name, e.g. MediumClap
-  - name: warmfolder
-    func: WarmFolder
-    help: Decode-only prewarm every .fuz in a folder into the cache, then RESTART the game (fixes MO2 first-play-silent)
-    args:
-      - name: folder
-        type: String
-        required: true
-        help: Data-relative fuz folder, e.g. Sound\fx\SLOVE\Test
-  - name: bbase
-    func: BBase
-    help: B-experiment step 1 - play cache wav [0] (A); note what it says
-  - name: bswap
-    func: BSwap
-    help: B-experiment step 2 - overwrite A with cache wav [1] (B) and replay A; hear B=re-read(viable), A=cached
-  - name: boverwrite
-    func: BOverwrite
-    help: B-experiment (explicit paths) - overwrite dst wav's bytes with src's; then 'play dst'
-    args:
-      - name: dst
-        type: String
-        required: true
-        help: Data-relative wav to overwrite (must exist since launch, e.g. a prior-session cache wav)
-      - name: src
-        type: String
-        required: true
-        help: Data-relative wav whose bytes to write into dst
   - name: lipcap
     func: LipCap
     help: Record the dialogue speaker's 16 engine-driven MFG phoneme channels to CSV (lip-map calibration)

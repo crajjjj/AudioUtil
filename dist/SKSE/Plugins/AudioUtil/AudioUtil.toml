@@ -41,27 +41,6 @@ voice_attenuation = true      # true = scale far follow-sounds down by distance
 attenuation_near = 200.0      # full volume within this distance (~3 m)
 attenuation_far = 1800.0      # volume reaches the floor at/beyond this distance (~26 m)
 attenuation_floor = 0.05      # minimum volume factor for far sounds (0.0 = silent)
-# .fuz playback decodes each fuz's audio once into Sound\AudioUtilFuzCache\
-# (as PCM wav: reliable playback + lipsync). The cache persists across
-# sessions; this caps its size in MB - checked once per launch, oldest files
-# deleted first (~88 KB per second of audio, so 256 holds ~a thousand lines).
-# prewarm_fuz stops decoding once the cache reaches this size.
-# 0 = unlimited. Deleting the folder by hand is always safe.
-fuz_cache_max_mb = 256
-# In-session fuz playback. Skyrim only loads loose files present at launch, so a fuz
-# decoded on first play (its cache wav is written mid-session) would be silent until
-# the next restart. AudioUtil sidesteps that by routing the audio through one of N
-# pre-indexed placeholder wavs, so it plays immediately and is freed when the line
-# ends. N = max fuz lines sounding at once (each takes a slot); 24 covers overlapping
-# voices. 0 disables the pool (a first-session fuz then waits for a restart).
-fuz_slots = 24
-# Background decode-ahead: at game start, decode every .fuz in the configured slots
-# to its cache wav on a worker thread. First play already works without this (see
-# fuz_slots) - prewarm only removes the brief inline-decode hitch on a line's very
-# first play by doing it ahead of time. Cheap once cached (a disk check per file).
-# Stops at fuz_cache_max_mb, so a large fuz pack is only partly prewarmed.
-# Leave off for wav-only voicepacks.
-prewarm_fuz = false
 # Whether AudioUtil.IsGamePaused() (the check a consumer's voice/sfx scheduler polls
 # so it stops advancing lines over a frozen scene) also reports a FROZEN WORLD, not
 # just a real menu-mode pause. The frozen-world flag is what ImGui overlay menus set

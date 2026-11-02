@@ -1,7 +1,7 @@
 #include "LipSync.h"
 
 #include "Config.h"
-#include "FuzCache.h"
+#include "Fuz.h"
 #include "GagState.h"
 #include "LipData.h"
 #include "MouthClaim.h"
@@ -53,7 +53,7 @@ namespace LipSync
 
 		// One parsed file, with the size and write time of the bytes it was read
 		// from. A path is not a stable identity: a plugin that generates audio
-		// rewrites a placeholder wav between plays (the trick FuzSlots uses), and
+		// rewrites a placeholder wav between plays (AudioUtilTTS does), and
 		// the mouth has to follow the audio that is in the file now.
 		struct CachedEnvelope
 		{
@@ -100,51 +100,37 @@ namespace LipSync
 			}
 		}
 
-		// parse a PCM RIFF wav into a 100Hz RMS envelope; nullptr on any mismatch
-		std::shared_ptr<const Envelope> ParseWav(const std::filesystem::path& a_file)
+		// parse an in-memory PCM RIFF wav into a 100Hz RMS envelope; nullptr on any mismatch
+		std::shared_ptr<const Envelope> ParseWavBytes(const std::uint8_t* a_data, std::size_t a_size)
 		{
-			std::ifstream in(a_file, std::ios::binary);
-			if (!in) {
-				return nullptr;
-			}
-
-			std::uint8_t header[12];
-			if (!in.read(reinterpret_cast<char*>(header), 12) ||
-				std::memcmp(header, "RIFF", 4) != 0 || std::memcmp(header + 8, "WAVE", 4) != 0) {
+			if (a_size < 12 || std::memcmp(a_data, "RIFF", 4) != 0 || std::memcmp(a_data + 8, "WAVE", 4) != 0) {
 				return nullptr;
 			}
 
 			std::uint16_t format = 0, channels = 0, bits = 0;
 			std::uint32_t sampleRate = 0;
 			bool          haveFmt = false;
+			std::size_t   pos = 12;
 
-			while (in) {
-				std::uint8_t chunkHeader[8];
-				if (!in.read(reinterpret_cast<char*>(chunkHeader), 8)) {
-					return nullptr;
-				}
-				const auto chunkSize = ReadLE<std::uint32_t>(chunkHeader + 4);
+			while (pos + 8 <= a_size) {
+				const auto* chunkHeader = a_data + pos;
+				const auto  chunkSize = ReadLE<std::uint32_t>(chunkHeader + 4);
+				const auto* body = chunkHeader + 8;
+				const auto  avail = a_size - pos - 8;  // bytes after this chunk header
 
 				if (std::memcmp(chunkHeader, "fmt ", 4) == 0) {
-					// Bound the size BEFORE allocating from it: chunkSize is raw file
-					// data, and a corrupt header (valid RIFF/WAVE magic, garbage size
-					// field) would otherwise size the vector at up to 4 GB — the
-					// resulting bad_alloc is uncaught on this path and takes the
-					// process down. A real fmt chunk is 16 (PCM), 18 (cbSize) or 40
-					// (extensible) bytes, and nothing below reads past offset 25.
-					if (chunkSize < 16 || chunkSize > 64) {
+					// chunkSize is raw file data: a real fmt chunk is 16 (PCM), 18
+					// (cbSize) or 40 (extensible) bytes, and nothing below reads past
+					// offset 25, so a garbage size field is rejected, not trusted
+					if (chunkSize < 16 || chunkSize > 64 || chunkSize > avail) {
 						return nullptr;
 					}
-					std::vector<std::uint8_t> fmt(chunkSize);
-					if (!in.read(reinterpret_cast<char*>(fmt.data()), chunkSize)) {
-						return nullptr;
-					}
-					format = ReadLE<std::uint16_t>(fmt.data());
-					channels = ReadLE<std::uint16_t>(fmt.data() + 2);
-					sampleRate = ReadLE<std::uint32_t>(fmt.data() + 4);
-					bits = ReadLE<std::uint16_t>(fmt.data() + 14);
+					format = ReadLE<std::uint16_t>(body);
+					channels = ReadLE<std::uint16_t>(body + 2);
+					sampleRate = ReadLE<std::uint32_t>(body + 4);
+					bits = ReadLE<std::uint16_t>(body + 14);
 					if (format == 0xFFFE && chunkSize >= 26) {  // extensible: first GUID word
-						format = ReadLE<std::uint16_t>(fmt.data() + 24);
+						format = ReadLE<std::uint16_t>(body + 24);
 					}
 					haveFmt = true;
 				} else if (std::memcmp(chunkHeader, "data", 4) == 0) {
@@ -152,29 +138,27 @@ namespace LipSync
 						sampleRate == 0 || (bits != 8 && bits != 16 && bits != 24 && bits != 32)) {
 						return nullptr;
 					}
+					// a data chunk declared past the end of the bytes (a file cut
+					// short) ends where the bytes do
+					const auto          dataSize = static_cast<std::uint32_t>(std::min<std::size_t>(chunkSize, avail));
 					const std::uint32_t bytesPerSample = bits / 8u;
 					const std::uint32_t frameSize = bytesPerSample * channels;
-					const std::uint32_t frames = chunkSize / frameSize;
+					const std::uint32_t frames = dataSize / frameSize;
 					const std::uint32_t framesPerWindow = std::max(1u, sampleRate / 100u);
 
 					auto envelope = std::make_shared<Envelope>();
 					envelope->windowSec = static_cast<float>(framesPerWindow) / static_cast<float>(sampleRate);
 					envelope->levels.reserve(frames / framesPerWindow + 1);
 
-					std::vector<std::uint8_t> block(static_cast<std::size_t>(framesPerWindow) * frameSize);
+					const auto*   frame = body;
 					std::uint32_t remaining = frames;
 					while (remaining > 0) {
 						const auto take = std::min(remaining, framesPerWindow);
-						if (!in.read(reinterpret_cast<char*>(block.data()),
-								static_cast<std::streamsize>(take) * frameSize)) {
-							break;
-						}
-						double sum = 0.0;
-						for (std::uint32_t frame = 0; frame < take; ++frame) {
+						double     sum = 0.0;
+						for (std::uint32_t i = 0; i < take; ++i, frame += frameSize) {
 							float mono = 0.0f;
-							const auto* framePtr = block.data() + static_cast<std::size_t>(frame) * frameSize;
 							for (std::uint16_t ch = 0; ch < channels; ++ch) {
-								mono += DecodeSample(framePtr + ch * bytesPerSample, format, bits);
+								mono += DecodeSample(frame + ch * bytesPerSample, format, bits);
 							}
 							mono /= static_cast<float>(channels);
 							sum += static_cast<double>(mono) * mono;
@@ -188,7 +172,7 @@ namespace LipSync
 						peak = std::max(peak, level);
 					}
 					if (peak < 1.0e-4f) {
-						return nullptr;  // silence — nothing worth syncing to
+						return nullptr;  // silence - nothing worth syncing to
 					}
 					// normalize + perceptual shaping so mid-loud moans still open the mouth
 					for (float& level : envelope->levels) {
@@ -196,15 +180,59 @@ namespace LipSync
 					}
 					envelope->durationSec = static_cast<float>(envelope->levels.size()) * envelope->windowSec;
 					return envelope;
-				} else {
-					in.seekg(chunkSize + (chunkSize & 1), std::ios::cur);
 				}
+				pos += 8 + static_cast<std::size_t>(chunkSize) + (chunkSize & 1);
 			}
 			return nullptr;
 		}
 
+		// a loose wav's bytes, whole: a voice line is small and the parse is one pass
+		std::shared_ptr<const Envelope> ParseWav(const std::filesystem::path& a_file)
+		{
+			std::ifstream in(a_file, std::ios::binary | std::ios::ate);
+			if (!in) {
+				return nullptr;
+			}
+			const auto size = in.tellg();
+			if (size <= 0 || size > 512 * 1024 * 1024) {
+				return nullptr;
+			}
+			std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
+			in.seekg(0);
+			if (!in.read(reinterpret_cast<char*>(bytes.data()), size)) {
+				return nullptr;
+			}
+			return ParseWavBytes(bytes.data(), bytes.size());
+		}
+
 		std::shared_ptr<const Envelope> GetEnvelope(const std::string& a_dataRelPath)
 		{
+			// a .fuz is read through the engine's resource loader (loose or BSA) and
+			// its bytes do not change within a session, so its entry needs no file
+			// identity: cached by path alone, decoded once (the engine plays the fuz
+			// itself; this PCM is only the mouth's copy)
+			if (Fuz::IsFuzPath(a_dataRelPath)) {
+				{
+					std::scoped_lock lock{ g_envelopeLock };
+					if (const auto it = g_envelopeCache.find(a_dataRelPath); it != g_envelopeCache.end()) {
+						return it->second.envelope;
+					}
+				}
+				std::shared_ptr<const Envelope> envelope;
+				if (const auto wav = Fuz::DecodeToWav(a_dataRelPath); !wav.empty()) {
+					envelope = ParseWavBytes(wav.data(), wav.size());
+				}
+				if (!envelope) {
+					logger::debug("LipSync: no PCM audio out of '{}' - skipping", a_dataRelPath);
+				}
+				std::scoped_lock lock{ g_envelopeLock };
+				if (g_envelopeCache.size() > 256) {
+					g_envelopeCache.clear();
+				}
+				g_envelopeCache[a_dataRelPath] = CachedEnvelope{ envelope, 0, {} };
+				return envelope;
+			}
+
 			const auto file = std::filesystem::current_path() / "Data" / a_dataRelPath;
 			// a cached entry only counts while the file is the one it was read from;
 			// a missing file reads as the same (error) pair every time, so a known
@@ -793,17 +821,8 @@ namespace LipSync
 		if (MouthClaim::IsClaimed(a_actor)) {
 			return;
 		}
-		// a .fuz plays via its FuzCache-extracted file; when that is the decoded
-		// PCM wav, the envelope reads from it and fuz lines lipsync like wavs.
-		// (A raw-xwm fallback fails the PCM parse below and skips, as before.)
-		std::string envelopeSource = a_dataRelPath;
-		if (FuzCache::IsFuzPath(envelopeSource)) {
-			envelopeSource = FuzCache::Resolve(envelopeSource);
-			if (envelopeSource.empty()) {
-				return;
-			}
-		}
-		const auto envelope = GetEnvelope(envelopeSource);
+		// a loose PCM wav's samples, or a .fuz's audio decoded in memory
+		const auto envelope = GetEnvelope(a_dataRelPath);
 		if (!envelope || envelope->durationSec < 0.05f) {
 			return;
 		}
@@ -819,8 +838,7 @@ namespace LipSync
 		entry.handoverCheckAt = now + HANDOVER_RECHECK;  // checked just above; next re-check later
 		entry.dialogueGuard = a_dialogueGuard;  // the re-check honors the same choice
 		// real phoneme curves when the line ships a lip (same-stem .lip, or the
-		// fuz's embedded block — looked up via the ORIGINAL path, not the
-		// FuzCache-extracted wav). Null = amplitude-envelope mode, as before.
+		// fuz's embedded block). Null = amplitude-envelope mode, as before.
 		if (g_useLipFiles.load()) {
 			entry.lip = LipData::GetFor(a_dataRelPath);
 			entry.lipAuthored = entry.lip != nullptr;

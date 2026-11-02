@@ -172,12 +172,10 @@ int Function PlaySFX(string sfxName, Actor akFollow, float volume = 1.0, string 
 ;                      a loose file OR audio packed in a BSA - the engine resolves
 ;                      both (loose wins over archive). wav, xwm, and fuz all play:
 ;                      a .fuz voice container (e.g. any vanilla dialogue line,
-;                      'Sound\Voice\Skyrim.esm\MaleNord\...fuz') has its audio
-;                      decoded once to PCM (via the OS WMA decoder) into
-;                      Sound\AudioUtilFuzCache\ and plays from there - so fuz
-;                      lines get captions (foo.fuz + foo.toml sidecar) AND
-;                      amplitude lipsync, same as a loose wav. (Raw .xwm files
-;                      still skip lipsync - only fuz get the decode treatment.)
+;                      'Sound\Voice\Skyrim.esm\MaleNord\...fuz') plays by path,
+;                      the engine handles the container itself - and fuz lines
+;                      get captions (foo.fuz + foo.toml sidecar) AND lipsync,
+;                      same as a loose wav. (Raw .xwm files skip lipsync.)
 ;   akFollow         - 3D position for the sound. None = play flat/2D.
 ;   volume           - per-line gain, 1.0 = full. Effective = volume x group x duck.
 ;   group            - volume/duck bucket; "" = ungrouped.
@@ -189,7 +187,7 @@ int Function PlayFile(string dataRelativePath, Actor akFollow, float volume = 1.
 ; PlayFile for a SPOKEN line: identical arguments and behavior, plus akFollow's
 ; mouth is driven from the clip's loudness like a PlayVoice line. Honors the
 ; global [lipsync] toggle and the automatic guards (gag, worn tongue, dialogue
-; with the player). Works for loose PCM wav and fuz (via the decoded cache);
+; with the player). Works for loose PCM wav and fuz;
 ; other formats play normally, mouth-still. Requires API version >= 5.
 int Function PlayFileWithLipSync(string dataRelativePath, Actor akFollow, float volume = 1.0, string group = "", string channel = "") global native
 
@@ -368,7 +366,7 @@ Actor[] Function GetClaimedActors() global native
 ; that was stopped:
 ;   int h = AudioUtil.PlayFolder("Sound\\...\\Lines", akSpeaker)
 ;   AudioUtil.StartLipSync(akSpeaker, h)
-; Works for loose PCM wav and fuz (via the decoded cache); xwm/BSA-packed wav
+; Works for loose PCM wav and fuz; xwm/BSA-packed wav
 ; play fine but can't drive the mouth. No-op on a dead/unknown handle.
 Function StartLipSync(Actor akActor, int handle) global native
 
@@ -459,9 +457,7 @@ bool Function FileExists(string path) global native
 
 ; Play a file with explicit BuildSoundDataFromFile flags/priority instead of
 ; the toml's sound_flags/sound_priority - for experimenting when a file is
-; silent or behaves oddly. Plays the RAW path: unlike PlayFile, a .fuz is fed
-; to the engine as-is (no payload extraction) so its native handling can be
-; probed. Not for production use.
+; silent or behaves oddly. Not for production use.
 int Function DebugPlayFile(string dataRelativePath, Actor akFollow, int flags, int priority) global native
 
 ; ===================== WRAPPERS =====================

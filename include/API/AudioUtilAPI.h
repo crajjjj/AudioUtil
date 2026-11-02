@@ -39,7 +39,7 @@ namespace RE
 // -------------------------------------------------------------------------------------
 // - `dataRelPath` is Data-relative ("Sound\\FX\\MyMod\\whoosh.wav"; forward slashes are
 //   normalized). Playable formats: wav, xwm, fuz - loose or BSA-packed (the engine's
-//   resource loader resolves both; a .fuz plays via its decoded PCM cache).
+//   resource loader resolves both; the engine plays a .fuz by path itself).
 // - `follow` 3D-positions the sound at that actor (it tracks the actor while playing);
 //   nullptr plays flat/2D at full volume.
 // - `volume` is 0.0-1.0; effective volume = volume x group volume x duck factor.

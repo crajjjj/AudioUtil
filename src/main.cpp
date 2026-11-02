@@ -8,8 +8,6 @@
 #include "Config.h"
 #include "FolderCache.h"
 #include "Tags.h"
-#include "FuzCache.h"
-#include "FuzSlots.h"
 #include "GagState.h"
 #include "InstanceManager.h"
 #include "LipSync.h"
@@ -57,56 +55,6 @@ namespace
 		log::info("Papyrus functions bound.");
 	}
 
-	// Decode-ahead the config's .fuz set on a detached background thread, so first
-	// plays skip the inline decode. Stops at [general] fuz_cache_max_mb (CacheFull):
-	// a large fuz pack decodes to gigabytes of PCM, and past the cap the next
-	// launch's eviction would only delete what this wrote. The lines it does not
-	// reach decode on first play. Without fuz_slots, a cache wav written mid-session
-	// cannot be read by the engine until a relaunch (the loose-file index is frozen
-	// at game start, and MO2's USVFS never surfaces a mid-session file), so the
-	// first launch after new fuz is added warms silently.
-	// Idempotent + cheap once cached: FuzCache::Resolve short-circuits on a disk
-	// hit. Gated on [general] prewarm_fuz. Detached like LipSync's ticker.
-	void PrewarmFuzCache()
-	{
-		if (!Config::Get()->prewarmFuz) {
-			return;
-		}
-		std::thread([] {
-			const auto start = std::chrono::steady_clock::now();
-			const auto files = FolderCache::AllAudioFiles();
-			const auto fuz = std::ranges::count_if(files, [](const std::string& a_file) {
-				return FuzCache::IsFuzPath(a_file);
-			});
-			std::size_t visited = 0;
-			std::size_t cached = 0;
-			bool        full = false;
-			for (const auto& f : files) {
-				if (!FuzCache::IsFuzPath(f)) {
-					continue;
-				}
-				if (FuzCache::CacheFull()) {
-					full = true;
-					break;
-				}
-				++visited;
-				if (!FuzCache::Resolve(f).empty()) {
-					++cached;
-				}
-			}
-			const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-				std::chrono::steady_clock::now() - start).count();
-			const auto settings = Config::Get();
-			log::info("Fuz prewarm: {} of {} fuz cached (of {} audio files) in {} ms.{}{}", cached, fuz,
-				files.size(), ms,
-				full ? std::format(" Stopped at the fuz_cache_max_mb cap ({} MB) after {} fuz: the rest "
-								   "decode on first play.",
-						   settings->fuzCacheMaxMB, visited) :
-					   "",
-				settings->fuzSlots <= 0 ? " fuz_slots is 0: newly decoded lines play after the next game restart." : "");
-		}).detach();
-	}
-
 	void OnMessage(MessagingInterface::Message* a_msg)
 	{
 		switch (a_msg->type) {
@@ -120,10 +68,7 @@ namespace
 			LipSync::ApplyConfig();
 			CaptionManager::ApplyConfig();
 			VoiceLog::ApplyConfig();
-			FuzSlots::Configure(Config::Get()->fuzSlots);
-			FuzCache::EnforceCacheCap();
 			PPABridge::TryConnect();
-			PrewarmFuzCache();
 			break;
 		case MessagingInterface::kPreLoadGame:
 		case MessagingInterface::kNewGame:
