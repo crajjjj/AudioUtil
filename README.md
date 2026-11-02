@@ -16,7 +16,7 @@ Target runtime: Skyrim SE 1.6.1170 (CommonLibSSE-NG, all-runtime build).
 - Voice audio is organized as `<slot path>\<Category>\*.wav`, where the slot path is a full `Sound\...` folder (slots like `F1`, `M1`..`M8`).
   A play request (`PlayVoice(actor, "Aggressive")`) resolves the slot from the actor
   (npc_overrides → voicetype_remap → voicetype_map → race_map → default per sex; a humanoid in
-  beast form takes race_map before voicetype_map) and shuffle-bag-picks a
+  werewolf or vampire-lord form skips voicetype_map) and shuffle-bag-picks a
   wav from the category folder (no repeats until the deck is exhausted).
 - SFX are named in the `[sfx]` table of the config and play the same way.
 - Groups (`pc_low`, `pc_high`, `partner_low`, `partner_high`, `sfx`, `oneshot`) provide
