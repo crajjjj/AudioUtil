@@ -64,13 +64,17 @@ namespace PapyrusAPI
 		// That is an EXCEPTION_ACCESS_VIOLATION (`mov rdx, [rax]`, rax = 0) on every
 		// single PlayVoice call on an affected install. The keyword walk below
 		// answers the same question and never touches the default-object table.
+		constexpr auto ACTOR_TYPE_NPC = "ActorTypeNPC"sv;
+
+		bool IsHumanoidRace(const RE::TESRace* a_race)
+		{
+			return a_race && a_race->HasKeywordString(ACTOR_TYPE_NPC);
+		}
+
 		bool IsCreature(RE::Actor* a_actor)
 		{
-			constexpr auto ACTOR_TYPE_NPC = "ActorTypeNPC"sv;
-			if (const auto* race = a_actor->GetRace()) {
-				if (race->HasKeywordString(ACTOR_TYPE_NPC)) {
-					return false;
-				}
+			if (IsHumanoidRace(a_actor->GetRace())) {
+				return false;
 			}
 			// second look at the actor base: a mod-added humanoid can carry the
 			// keyword on the NPC record rather than on its race
@@ -85,21 +89,24 @@ namespace PapyrusAPI
 		// BEAST FORM: a humanoid NPC switched into a creature race (werewolf,
 		// werebear, vampire lord). The race on his NPC record cannot tell: the game's
 		// race switch (Actor::SwitchRace) calls the record's race setter, which
-		// overwrites TESNPC::race with the new race and keeps the pre-switch one in
-		// TESNPC::originalRace, then copies the record's race into the actor. So in
-		// werewolf form both race pointers are the werewolf; only originalRace still
-		// names the human (read from the 1.7.104 exe: SwitchRace 0x1406ad970, setter
-		// 0x1403be3c0). Tests the live race alone for the creature side, never the NPC
-		// record's keywords, which a transformed vanilla NPC may well carry.
-		// A read during the switch itself can land on either side of it, which costs
-		// at most one line in the voice the actor is just leaving.
+		// overwrites TESNPC::race with the new race, then copies the record's race
+		// into the actor. So in werewolf form both race pointers are the werewolf.
+		// TESNPC::originalRace remembers the human: the setter fills it only while
+		// it is empty, so it holds the FIRST race of a chain (Nord, then vampire,
+		// then vampire lord leaves it at Nord), and clears it on a switch back to
+		// exactly that race (read from the 1.7.104 exe: SwitchRace 0x1406ad970,
+		// setter 0x1403be3c0). Humanoid is judged like IsCreature does: the race's
+		// keyword or the NPC record's.
+		// Known limits: originalRace lives on the NPC record, so two transformed
+		// copies of one plain base share it, and the first to revert clears it for
+		// both. A read during the switch itself can land on either side of it. Each
+		// costs a line or two in the voice the actor is leaving.
 		bool IsBeastForm(const RE::TESNPC* a_base, const RE::TESRace* a_liveRace)
 		{
-			constexpr auto ACTOR_TYPE_NPC = "ActorTypeNPC"sv;
-			const auto* original = a_base->originalRace;
-			return original && a_liveRace && a_liveRace != original &&
-			       original->HasKeywordString(ACTOR_TYPE_NPC) &&
-			       !a_liveRace->HasKeywordString(ACTOR_TYPE_NPC);
+			if (!a_base->originalRace || !a_liveRace || IsHumanoidRace(a_liveRace)) {
+				return false;
+			}
+			return IsHumanoidRace(a_base->originalRace) || a_base->HasKeywordString(ACTOR_TYPE_NPC);
 		}
 
 		// TESForm::GetFormEditorID() is the GAME's virtual (CommonLib only declares
@@ -147,10 +154,11 @@ namespace PapyrusAPI
 			return usable[mixed % usable.size()];
 		}
 
-		// resolution order: PC reservation (player only) -> npc_overrides ->
-		// voicetype remap/map -> race match -> default by sex. A humanoid in BEAST
-		// FORM skips the voicetype (see there); he and every creature end at
-		// default_creature_slot. Non-player actors never resolve to a PC-reserved
+		// resolution order, numbered as in docs/config/resolution.md: 1. PC
+		// reservation (player only) -> 2. npc_overrides -> 3. voicetype remap/map ->
+		// 4. race match -> 5. default_creature_slot (creatures and humanoids in beast
+		// form: they stop here) -> 6. default by sex. A humanoid in BEAST FORM takes
+		// 4 before 3 (see there). Non-player actors never resolve to a PC-reserved
 		// slot; if the default is reserved they get the first free slot of their
 		// sex instead.
 		const Config::Slot* ResolveSlotForActor(const Config::Settings& a_settings, RE::Actor* a_actor)
@@ -166,7 +174,8 @@ namespace PapyrusAPI
 			const bool isPC = a_actor->IsPlayerRef();
 			const bool female = base->GetSex() == RE::SEX::kFemale;
 
-			// 0. the player speaks with their reserved slot when one is configured
+			// 1. the player speaks with their reserved slot when one is configured. This
+			// wins in beast form too: a reservation is the player's voice, always
 			if (isPC) {
 				const auto& pcID = female ? a_settings.pcFemaleSlot : a_settings.pcMaleSlot;
 				if (!pcID.empty()) {
@@ -180,7 +189,7 @@ namespace PapyrusAPI
 				return a_slot && (isPC || !IsPCReserved(a_settings, *a_slot));
 			};
 
-			// 1. per-NPC override (an explicit pin wins, even to a reserved slot)
+			// 2. per-NPC override (an explicit pin wins, even to a reserved slot)
 			if (!a_settings.npcOverrides.empty()) {
 				if (const auto* file = base->GetFile(0)) {
 					const auto formID = base->GetFormID();
@@ -196,67 +205,91 @@ namespace PapyrusAPI
 				}
 			}
 
-			// 2./3. voicetype remap -> map, then the race match. A humanoid in BEAST FORM
-			// (see IsBeastForm) skips the voicetype: it is the voice of the body he
-			// left. SLO VE's bandit captain carried MaleBandit into a werewolf scene,
-			// took the M4 male pack, and his "Breathing" ambience fell through that
-			// pack's fallbacks to its climax cries every few seconds. He goes race hint,
-			// then the creature default below, never a human pack.
+			// 3. voicetype remap -> map, then 4. the race match. A humanoid in BEAST
+			// FORM (see IsBeastForm) takes the race match first: his voice type is the
+			// one on his human NPC record. SLO VE's bandit captain carried MaleBandit
+			// into a werewolf scene, took the M4 male pack, and his "Breathing"
+			// ambience fell through that pack's fallbacks to its climax cries every few
+			// seconds, although the preset had a Werewolf race hint. A hint for the
+			// beast race is how a preset says "voice this form as a creature". Without
+			// one he keeps his own voice type, as a vampire lord does in the game, and
+			// ends at default_creature_slot below when that routes nowhere either.
 			const auto* liveRace = a_actor->GetRace();
 			const bool beastForm = IsBeastForm(base, liveRace);
 
-			if (!beastForm) {
+			const auto byVoicetype = [&]() -> const Config::Slot* {
 				std::string voicetype;
 				if (const auto* vt = base->GetVoiceType()) {
 					voicetype = Config::Normalize(SafeEditorID(vt->GetFormEditorID()));
 				}
-				if (!voicetype.empty()) {
-					if (a_settings.voicetypeRemapEnabled) {
-						if (const auto it = a_settings.voicetypeRemap.find(voicetype);
-							it != a_settings.voicetypeRemap.end()) {
-							voicetype = it->second;
-						}
-					}
-					if (const auto it = a_settings.voicetypeMap.find(voicetype);
-						it != a_settings.voicetypeMap.end()) {
-						if (const auto* slot = PickFromSlotList(a_settings, it->second, base, usable)) {
-							return slot;
-						}
+				if (voicetype.empty()) {
+					return nullptr;
+				}
+				if (a_settings.voicetypeRemapEnabled) {
+					if (const auto it = a_settings.voicetypeRemap.find(voicetype);
+						it != a_settings.voicetypeRemap.end()) {
+						voicetype = it->second;
 					}
 				}
-			}
+				if (const auto it = a_settings.voicetypeMap.find(voicetype);
+					it != a_settings.voicetypeMap.end()) {
+					return PickFromSlotList(a_settings, it->second, base, usable);
+				}
+				return nullptr;
+			};
 
-			// 3. race match: first [race_map] hint (most specific first) found in
-			// the actor's live race editor id ("nord" matches NordRace /
-			// NordRaceVampire); only same-sex slots qualify
-			if (!a_settings.raceMap.empty() && liveRace) {
+			// first [race_map] hint (most specific first) found in the actor's live
+			// race editor id ("nord" matches NordRace / NordRaceVampire); only
+			// same-sex slots qualify
+			const auto byRace = [&]() -> const Config::Slot* {
+				if (a_settings.raceMap.empty() || !liveRace) {
+					return nullptr;
+				}
 				const std::string raceID = Config::Normalize(SafeEditorID(liveRace->GetFormEditorID()));
-				if (!raceID.empty()) {
-					// a race-mapped slot qualifies if it matches the actor's sex OR is
-					// sex-neutral ('A'): this is what lets one creature slot serve a
-					// creature regardless of the sex the engine reports for it
-					const auto sexUsable = [&](const Config::Slot* a_slot) {
-						return a_slot && (a_slot->sex == (female ? 'F' : 'M') || a_slot->sex == 'A') &&
-						       usable(a_slot);
-					};
-					for (const auto& [hint, slotIDs] : a_settings.raceMap) {
-						if (raceID.find(hint) == std::string::npos) {
-							continue;
-						}
-						if (const auto* slot = PickFromSlotList(a_settings, slotIDs, base, sexUsable)) {
-							return slot;
-						}
+				if (raceID.empty()) {
+					return nullptr;
+				}
+				// a race-mapped slot qualifies if it matches the actor's sex OR is
+				// sex-neutral ('A'): this is what lets one creature slot serve a
+				// creature regardless of the sex the engine reports for it
+				const auto sexUsable = [&](const Config::Slot* a_slot) {
+					return a_slot && (a_slot->sex == (female ? 'F' : 'M') || a_slot->sex == 'A') &&
+					       usable(a_slot);
+				};
+				for (const auto& [hint, slotIDs] : a_settings.raceMap) {
+					if (raceID.find(hint) == std::string::npos) {
+						continue;
 					}
+					if (const auto* slot = PickFromSlotList(a_settings, slotIDs, base, sexUsable)) {
+						return slot;
+					}
+				}
+				return nullptr;
+			};
+
+			if (beastForm) {
+				if (const auto* slot = byRace()) {
+					return slot;
+				}
+				if (const auto* slot = byVoicetype()) {
+					return slot;
+				}
+			} else {
+				if (const auto* slot = byVoicetype()) {
+					return slot;
+				}
+				if (const auto* slot = byRace()) {
+					return slot;
 				}
 			}
 
-			// 4. default by sex; if reserved (or missing), first free slot of the sex.
+			// 6. default by sex; if reserved (or missing), first free slot of the sex.
 			// This blind scan is F/M only — 'A' (sex-neutral) slots are reached only
 			// by explicit routing, so an sfx/creature slot never leaks onto a
 			// voiceless human here. (default_*_slot may still name an 'A' slot: that
 			// goes through FindSlot above, not this scan.)
 			//
-			// The mirror of that guard: a CREATURE no explicit route claimed takes
+			// 5. The mirror of that guard: a CREATURE no explicit route claimed takes
 			// default_creature_slot and stops, never the by-sex default below: every
 			// slot that can reach is a human voice pack, so an unmapped frostbite
 			// spider or fox would otherwise speak human lines. Unset = silent. A

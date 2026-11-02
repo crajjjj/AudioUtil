@@ -64,7 +64,9 @@ Taunt = 'Sound\fx\MyMod\M1\taunts'
 MaleEvenToned = "M1"
 FemaleEvenToned = "F1"
 
-# race -> slot, used when no voicetype matches. Hints are substring-matched
+# race -> slot, used when no voicetype matches (a humanoid transformed into a
+# werewolf, werebear or vampire lord tries his race hint FIRST, since his
+# voicetype is the human's). Hints are substring-matched
 # against the race editor id, longest/most-specific hint winning: "Nord" hits
 # NordRace AND NordRaceVampire. Creatures resolve here too — point their hint at
 # a sex="all" creature slot (see the SFX0 sex note) so it matches whatever sex

@@ -84,9 +84,11 @@ voice_log = "off"
 # sfx_slot = "SFX0"           # [[slot]] PlaySFX resolves before the [sfx] table ("" = table only)
 default_female_slot = ""      # slot for unrouted female actors ("" = none; an overlay sets it)
 default_male_slot = ""         # slot for unrouted male actors ("" = none)
-# Third default, for a CREATURE (an actor whose race has no ActorTypeNPC keyword) that
-# no explicit route claims - no [npc_overrides] pin, no [voicetype_map] entry, no
-# [race_map] hint. Creatures never fall through to default_male_slot: everything that
+# Third default, for a CREATURE (an actor whose race and NPC record lack the
+# ActorTypeNPC keyword) that no explicit route claims - no [npc_overrides] pin, no
+# [voicetype_map] entry, no [race_map] hint - and for a humanoid in beast form
+# (werewolf, werebear, vampire lord) whose race hint and voicetype both route
+# nowhere. Neither falls through to default_male_slot: everything that
 # path can pick is a human voice pack, so an unmapped frostbite spider or fox would
 # speak human lines. "" = such a creature resolves to nothing and stays silent
 # (GetSlotForActor returns "", so a script can test before playing); name a generic
